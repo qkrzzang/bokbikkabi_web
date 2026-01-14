@@ -1,0 +1,92 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: #063561;
+  border-bottom: 1px solid #084d7a;
+  backdrop-filter: blur(10px);
+}
+
+.dark .header {
+  background-color: rgba(30, 41, 59, 0.9);
+  border-bottom-color: #334155;
+}
+
+.headerContent {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 83px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.dark .logo {
+  color: #ffffff;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.loginButton {
+  padding: 8px 20px;
+  border: 2px solid #ffffff;
+  border-radius: 10px;
+  background-color: transparent;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.loginButton:hover {
+  background-color: #ffffff;
+  color: #063561;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+}
+
+.dark .loginButton {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.dark .loginButton:hover {
+  background-color: #ffffff;
+  color: #063561;
+}
+
+@media (max-width: 768px) {
+  .headerContent {
+    padding: 10px 16px;
+    min-height: 56px;
+  }
+
+  .headerContent {
+    min-height: 73px;
+  }
+
+  .logo {
+    font-size: 20px;
+  }
+
+  .loginButton {
+    padding: 6px 16px;
+    font-size: 14px;
+  }
+}
+
