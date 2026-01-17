@@ -70,6 +70,355 @@
   color: #063561;
 }
 
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.loginModal {
+  background-color: #ffffff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.loginModalContent {
+  padding: 0;
+}
+
+.loginModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.loginModalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.closeButton {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background-color: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.closeButton:hover {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+.loginModalMessage {
+  padding: 20px 24px;
+  text-align: center;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.loginMessageText {
+  font-size: 15px;
+  color: #063561;
+  margin: 0;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.loginOptions {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kakaoLoginButton,
+.googleLoginButton {
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.kakaoLoginButton {
+  background-color: #FEE500;
+  color: #000000;
+}
+
+.kakaoLoginButton:hover:not(:disabled) {
+  background-color: #FDD835;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(253, 216, 53, 0.3);
+}
+
+.kakaoLoginButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.userMenu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconButton {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background-color: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.iconButton:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.notificationModal,
+.profileModal {
+  background-color: #ffffff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.notificationModalContent,
+.profileModalContent {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.notificationModalHeader,
+.profileModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.notificationModalTitle,
+.profileModalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.notificationList {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notificationItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background-color: #f8fafc;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.notificationItem:hover {
+  background-color: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+.notificationIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notificationText {
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.6;
+  flex: 1;
+}
+
+.emptyNotification {
+  text-align: center;
+  padding: 40px 20px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.profileInfo {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.profileImage {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #e1e8f0;
+}
+
+.profileImagePlaceholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #e1e8f0;
+}
+
+.profileDetails {
+  flex: 1;
+}
+
+.profileName {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+}
+
+.profileEmail {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.profileActions {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profileActionButton {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #e1e8f0;
+  border-radius: 12px;
+  background-color: #ffffff;
+  color: #1e293b;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.profileActionButton:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.logoutButton {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background-color: #dc2626;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+}
+
+.logoutButton:hover {
+  background-color: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.googleLoginButton {
+  background-color: #ffffff;
+  color: #1e293b;
+  border: 1px solid #e1e8f0;
+}
+
+.googleLoginButton:hover:not(:disabled) {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.googleLoginButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .headerContent {
     padding: 10px 16px;
@@ -87,6 +436,37 @@
   .loginButton {
     padding: 6px 16px;
     font-size: 14px;
+  }
+
+  .loginModal {
+    width: 95%;
+    max-width: 360px;
+  }
+
+  .loginOptions {
+    padding: 20px;
+  }
+
+  .kakaoLoginButton,
+  .googleLoginButton {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+
+  .notificationModal,
+  .profileModal {
+    width: 95%;
+    max-width: 360px;
+  }
+
+  .profileInfo {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .iconButton {
+    width: 36px;
+    height: 36px;
   }
 }
 

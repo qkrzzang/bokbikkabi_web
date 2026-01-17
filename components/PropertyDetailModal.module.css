@@ -346,6 +346,48 @@
   line-height: 1.5;
 }
 
+/* 로그인하지 않은 사용자용 스타일 */
+.blurredContainer {
+  position: relative;
+  margin-top: 24px;
+}
+
+.blurredContent {
+  filter: blur(4px);
+  opacity: 0.3;
+  pointer-events: none;
+  user-select: none;
+}
+
+.lockOverlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.lockIcon {
+  margin-bottom: 16px;
+  opacity: 0.8;
+}
+
+.lockMessage {
+  font-size: 16px;
+  color: #64748b;
+  font-weight: 600;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 @media (max-width: 768px) {
   .overlay {
     padding: 16px;

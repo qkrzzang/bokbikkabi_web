@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import PropertyDetailModal from './PropertyDetailModal'
 import styles from './PropertyList.module.css'
+import { supabase } from '@/lib/supabase/client'
 
 interface Property {
   id: string
@@ -238,18 +239,46 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
       return
     }
 
-    setLoading(true)
-    // TODO: 실제 API 호출로 대체
-    setTimeout(() => {
-      // 검색어가 있을 때 필터링된 결과
-      const filteredData = mockProperties.filter(
-        (property) =>
-          property.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          property.address.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-      setProperties(filteredData)
-      setLoading(false)
+    const searchAgents = async () => {
+      setLoading(true)
+      try {
+        // agent_master 테이블에서 agent_name으로 검색
+        const { data, error } = await supabase
+          .from('agent_master')
+          .select('id, agent_name, road_address, lot_address')
+          .ilike('agent_name', `%${searchQuery}%`)
+          .limit(50) // 최대 50개 결과
+
+        if (error) {
+          console.error('검색 오류:', error)
+          setProperties([])
+          setLoading(false)
+          return
+        }
+
+        // 검색 결과를 Property 형식으로 변환
+        const propertiesData: Property[] = (data || []).map((agent) => ({
+          id: agent.id.toString(),
+          name: agent.agent_name || '',
+          address: agent.road_address || agent.lot_address || '',
+          rating: 0, // 기본값 (실제 리뷰 데이터가 있으면 계산)
+        }))
+
+        setProperties(propertiesData)
+      } catch (error) {
+        console.error('검색 중 오류:', error)
+        setProperties([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // 디바운싱: 300ms 후 검색 실행
+    const timeoutId = setTimeout(() => {
+      searchAgents()
     }, 300)
+
+    return () => clearTimeout(timeoutId)
   }, [searchQuery])
 
   // 검색어가 없을 때는 아무것도 표시하지 않음
