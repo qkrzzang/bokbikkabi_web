@@ -14,6 +14,7 @@ export default function CameraButton() {
   const [isDragging, setIsDragging] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [ocrResult, setOcrResult] = useState<any>(null)
   const [ocrError, setOcrError] = useState<string | null>(null)
   const [n8nResult, setN8nResult] = useState<any>(null)
@@ -28,6 +29,7 @@ export default function CameraButton() {
   } | null>(null)
   
   // 리뷰 작성 상태
+  const [transactionTags, setTransactionTags] = useState<string[]>([])
   const [praiseTags, setPraiseTags] = useState<string[]>([])
   const [regretTags, setRegretTags] = useState<string[]>([])
   const [reviewRatings, setReviewRatings] = useState({
@@ -53,6 +55,25 @@ export default function CameraButton() {
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  useEffect(() => {
+    // 로그인 상태 확인
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsLoggedIn(!!session)
+    }
+    
+    checkSession()
+    
+    // 인증 상태 변경 감지
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   const handleButtonClick = () => {
@@ -141,6 +162,7 @@ export default function CameraButton() {
     setSelectedAgents({})
     setShowAgentSelection(false)
     setPendingAgentSelection(null)
+    setTransactionTags([])
     setPraiseTags([])
     setRegretTags([])
     setReviewRatings({
@@ -333,15 +355,22 @@ export default function CameraButton() {
 
     setIsLoading(true)
     setOcrError(null)
+    setN8nError(null)
+    setN8nResult(null)
 
     try {
       const formData = new FormData()
       formData.append('file', originalFile)
 
+      // OCR 요청 타임아웃 (60초)
+      const ocrController = new AbortController()
+      const ocrTimeoutId = window.setTimeout(() => ocrController.abort(), 60_000)
+
       const response = await fetch('/api/ocr', {
         method: 'POST',
         body: formData,
-      })
+        signal: ocrController.signal,
+      }).finally(() => window.clearTimeout(ocrTimeoutId))
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -350,6 +379,9 @@ export default function CameraButton() {
 
       const data = await response.json()
       setOcrResult(data)
+      // OCR이 끝났으면 즉시 결과 화면으로 전환 (n8n은 결과 화면에서 로딩 처리)
+      setMode('result')
+      setIsLoading(false)
       
       // OCR 결과에서 text 필드만 추출 (여러 가능한 경로 확인)
       let ocrText = ''
@@ -372,6 +404,10 @@ export default function CameraButton() {
       // n8n 웹훅으로 OCR text만 전송하고 응답 받기
       if (ocrText) {
         try {
+          // n8n 요청 타임아웃 (45초)
+          const n8nController = new AbortController()
+          const n8nTimeoutId = window.setTimeout(() => n8nController.abort(), 45_000)
+
           const n8nResponse = await fetch(
             'https://qkrzzang13.app.n8n.cloud/webhook/4fc817ac-3148-46e1-8127-8960ade84ae3',
             {
@@ -383,8 +419,9 @@ export default function CameraButton() {
                 text: ocrText,
                 timestamp: new Date().toISOString(),
               }),
+              signal: n8nController.signal,
             }
-          )
+          ).finally(() => window.clearTimeout(n8nTimeoutId))
 
           if (!n8nResponse.ok) {
             const errorText = await n8nResponse.text()
@@ -509,17 +546,28 @@ export default function CameraButton() {
           }
         } catch (n8nError) {
           console.error('n8n 웹훅 전송 중 오류:', n8nError)
-          setN8nError(n8nError instanceof Error ? n8nError.message : 'n8n 호출 중 오류가 발생했습니다.')
+          setN8nError(
+            n8nError instanceof DOMException && n8nError.name === 'AbortError'
+              ? '검증 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+              : n8nError instanceof Error
+                ? n8nError.message
+                : 'n8n 호출 중 오류가 발생했습니다.'
+          )
         }
       } else {
         console.warn('OCR 결과에서 텍스트를 추출할 수 없습니다:', data)
         setN8nError('부동산 계약서를 다시 올려주세요.')
       }
-      
-      setMode('result')
     } catch (error) {
       console.error('OCR 오류:', error)
-      setOcrError(error instanceof Error ? error.message : 'OCR 처리 중 오류가 발생했습니다.')
+      setMode('result')
+      setOcrError(
+        error instanceof DOMException && error.name === 'AbortError'
+          ? 'OCR 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+          : error instanceof Error
+            ? error.message
+            : 'OCR 처리 중 오류가 발생했습니다.'
+      )
     } finally {
       setIsLoading(false)
     }
@@ -588,6 +636,11 @@ export default function CameraButton() {
       setOriginalFile(null)
       setMode('select')
     }
+  }
+
+  // 로그인하지 않은 사용자에게는 버튼을 표시하지 않음
+  if (!isLoggedIn) {
+    return null
   }
 
   return (
@@ -1004,7 +1057,7 @@ export default function CameraButton() {
                       <div className={styles.loadingContainer}>
                         <div className={styles.loadingSpinnerLarge}></div>
                         <h3>처리 중...</h3>
-                        <p>n8n 검증 결과를 기다리는 중입니다.</p>
+                        <p>검증 결과를 불러오는 중입니다.</p>
                       </div>
                     </div>
                   ) : null}
@@ -1013,7 +1066,27 @@ export default function CameraButton() {
 
               {mode === 'review' && (
                 <div className={styles.reviewContainer}>
-                  <h3>리뷰 작성</h3>
+                  {/* 거래 태그 */}
+                  <div className={styles.reviewSection}>
+                    <h4 className={styles.reviewSectionTitle}>거래 태그</h4>
+                    <div className={styles.tagContainer}>
+                      {['#전월세', '#매매'].map((tag) => (
+                        <button
+                          key={tag}
+                          className={`${styles.tagButton} ${transactionTags.includes(tag) ? styles.tagButtonActive : ''}`}
+                          onClick={() => {
+                            if (transactionTags.includes(tag)) {
+                              setTransactionTags(transactionTags.filter((t) => t !== tag))
+                            } else {
+                              setTransactionTags([...transactionTags, tag])
+                            }
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   
                   {/* 칭찬 태그 */}
                   <div className={styles.reviewSection}>
@@ -1186,6 +1259,7 @@ export default function CameraButton() {
                       onClick={() => {
                         // TODO: 리뷰 저장 로직
                         console.log('리뷰 제출:', {
+                          transactionTags,
                           praiseTags,
                           regretTags,
                           ratings: reviewRatings,

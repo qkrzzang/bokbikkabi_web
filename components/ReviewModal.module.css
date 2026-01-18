@@ -124,10 +124,31 @@
   flex: 1;
 }
 
+.authorRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .reviewAuthor {
   font-size: 16px;
   font-weight: 600;
   color: #1e293b;
+}
+
+.userLevelBadge {
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: rgba(6, 53, 97, 0.1);
+  border: 1px solid rgba(6, 53, 97, 0.2);
+  color: #063561;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .reviewRating {
@@ -147,20 +168,49 @@
   white-space: nowrap;
 }
 
+.reviewMetaRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.verifiedIcon {
+  color: #94a3b8;
+}
+
 .reviewTags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.reviewTag {
+.tag {
   display: inline-block;
   padding: 4px 10px;
-  background-color: #dbeafe;
-  color: #1e40af;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
+}
+
+.transactionTag {
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+
+.praiseTag {
+  background-color: #dbeafe;
+  color: #1e40af;
 }
 
 .regretTag {
@@ -184,9 +234,9 @@
 .reviewEvaluation {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 16px;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
   background-color: #f8fafc;
   border-radius: 12px;
 }
@@ -213,16 +263,16 @@
 
 .scoreBar {
   flex: 1;
-  height: 6px;
-  background-color: #e1e8f0;
-  border-radius: 3px;
+  height: 4px;
+  background-color: #f1f5f9;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .scoreBarFill {
   height: 100%;
   background: linear-gradient(90deg, #063561 0%, #084d7a 100%);
-  border-radius: 3px;
+  border-radius: 999px;
   transition: width 0.3s ease;
 }
 
@@ -241,6 +291,229 @@
   margin: 0;
   margin-top: 12px;
   word-break: break-word;
+}
+
+.reviewActions {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e1e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.helpfulPrompt {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.actionRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.helpfulButton {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #e1e8f0;
+  background-color: #ffffff;
+  color: #063561;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.helpfulButton:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.helpfulIcon {
+  font-size: 14px;
+}
+
+.reportLink {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 4px;
+}
+
+.reportLink:hover {
+  color: #64748b;
+  text-decoration: underline;
+}
+
+.reportOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3100;
+  padding: 20px;
+}
+
+.reportModal {
+  width: 100%;
+  max-width: 520px;
+  background-color: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  animation: slideUp 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.reportHeader {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e1e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reportTitle {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.reportClose {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background-color: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.reportClose:hover {
+  background-color: #e1e8f0;
+  color: #1e293b;
+}
+
+.reportBody {
+  padding: 16px 20px 20px;
+}
+
+.reportHint {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.fieldLabel {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1e293b;
+  margin-bottom: 10px;
+}
+
+.reasonList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reasonItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e1e8f0;
+  border-radius: 12px;
+  background-color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.reasonItem:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.reasonItem input {
+  width: 16px;
+  height: 16px;
+}
+
+.reportTextarea {
+  width: 100%;
+  border: 1px solid #e1e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1e293b;
+  background-color: #ffffff;
+  resize: vertical;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.reportTextarea:focus {
+  border-color: #063561;
+  box-shadow: 0 0 0 3px rgba(6, 53, 97, 0.12);
+}
+
+.reportError {
+  margin-top: -4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.reportSubmit {
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-radius: 14px;
+  background-color: #063561;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reportSubmit:hover {
+  background-color: #084d7a;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(6, 53, 97, 0.25);
 }
 
 @media (max-width: 768px) {
@@ -271,6 +544,18 @@
 
   .reviewDate {
     align-self: flex-start;
+  }
+
+  .reviewMetaRight {
+    justify-content: flex-start;
+  }
+
+  .reviewActions {
+    gap: 10px;
+  }
+
+  .reportOverlay {
+    padding: 16px;
   }
 }
 

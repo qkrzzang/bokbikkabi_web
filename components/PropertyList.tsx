@@ -56,13 +56,13 @@ interface PropertyListProps {
 // 목업 데이터
 const mockProperties: Property[] = [
   {
-    id: '1',
-    name: '미금퍼스트',
+    id: 'mock-1',
+    name: '미금퍼스트공인중개사사무소(테스트)',
     address: '경기도 성남시 분당구 미금일로90번길 10, 1층(구미동)',
     rating: 4.5,
   },
   {
-    id: '2',
+    id: 'mock-2',
     name: '기쁨부동산',
     address: '서울특별시 성북구 동소문로 109 (동선동4가)',
     rating: 4.7,
@@ -72,9 +72,9 @@ const mockProperties: Property[] = [
 // 상세 정보 목업 데이터
 const getPropertyDetail = (id: string): PropertyDetail | null => {
   const details: Record<string, PropertyDetail> = {
-    '1': {
-      id: '1',
-      name: '미금퍼스트',
+    'mock-1': {
+      id: 'mock-1',
+      name: '미금퍼스트공인중개사사무소(테스트)',
       address: '경기도 성남시 분당구 미금일로90번길 10, 1층(구미동)',
       rating: 4.5,
       reviewCount: 152,
@@ -147,8 +147,8 @@ const getPropertyDetail = (id: string): PropertyDetail | null => {
         },
       ],
     },
-    '2': {
-      id: '2',
+    'mock-2': {
+      id: 'mock-2',
       name: '기쁨부동산',
       address: '서울특별시 성북구 동소문로 109 (동선동4가)',
       rating: 4.7,
@@ -251,7 +251,12 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
 
         if (error) {
           console.error('검색 오류:', error)
-          setProperties([])
+          // DB 검색이 실패해도 목업 검색 결과는 보여주기
+          const q = searchQuery.trim().toLowerCase()
+          const mockMatches = mockProperties.filter(
+            (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
+          )
+          setProperties(mockMatches)
           setLoading(false)
           return
         }
@@ -264,10 +269,25 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           rating: 0, // 기본값 (실제 리뷰 데이터가 있으면 계산)
         }))
 
-        setProperties(propertiesData)
+        // 목업 데이터도 검색 결과에 포함 (예: "미금" 검색 시 미금퍼스트 노출)
+        const q = searchQuery.trim().toLowerCase()
+        const mockMatches = mockProperties.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
+        )
+
+        // 목업을 우선 노출하고, DB 결과와 합치되 중복 id는 제거
+        const mergedMap = new Map<string, Property>()
+        for (const p of [...mockMatches, ...propertiesData]) {
+          if (!mergedMap.has(p.id)) mergedMap.set(p.id, p)
+        }
+        setProperties(Array.from(mergedMap.values()))
       } catch (error) {
         console.error('검색 중 오류:', error)
-        setProperties([])
+        const q = searchQuery.trim().toLowerCase()
+        const mockMatches = mockProperties.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
+        )
+        setProperties(mockMatches)
       } finally {
         setLoading(false)
       }

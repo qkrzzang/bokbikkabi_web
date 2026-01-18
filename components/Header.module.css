@@ -243,8 +243,33 @@
   flex-direction: column;
 }
 
+/* 툴팁이 모달 밖으로 나가도 잘리지 않게 */
+.profileModal {
+  overflow: visible;
+}
+
+.favoritesModal {
+  background-color: #ffffff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 460px;
+  max-height: 80vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .notificationModalContent,
 .profileModalContent {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.favoritesModalContent {
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -260,12 +285,97 @@
   border-bottom: 1px solid #e1e8f0;
 }
 
+.favoritesModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
 .notificationModalTitle,
 .profileModalTitle {
   font-size: 20px;
   font-weight: 700;
   color: #1e293b;
   margin: 0;
+}
+
+.favoritesModalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.favoritesList {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.favoritesState {
+  text-align: center;
+  padding: 40px 20px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.favoriteItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.favoriteInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.favoriteName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.favoriteAddress {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.favoriteRight {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.commentCountBadge {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: #063561;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .notificationList {
@@ -340,6 +450,27 @@
 
 .profileDetails {
   flex: 1;
+  min-width: 0;
+}
+
+.profileNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profileNameWithBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gradeBadgeGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .profileName {
@@ -347,6 +478,165 @@
   font-weight: 600;
   color: #1e293b;
   margin: 0 0 4px 0;
+  min-width: 0;
+}
+
+.gradeBadge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: rgba(6, 53, 97, 0.1);
+  border: 1px solid rgba(6, 53, 97, 0.2);
+  color: #063561;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.gradeBadge:hover,
+.gradeBadge:focus,
+.gradeBadge:focus-visible {
+  background-color: #ffffff;
+  color: #063561;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+  border-color: #ffffff;
+}
+
+.gradeInfoButton {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background-color: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.gradeInfoButton:hover {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+.gradeCondition {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.gradeInfoModal {
+  background-color: #ffffff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 420px;
+  max-height: 75vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gradeInfoModalContent {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.gradeInfoModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.gradeInfoModalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.gradeInfoList {
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gradeInfoItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.gradeLabel {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: rgba(6, 53, 97, 0.1);
+  border: 1px solid rgba(6, 53, 97, 0.2);
+  color: #063561;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.gradeDesc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
+.gradeTagline {
+  font-size: 12px;
+  font-weight: 800;
+  color: #063561;
+  margin-bottom: 4px;
+}
+
+.settingsButton {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background-color: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.settingsButton:hover {
+  background-color: #f1f5f9;
+  color: #1e293b;
 }
 
 .profileEmail {
@@ -355,11 +645,265 @@
   margin: 0;
 }
 
+.profileStats {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.profileActionRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inlineBadge {
+  min-width: 34px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background-color: #063561;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settingsModal {
+  background-color: #ffffff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 360px;
+  max-height: 70vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.settingsModalContent {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.settingsModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.settingsModalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.settingsList {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settingsItem {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e1e8f0;
+  border-radius: 12px;
+  background-color: #ffffff;
+  color: #1e293b;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.settingsItem:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
 .profileActions {
   padding: 16px 24px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.navItem {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e1e8f0;
+  border-radius: 14px;
+  background-color: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.navItem:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.navLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.navIcon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.navLabel {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.chevron {
+  font-size: 18px;
+  line-height: 1;
+  color: #94a3b8;
+}
+
+.logoutLink {
+  margin-top: 10px;
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 2px;
+}
+
+.logoutLink:hover {
+  color: #475569;
+  text-decoration: underline;
+}
+
+.infoModal {
+  background-color: #ffffff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 420px;
+  max-height: 75vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.infoModalContent {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.infoModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e1e8f0;
+}
+
+.infoModalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.infoModalBody {
+  padding: 16px 24px 22px;
+}
+
+.infoText {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.6;
+}
+
+.infoLink {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 800;
+  color: #063561;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(6, 53, 97, 0.4);
+  padding-bottom: 2px;
+}
+
+.infoLink:hover {
+  border-bottom-style: solid;
+}
+
+.infoList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.infoListItem {
+  padding: 12px 14px;
+  border: 1px solid #e1e8f0;
+  border-radius: 12px;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.infoHint {
+  margin: 12px 0 0 0;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .profileActionButton {
@@ -459,9 +1003,23 @@
     max-width: 360px;
   }
 
+  .favoritesModal {
+    width: 95%;
+    max-width: 380px;
+  }
+
+  .settingsModal {
+    width: 95%;
+    max-width: 340px;
+  }
+
   .profileInfo {
     flex-direction: column;
     text-align: center;
+  }
+
+  .profileHeaderRow {
+    text-align: left;
   }
 
   .iconButton {

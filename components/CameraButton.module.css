@@ -10,14 +10,14 @@
   height: 56px;
   border-radius: 50%;
   background: linear-gradient(135deg, #063561 0%, #084d7a 100%);
-  border: none;
+  border: 2px solid transparent;
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px rgba(6, 53, 97, 0.4);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .tooltip {
@@ -48,8 +48,9 @@
 }
 
 .cameraButton:hover {
+  background: linear-gradient(135deg, #084d7a 0%, #0a5f8f 100%);
   transform: scale(1.1);
-  box-shadow: 0 6px 24px rgba(6, 53, 97, 0.5);
+  box-shadow: 0 6px 20px rgba(6, 53, 97, 0.5);
 }
 
 .cameraButton:active {
