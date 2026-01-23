@@ -241,24 +241,104 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
 
     const searchAgents = async () => {
       setLoading(true)
+      console.log(`[검색] 검색어: "${searchQuery}"`)
+      console.log(`[검색] Supabase URL:`, process.env.NEXT_PUBLIC_SUPABASE_URL ? '설정됨' : '❌ 없음')
+      console.log(`[검색] Supabase Anon Key:`, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '설정됨' : '❌ 없음')
+      
+      // Supabase 연결 테스트
       try {
-        // agent_master 테이블에서 agent_name으로 검색
-        const { data, error } = await supabase
+        const testStart = Date.now()
+        const connectionTest = await supabase
+          .from('agent_master')
+          .select('id', { count: 'exact', head: true })
+        const testEnd = Date.now()
+        
+        if (connectionTest.error) {
+          console.error(`[검색] ❌ Supabase 연결 테스트 실패:`, connectionTest.error)
+        } else {
+          console.log(`[검색] ✅ Supabase 연결 성공 (${testEnd - testStart}ms)`)
+          console.log(`[검색] agent_master 테이블 총 건수:`, connectionTest.count || '알 수 없음')
+        }
+      } catch (connError) {
+        console.error(`[검색] ❌ Supabase 연결 예외:`, connError)
+      }
+      
+      try {
+        // agent_master 테이블에서 agent_name으로 검색 (타임아웃 5초)
+        console.log(`[검색] agent_master 테이블 조회 시작: agent_name ILIKE '%${searchQuery}%'`)
+        const startTime = Date.now()
+        
+        // Promise.race로 타임아웃 구현
+        const queryPromise = supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address')
           .ilike('agent_name', `%${searchQuery}%`)
-          .limit(50) // 최대 50개 결과
+          .limit(50)
+
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('TIMEOUT'))
+          }, 5000)
+        })
+
+        const result = await Promise.race([queryPromise, timeoutPromise])
+          .catch((err) => {
+            if (err.message === 'TIMEOUT') {
+              console.error('[검색] ⏱️ 타임아웃 (5초 초과) - DB 응답 없음')
+              return { data: null, error: { code: 'TIMEOUT', message: 'Query timeout' } }
+            }
+            throw err
+          })
+
+        const endTime = Date.now()
+        console.log(`[검색] 조회 완료 (소요 시간: ${endTime - startTime}ms)`)
+
+        const { data, error } = result as any
 
         if (error) {
-          console.error('검색 오류:', error)
+          console.error('[검색] ❌ Supabase 조회 오류:', error)
+          console.error('[검색] 오류 상세:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          })
+          
+          // 타임아웃 오류
+          if (error.code === 'TIMEOUT') {
+            console.error('[검색] 🚨 원인: Supabase 서버 응답 없음 (5초 초과)')
+            console.error('[검색] 🔧 해결 방법:')
+            console.error('  1. Supabase Dashboard 접속 → 프로젝트 상태 확인')
+            console.error('  2. 프로젝트가 일시중지(Paused) 상태인지 확인')
+            console.error('  3. 무료 티어: 7일 미사용 시 자동 일시중지')
+            console.error('  4. Dashboard에서 "Resume" 버튼 클릭')
+          }
+          
+          // RLS 권한 오류인 경우 안내 메시지
+          if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('RLS')) {
+            console.error('[검색] 🚨 RLS 정책 미설정! Supabase Dashboard에서 아래 SQL 실행 필요:')
+            console.error('ALTER TABLE agent_master ENABLE ROW LEVEL SECURITY;')
+            console.error('CREATE POLICY "Enable read access for all users" ON agent_master FOR SELECT USING (true);')
+          }
+          
           // DB 검색이 실패해도 목업 검색 결과는 보여주기
           const q = searchQuery.trim().toLowerCase()
           const mockMatches = mockProperties.filter(
             (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
           )
+          console.log(`[검색] DB 조회 실패, 목업 데이터 사용: ${mockMatches.length}건`)
           setProperties(mockMatches)
           setLoading(false)
           return
+        }
+
+        console.log(`[검색] ✅ DB 조회 성공: ${data?.length || 0}건`)
+        
+        if (data && data.length > 0) {
+          console.log(`[검색] 샘플 데이터:`, data.slice(0, 3).map(d => ({
+            id: d.id,
+            name: d.agent_name
+          })))
         }
 
         // 검색 결과를 Property 형식으로 변환
@@ -275,18 +355,25 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
         )
 
+        console.log(`[검색] 목업 매칭: ${mockMatches.length}건`)
+
         // 목업을 우선 노출하고, DB 결과와 합치되 중복 id는 제거
         const mergedMap = new Map<string, Property>()
         for (const p of [...mockMatches, ...propertiesData]) {
           if (!mergedMap.has(p.id)) mergedMap.set(p.id, p)
         }
-        setProperties(Array.from(mergedMap.values()))
+        
+        const finalResults = Array.from(mergedMap.values())
+        console.log(`[검색] 최종 결과: ${finalResults.length}건`)
+        
+        setProperties(finalResults)
       } catch (error) {
-        console.error('검색 중 오류:', error)
+        console.error('[검색] ❌ 예외 발생:', error)
         const q = searchQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
           (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
         )
+        console.log(`[검색] 예외 발생, 목업 데이터 사용: ${mockMatches.length}건`)
         setProperties(mockMatches)
       } finally {
         setLoading(false)

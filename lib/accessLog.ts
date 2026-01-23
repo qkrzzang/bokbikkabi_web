@@ -69,7 +69,7 @@ export const logAccess = async (logData: AccessLogData) => {
 
     // userId가 없으면 Insert하지 않음 (로그인한 유저만 기록)
     if (!userId) {
-      console.log('접속 이력 기록 건너뜀: 로그인하지 않은 사용자', { action: logData.action })
+      // 로그인하지 않은 사용자는 조용히 종료 (로그 없음)
       return
     }
     
@@ -95,12 +95,10 @@ export const logAccess = async (logData: AccessLogData) => {
 
     if (error) {
       console.error('접속 이력 기록 오류:', error)
-      throw error
     }
     
-    console.log('접속 이력 기록 성공:', { action: logData.action, userId })
+    // 성공 로그는 조용히 처리 (불필요한 로그 방지)
   } catch (error) {
-    console.error('접속 이력 기록 중 오류:', error)
-    // 접속 이력 기록 실패는 로그를 남기지만 예외를 다시 throw하지 않음
+    // 접속 이력 기록 실패는 조용히 처리 (불필요한 로그 방지)
   }
 }

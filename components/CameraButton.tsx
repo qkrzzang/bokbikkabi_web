@@ -19,28 +19,52 @@ export default function CameraButton() {
   const [ocrError, setOcrError] = useState<string | null>(null)
   const [n8nResult, setN8nResult] = useState<any>(null)
   const [n8nError, setN8nError] = useState<string | null>(null)
-  const [agentAddresses, setAgentAddresses] = useState<Record<string, string>>({})
-  const [selectedAgents, setSelectedAgents] = useState<Record<string, { agent_number: string; agent_name: string; road_address: string }>>({})
+  const [agentAddresses, setAgentAddresses] = useState<Record<string, { road_address: string; lot_address: string }>>({})
+  const [selectedAgents, setSelectedAgents] = useState<Record<string, { agent_id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }>>({})
   const [showAgentSelection, setShowAgentSelection] = useState(false)
   const [pendingAgentSelection, setPendingAgentSelection] = useState<{
     contractIndex: number
     agentName: string
-    agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string }>
+    agentNumber?: string
+    reason: 'exact' | 'multiple' | 'fuzzy'
+    agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string; matchScore?: number }>
+  } | null>(null)
+  const [showConfirmSelection, setShowConfirmSelection] = useState(false)
+  const [confirmingAgent, setConfirmingAgent] = useState<{
+    agent: { id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }
+    contractIndex: number
   } | null>(null)
   
   // 리뷰 작성 상태
   const [transactionTags, setTransactionTags] = useState<string[]>([])
   const [praiseTags, setPraiseTags] = useState<string[]>([])
   const [regretTags, setRegretTags] = useState<string[]>([])
-  const [reviewRatings, setReviewRatings] = useState({
-    feeSatisfaction: 0,
-    expertise: 0,
-    kindness: 0,
-    propertyReliability: 0,
-    responseSpeed: 0
-  })
+  const [reviewRatings, setReviewRatings] = useState<Record<string, number>>({})
+  const [transactionTagOptions, setTransactionTagOptions] = useState<Array<{
+    code_value: string
+    code_name: string
+  }>>([])
+  const [praiseTagOptions, setPraiseTagOptions] = useState<Array<{
+    code_value: string
+    code_name: string
+  }>>([])
+  const [regretTagOptions, setRegretTagOptions] = useState<Array<{
+    code_value: string
+    code_name: string
+  }>>([])
+  const [detailEvaluations, setDetailEvaluations] = useState<Array<{
+    code_value: string
+    code_name: string
+    extra_value1: string | null
+    extra_value2: string | null
+    extra_value3: string | null
+    extra_value4: string | null
+    extra_value5: string | null
+  }>>([])
   const [reviewText, setReviewText] = useState('')
   const [showThankYouModal, setShowThankYouModal] = useState(false)
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false)
+  const [hoverRatings, setHoverRatings] = useState<Record<string, number>>({})
   const [isAgreementChecked, setIsAgreementChecked] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -58,21 +82,71 @@ export default function CameraButton() {
   }, [])
 
   useEffect(() => {
+    let isMounted = true
+    
     // 로그인 상태 확인
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsLoggedIn(!!session)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (isMounted) {
+          setIsLoggedIn(!!session)
+        }
+      } catch (error) {
+        // 모든 오류 조용히 처리
+      }
     }
     
     checkSession()
     
     // 인증 상태 변경 감지
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoggedIn(!!session)
+      if (isMounted) {
+        setIsLoggedIn(!!session)
+      }
     })
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
+    }
+  }, [])
+
+  const fetchReviewCodeDetails = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('common_code_detail')
+        .select('code_group, code_value, code_name, extra_value1, extra_value2, extra_value3, extra_value4, extra_value5, sort_order, use_yn')
+        .in('code_group', ['TRANSACTION_TYPE', 'PRAISE_TAG', 'REGRET_TAG', 'DETAIL_EVALUATION'])
+        .order('code_group', { ascending: true })
+        .order('sort_order', { ascending: true })
+
+      if (error) {
+        return
+      }
+
+      const activeData = (data || []).filter((item) => item.use_yn !== 'N')
+      setTransactionTagOptions(activeData.filter((item) => item.code_group === 'TRANSACTION_TYPE'))
+      setPraiseTagOptions(activeData.filter((item) => item.code_group === 'PRAISE_TAG'))
+      setRegretTagOptions(activeData.filter((item) => item.code_group === 'REGRET_TAG'))
+      setDetailEvaluations(activeData.filter((item) => item.code_group === 'DETAIL_EVALUATION'))
+    } catch (error) {
+      // 모든 오류 조용히 처리
+    }
+  }
+
+  useEffect(() => {
+    let isMounted = true
+    
+    const loadCodeDetails = async () => {
+      if (isMounted) {
+        await fetchReviewCodeDetails()
+      }
+    }
+    
+    loadCodeDetails()
+    
+    return () => {
+      isMounted = false
     }
   }, [])
 
@@ -98,49 +172,18 @@ export default function CameraButton() {
     setIsAgreementChecked(false)
   }
 
-  // 별점에 따른 텍스트 반환 함수
-  const getRatingText = (category: string, rating: number): string => {
+  const getRatingText = (codeValue: string, rating: number): string => {
     if (rating === 0) return ''
-    
-    const texts: Record<string, Record<number, string>> = {
-      feeSatisfaction: {
-        1: '법정 수수료보다 더 요구하거나 현금을 강요해요.',
-        2: '에누리 없이 법정 상한요율(최대치)을 꽉 채워 받아요.',
-        3: '깎아달라고 해서 조금 조정해 주셨어요.',
-        4: '먼저 적절한 금액으로 협의해 주셨어요.',
-        5: '쿨하게 할인해주셔서 최저 요율로 맞췄어요!'
-      },
-      expertise: {
-        1: '위험한 권리 관계(융자 등)를 제대로 설명 안 해줬어요.',
-        2: '제가 물어보기 전까지는 먼저 알려주지 않아요.',
-        3: '계약에 필요한 기본적인 내용은 다 숙지하고 계세요.',
-        4: '등기부등본과 특약 사항을 꼼꼼하게 짚어주셨어요.',
-        5: '대출, 세금 문제까지 전문가처럼 상담해 주셨어요.'
-      },
-      kindness: {
-        1: '당장 계약 안 하면 큰일 난다며 강압적으로 밀어붙여요.',
-        2: '말투가 퉁명스럽고 귀찮아하는 게 느껴졌어요.',
-        3: '무난하고 정중하게 대해 주셨어요.',
-        4: '집 보는 내내 편안하고 친절하게 안내해 주셨어요.',
-        5: '가족이 집 구하는 것처럼 정말 따뜻하게 챙겨주셨어요.'
-      },
-      propertyReliability: {
-        1: '완전 낚였어요! 사진이랑 딴판인 허위매물이었어요.',
-        2: '곰팡이나 누수 같은 하자를 미리 말 안 해줬어요.',
-        3: '설명 들었던 것과 실제 집 상태가 비슷해요.',
-        4: '집의 장점뿐만 아니라 단점도 솔직하게 말해줬어요.',
-        5: '사진보다 실물이 훨씬 좋고 관리 상태가 완벽해요.'
-      },
-      responseSpeed: {
-        1: '연락 두절! 계약금 넣고 나니 잠수탔어요.',
-        2: '답장이 너무 늦어서 속이 터지는 줄 알았어요.',
-        3: '급한 용무가 있을 때는 연락이 잘 돼요.',
-        4: '문의하면 금방금방 답변을 주셔서 편했어요.',
-        5: 'LTE급 속도! 주말/저녁에도 칼답장해 주셨어요.'
-      }
-    }
-    
-    return texts[category]?.[rating] || ''
+    const target = detailEvaluations.find((item) => item.code_value === codeValue)
+    if (!target) return ''
+    const texts = [
+      target.extra_value1,
+      target.extra_value2,
+      target.extra_value3,
+      target.extra_value4,
+      target.extra_value5,
+    ]
+    return texts[rating - 1] || ''
   }
 
   const openModal = () => {
@@ -165,83 +208,97 @@ export default function CameraButton() {
     setTransactionTags([])
     setPraiseTags([])
     setRegretTags([])
-    setReviewRatings({
-      feeSatisfaction: 0,
-      expertise: 0,
-      kindness: 0,
-      propertyReliability: 0,
-      responseSpeed: 0
-    })
+    setReviewRatings({})
     setReviewText('')
     setShowThankYouModal(false)
+    setHoverRatings({})
     stopCamera()
   }
 
-  const handleAgentSelect = (selectedAgent: { id: number; agent_number: string; agent_name: string; road_address: string }) => {
-    if (pendingAgentSelection && n8nResult) {
-      const contract = n8nResult[pendingAgentSelection.contractIndex]
-      const key = `${pendingAgentSelection.contractIndex}_${contract.agent_number || contract.agent_name}`
-      
-      // 선택한 중개사무소 정보 저장
-      setAgentAddresses(prev => ({
-        ...prev,
-        [key]: selectedAgent.road_address
-      }))
-      
-      setSelectedAgents(prev => ({
-        ...prev,
-        [key]: {
-          agent_number: selectedAgent.agent_number,
-          agent_name: selectedAgent.agent_name,
-          road_address: selectedAgent.road_address
-        }
-      }))
-      
-      // 다음 대기 중인 선택이 있는지 확인
-      if (Array.isArray(n8nResult)) {
-        const remainingSelections: Array<{
-          contractIndex: number
-          agentName: string
-          agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string }>
-        }> = []
-        
-        // 아직 주소가 없는 계약서들 확인
-        const checkPromises = n8nResult.map(async (contract, i) => {
-          const checkKey = `${i}_${contract.agent_number || contract.agent_name}`
-          if (!agentAddresses[checkKey] && contract.agent_name) {
-            // 다시 조회해서 여러 개인지 확인
-            const { data, error } = await supabase
-              .from('agent_master')
-              .select('id, agent_number, agent_name, road_address')
-              .eq('agent_name', contract.agent_name)
-            
-            if (!error && data && data.length > 1) {
-              remainingSelections.push({
-                contractIndex: i,
-                agentName: contract.agent_name,
-                agents: data.map(agent => ({
-                  id: agent.id,
-                  agent_number: agent.agent_number,
-                  agent_name: agent.agent_name,
-                  road_address: agent.road_address || ''
-                }))
-              })
-            }
-          }
-        })
-        
-        Promise.all(checkPromises).then(() => {
-          if (remainingSelections.length > 0) {
-            setPendingAgentSelection(remainingSelections[0])
-          } else {
-            setShowAgentSelection(false)
-            setPendingAgentSelection(null)
-          }
-        })
-      } else {
-        setShowAgentSelection(false)
-        setPendingAgentSelection(null)
+  const handleAgentSelect = (selectedAgent: { id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }) => {
+    // 확인 팝업 표시
+    console.log(`[중개사 선택] 사용자가 선택: ${selectedAgent.agent_name} (${selectedAgent.agent_number})`)
+    console.log(`[중개사 선택] 확인 팝업 표시`)
+    
+    if (pendingAgentSelection) {
+      setConfirmingAgent({
+        agent: selectedAgent,
+        contractIndex: pendingAgentSelection.contractIndex
+      })
+      setShowConfirmSelection(true)
+    }
+  }
+
+  const handleConfirmAgent = () => {
+    if (!confirmingAgent || !pendingAgentSelection || !n8nResult) return
+
+    console.log(`[중개사 확인] 사용자가 확인 버튼 클릭`)
+    console.log(`[중개사 확인] 최종 선택: ${confirmingAgent.agent.agent_name}`)
+
+    const selectedAgent = confirmingAgent.agent
+    const key = `${confirmingAgent.contractIndex}`
+    
+    // 선택한 중개사무소 정보 저장
+    setAgentAddresses(prev => ({
+      ...prev,
+      [key]: {
+        road_address: selectedAgent.road_address || '',
+        lot_address: selectedAgent.lot_address || ''
       }
+    }))
+    
+    setSelectedAgents(prev => ({
+      ...prev,
+      [key]: {
+        agent_id: selectedAgent.id,
+        agent_number: selectedAgent.agent_number,
+        agent_name: selectedAgent.agent_name,
+        road_address: selectedAgent.road_address || '',
+        lot_address: selectedAgent.lot_address || '',
+        representative_name: selectedAgent.representative_name
+      }
+    }))
+
+    setN8nResult((prev: any) => {
+      if (!prev) return prev
+      if (Array.isArray(prev)) {
+        return prev.map((item, idx) =>
+          idx === confirmingAgent.contractIndex
+            ? {
+                ...item,
+                agent_name: selectedAgent.agent_name,
+                agent_number: selectedAgent.agent_number,
+              }
+            : item
+        )
+      }
+      return {
+        ...prev,
+        agent_name: selectedAgent.agent_name,
+        agent_number: selectedAgent.agent_number,
+      }
+    })
+    
+    // 확인 팝업과 선택 팝업 모두 닫기
+    setShowConfirmSelection(false)
+    setConfirmingAgent(null)
+    setShowAgentSelection(false)
+    setPendingAgentSelection(null)
+    
+    console.log(`[중개사 확인] 선택 완료 - 검증 결과 화면 표시`)
+    
+    // 검증 결과 화면으로 이동 (mode는 이미 'result'로 설정되어 있음)
+  }
+
+  const handleCancelConfirmAgent = () => {
+    console.log(`[중개사 확인] 사용자가 취소 버튼 클릭 (다시 선택)`)
+    setShowConfirmSelection(false)
+    setConfirmingAgent(null)
+    
+    // 선택 팝업으로 돌아가기 (다시 선택할 수 있도록)
+    if (pendingAgentSelection) {
+      console.log(`[중개사 확인] 선택 팝업 다시 표시`)
+      setShowAgentSelection(true)
     }
   }
   
@@ -250,7 +307,237 @@ export default function CameraButton() {
     setPendingAgentSelection(null)
   }
 
+  const getContractAgentNumber = (contract: any) => {
+    const raw =
+      contract?.agent_number ??
+      contract?.agentNumber ??
+      contract?.agent_no ??
+      contract?.agentNo ??
+      contract?.registration_number ??
+      contract?.registrationNumber ??
+      ''
+    return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+  }
+
+  const getContractAgentName = (contract: any) => {
+    const raw =
+      contract?.agent_name ??
+      contract?.agentName ??
+      contract?.office_name ??
+      contract?.officeName ??
+      ''
+    return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+  }
+
+  const getContractAgentAddress = (contract: any) => {
+    const raw =
+      contract?.agent_address ??
+      contract?.agentAddress ??
+      contract?.address ??
+      contract?.road_address ??
+      contract?.roadAddress ??
+      ''
+    return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+  }
+
+
+  const normalizeAgentNumber = (value: string) => value.toLowerCase().replace(/[^0-9a-z]/g, '')
+
+  const normalizeText = (value: string) => value.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9가-힣]/g, '')
+
+  // Levenshtein Distance 기반 유사도 (0~1)
+  const calculateSimilarity = (a: string, b: string) => {
+    const source = normalizeText(a)
+    const target = normalizeText(b)
+    if (!source || !target) return 0
+    if (source === target) return 1
+
+    // 포함 관계 체크 (부분 문자열)
+    if (source.includes(target) || target.includes(source)) {
+      const minLen = Math.min(source.length, target.length)
+      const maxLen = Math.max(source.length, target.length)
+      return 0.7 + (0.3 * minLen / maxLen)
+    }
+
+    const sourceLen = source.length
+    const targetLen = target.length
+    const matrix = Array.from({ length: sourceLen + 1 }, () => new Array(targetLen + 1).fill(0))
+
+    for (let i = 0; i <= sourceLen; i++) matrix[i][0] = i
+    for (let j = 0; j <= targetLen; j++) matrix[0][j] = j
+
+    for (let i = 1; i <= sourceLen; i++) {
+      for (let j = 1; j <= targetLen; j++) {
+        const cost = source[i - 1] === target[j - 1] ? 0 : 1
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost
+        )
+      }
+    }
+
+    const distance = matrix[sourceLen][targetLen]
+    const maxLen = Math.max(sourceLen, targetLen)
+    return maxLen === 0 ? 0 : 1 - distance / maxLen
+  }
+
+  const getMatchScore = (
+    candidate: { agent_name: string; agent_number: string }, 
+    agentName?: string, 
+    agentNumber?: string
+  ) => {
+    const nameScore = agentName ? calculateSimilarity(candidate.agent_name, agentName) : 0
+    const numberScore = agentNumber ? calculateSimilarity(candidate.agent_number, agentNumber) : 0
+
+    if (!agentName && agentNumber) return numberScore
+    if (agentName && !agentNumber) return nameScore
+    return numberScore * 0.6 + nameScore * 0.4
+  }
+
+  // 정확 일치 조회
+  const fetchExactAgent = async (agentNumber: string) => {
+    console.log(`[클라이언트] agent_master 테이블 정확 조회: "${agentNumber}"`)
+    console.log(`[클라이언트] 조회 쿼리:`, {
+      table: 'agent_master',
+      condition: `agent_number = '${agentNumber}'`
+    })
+    
+    try {
+      const { data, error } = await supabase
+        .from('agent_master')
+        .select('id, agent_number, agent_name, road_address, lot_address, representative_name')
+        .eq('agent_number', agentNumber)
+        .maybeSingle()
+      
+      if (error) {
+        console.error('[클라이언트] ❌ Supabase 조회 오류:', error)
+        console.error('[클라이언트] 오류 상세:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        return null
+      }
+      
+      if (data) {
+        console.log(`[클라이언트] ✅ 조회 성공:`, data)
+      } else {
+        console.log(`[클라이언트] ⚠️ 데이터 없음 (DB에 '${agentNumber}'가 없습니다)`)
+      }
+      
+      return data
+    } catch (error) {
+      console.error('[클라이언트] ❌ 예외 발생:', error)
+      return null
+    }
+  }
+
+  // 유사도 검색
+  const fetchByNameAndNumber = async (agentName?: string, agentNumber?: string) => {
+    if (!agentName && !agentNumber) {
+      console.log(`[클라이언트] ⚠️ 유사도 검색 건너뜀 (검색 조건 없음)`)
+      return []
+    }
+    
+    console.log(`[클라이언트] agent_master 테이블 유사도 검색 시작`)
+    console.log(`[클라이언트] 검색 조건: name="${agentName}", number="${agentNumber}"`)
+
+    const filters: string[] = []
+    
+    if (agentName) {
+      const cleanName = agentName.replace(/(공인중개사|부동산|사무소)$/g, '').trim()
+      if (cleanName.length >= 2) {
+        filters.push(`agent_name.ilike.%${cleanName}%`)
+        console.log(`[클라이언트] 이름 필터: %${cleanName}%`)
+      }
+    }
+    
+    if (agentNumber) {
+      const normalized = normalizeAgentNumber(agentNumber)
+      if (normalized.length >= 6) {
+        const prefix = normalized.substring(0, 6)
+        filters.push(`agent_number.ilike.%${prefix}%`)
+        console.log(`[클라이언트] 번호 필터 (앞 6자리): %${prefix}%`)
+      } else if (normalized.length >= 3) {
+        filters.push(`agent_number.ilike.%${normalized}%`)
+        console.log(`[클라이언트] 번호 필터 (전체): %${normalized}%`)
+      }
+    }
+
+    if (filters.length === 0) {
+      console.log(`[클라이언트] ⚠️ 유효한 필터 없음`)
+      return []
+    }
+
+    console.log(`[클라이언트] 최종 필터:`, filters.join(' OR '))
+
+    try {
+      const { data, error } = await supabase
+        .from('agent_master')
+        .select('id, agent_number, agent_name, road_address, lot_address, representative_name')
+        .or(filters.join(','))
+        .limit(50)
+
+      if (error) {
+        console.error('[클라이언트] ❌ 유사도 검색 오류:', error)
+        console.error('[클라이언트] 오류 상세:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        return []
+      }
+
+      console.log(`[클라이언트] ✅ 1차 DB 조회 성공: ${data?.length || 0}건`)
+
+      if (data && data.length > 0) {
+        console.log(`[클라이언트] 샘플 데이터:`, data.slice(0, 3).map(d => ({
+          number: d.agent_number,
+          name: d.agent_name
+        })))
+      }
+
+      const scoredCandidates = (data || []).map((candidate) => ({
+        ...candidate,
+        matchScore: getMatchScore(candidate, agentName, agentNumber),
+        road_address: candidate.road_address || '',
+        lot_address: candidate.lot_address || '',
+      }))
+      
+      const finalCandidates = scoredCandidates
+        .filter(c => (c.matchScore || 0) >= 0.3)
+        .sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0))
+      
+      console.log(`[클라이언트] 유사도 필터링 후 (≥0.3): ${finalCandidates.length}건`)
+      
+      if (finalCandidates.length > 0) {
+        console.log(`[클라이언트] ✅ 상위 2건:`, finalCandidates.slice(0, 2).map(c => ({
+          name: c.agent_name,
+          number: c.agent_number,
+          score: (c.matchScore || 0).toFixed(2)
+        })))
+      } else {
+        console.log(`[클라이언트] ⚠️ 유사도 0.3 이상인 데이터 없음`)
+      }
+
+      return finalCandidates
+    } catch (error) {
+      console.error('[클라이언트] ❌ 예외 발생:', error)
+      return []
+    }
+  }
+
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   const handleFileSelect = () => {
+    resetFileInput()
     fileInputRef.current?.click()
   }
 
@@ -259,6 +546,7 @@ export default function CameraButton() {
     if (file) {
       processFile(file)
     }
+    resetFileInput()
   }
 
   const processFile = (file: File) => {
@@ -379,9 +667,7 @@ export default function CameraButton() {
 
       const data = await response.json()
       setOcrResult(data)
-      // OCR이 끝났으면 즉시 결과 화면으로 전환 (n8n은 결과 화면에서 로딩 처리)
-      setMode('result')
-      setIsLoading(false)
+      // OCR이 끝났지만 n8n 요청이 완료될 때까지 로딩 유지
       
       // OCR 결과에서 text 필드만 추출 (여러 가능한 경로 확인)
       let ocrText = ''
@@ -427,9 +713,12 @@ export default function CameraButton() {
             const errorText = await n8nResponse.text()
             console.error('n8n 웹훅 전송 실패:', n8nResponse.status, errorText)
             setN8nError(`n8n 호출 실패: ${n8nResponse.status}`)
+            setMode('result')
+            setIsLoading(false)
           } else {
             const n8nData = await n8nResponse.json()
-            console.log('n8n 응답 받음:', n8nData)
+            console.log('====== n8n 응답 받음 ======')
+            console.log('n8n 응답 전체:', JSON.stringify(n8nData, null, 2))
             
             // contract_type이 'NON_CONTRACT'인 항목 필터링
             const filterValidContracts = (data: any): any => {
@@ -447,99 +736,139 @@ export default function CameraButton() {
             if (!validContracts || (Array.isArray(validContracts) && validContracts.length === 0)) {
               setN8nError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
               setN8nResult(null)
+              setMode('result')
+              setIsLoading(false)
             } else {
               setN8nResult(validContracts)
+              setMode('result')
+              setIsLoading(false)
               
               // agent_number 또는 agent_name으로 Supabase에서 road_address 조회
               const contractsToProcess = Array.isArray(validContracts) ? validContracts : [validContracts]
               
               if (contractsToProcess.length > 0) {
-                const addresses: Record<string, string> = {}
+                const addresses: Record<string, { road_address: string; lot_address: string }> = {}
                 const pendingSelections: Array<{
                   contractIndex: number
                   agentName: string
-                  agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string }>
+                  agentNumber?: string
+                  reason: 'exact' | 'multiple' | 'fuzzy'
+                  agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string; matchScore?: number }>
                 }> = []
                 
                 // 모든 계약서에 대해 조회 수행
                 for (let i = 0; i < contractsToProcess.length; i++) {
                   const contract = contractsToProcess[i]
-                  const key = `${i}_${contract.agent_number || contract.agent_name}`
+                  const key = `${i}`
                   let found = false
+                  const contractAgentNumber = getContractAgentNumber(contract)
+                  const contractAgentName = getContractAgentName(contract)
                   
-                  if (contract.agent_number) {
+                  console.log(`[계약서 ${i}] OCR 추출값:`, { 
+                    agent_number: contractAgentNumber, 
+                    agent_name: contractAgentName,
+                    raw: contract 
+                  })
+                  
+                  // 1단계: agent_number로 정확 일치 조회 (반드시 실행)
+                  if (contractAgentNumber) {
+                    console.log(`[1단계] agent_number 정확 일치 조회 시작: "${contractAgentNumber}"`)
                     try {
-                      // 1단계: agent_number로 agent_number 일치 조회
-                      const { data: numberData, error: numberError } = await supabase
-                        .from('agent_master')
-                        .select('agent_number, agent_name, road_address')
-                        .eq('agent_number', contract.agent_number)
-                        .single()
+                      const numberData = await fetchExactAgent(contractAgentNumber)
                       
-                      if (!numberError && numberData) {
-                        addresses[key] = numberData.road_address || ''
-                        // agent_number로 조회한 경우 전체 정보 저장
-                        setSelectedAgents(prev => ({
-                          ...prev,
-                          [key]: {
+                      console.log(`[1단계] 조회 결과:`, numberData)
+
+                      if (numberData) {
+                        console.log(`[1단계] 정확 일치 찾음! (사용자 확인 필요)`, numberData)
+                        // 정확 일치인 경우에도 선택 팝업 표시
+                        pendingSelections.push({
+                          contractIndex: i,
+                          agentName: numberData.agent_name,
+                          agentNumber: numberData.agent_number,
+                          reason: 'exact',
+                          agents: [{
+                            id: numberData.id,
                             agent_number: numberData.agent_number,
                             agent_name: numberData.agent_name,
-                            road_address: numberData.road_address || ''
-                          }
-                        }))
+                            road_address: numberData.road_address || '',
+                            lot_address: numberData.lot_address || '',
+                            matchScore: 1.0
+                          }]
+                        })
                         found = true
+                      } else {
+                        console.log(`[1단계] 정확 일치 없음. 2단계로 이동`)
                       }
                     } catch (error) {
-                      console.error('agent_number 조회 오류:', error)
+                      console.error('[1단계] agent_number 조회 오류:', error)
+                    }
+                  } else {
+                    console.log(`[1단계] OCR에서 agent_number 없음. 2단계로 이동`)
+                  }
+                  
+                  // 2단계: 등록번호+이름 조합 유사도 검색 (상위 2건)
+                  if (!found) {
+                    console.log(`[2단계] 등록번호+이름 유사도 조회:`, { 
+                      name: contractAgentName, 
+                      number: contractAgentNumber
+                    })
+                    const combinedCandidates = await fetchByNameAndNumber(
+                      contractAgentName || undefined,
+                      contractAgentNumber || undefined
+                    )
+                    
+                    // 상위 2건만 유지
+                    const topCandidates = combinedCandidates.slice(0, 2)
+                    
+                    console.log(`[2단계] 후보 개수: ${topCandidates.length}`, 
+                      topCandidates.map(c => ({ name: c.agent_name, score: c.matchScore?.toFixed(2) }))
+                    )
+                    
+                    if (topCandidates.length > 0) {
+                      pendingSelections.push({
+                        contractIndex: i,
+                        agentName: contractAgentName || '알 수 없음',
+                        agentNumber: contractAgentNumber || undefined,
+                        reason: 'fuzzy',
+                        agents: topCandidates
+                      })
+                      found = true
                     }
                   }
                   
-                  // 2단계: agent_number가 없거나 일치하지 않으면 agent_name으로 agent_name 일치 조회
-                  if (!found && contract.agent_name) {
-                    try {
-                      const { data: nameData, error: nameError } = await supabase
-                        .from('agent_master')
-                        .select('id, agent_number, agent_name, road_address')
-                        .eq('agent_name', contract.agent_name)
-                      
-                      if (!nameError && nameData && nameData.length > 0) {
-                        if (nameData.length === 1) {
-                          // 단일 결과면 자동 사용
-                          addresses[key] = nameData[0].road_address || ''
-                          setSelectedAgents(prev => ({
-                            ...prev,
-                            [key]: {
-                              agent_number: nameData[0].agent_number,
-                              agent_name: nameData[0].agent_name,
-                              road_address: nameData[0].road_address || ''
-                            }
-                          }))
-                        } else {
-                          // 여러 개면 선택 팝업 표시
-                          pendingSelections.push({
-                            contractIndex: i,
-                            agentName: contract.agent_name,
-                            agents: nameData.map(agent => ({
-                              id: agent.id,
-                              agent_number: agent.agent_number,
-                              agent_name: agent.agent_name,
-                              road_address: agent.road_address || ''
-                            }))
-                          })
-                        }
-                      }
-                    } catch (error) {
-                      console.error('agent_name 조회 오류:', error)
-                    }
+                  if (!found) {
+                    console.warn(`[계약서 ${i}] 중개사무소를 찾지 못했습니다. → 검증 결과 화면에서 "확인 필요" 표시`)
                   }
                 }
                 
                 setAgentAddresses(addresses)
                 
-                // 여러 개의 중개사무소가 있는 경우 첫 번째 것부터 선택 팝업 표시
+                console.log(`[검증] 총 ${pendingSelections.length}개 계약서에 대한 선택 필요`)
+                
+                // 선택이 필요한 경우 첫 번째 후보부터 표시
                 if (pendingSelections.length > 0) {
-                  setPendingAgentSelection(pendingSelections[0])
-                  setShowAgentSelection(true)
+                  const firstSelection = pendingSelections[0]
+                  
+                  // 정확 일치 1건인 경우 바로 확인 팝업 표시
+                  if (firstSelection.reason === 'exact' && firstSelection.agents.length === 1) {
+                    console.log(`[검증] ✅ 정확 일치 1건 → 확인 팝업 바로 표시`)
+                    console.log(`[검증] 중개사: ${firstSelection.agents[0].agent_name} (${firstSelection.agents[0].agent_number})`)
+                    setConfirmingAgent({
+                      agent: firstSelection.agents[0],
+                      contractIndex: firstSelection.contractIndex
+                    })
+                    setPendingAgentSelection(firstSelection)
+                    setShowConfirmSelection(true)
+                  } else {
+                    // 유사 검색이거나 여러 건인 경우 선택 팝업 표시
+                    console.log(`[검증] 🔍 ${firstSelection.reason === 'exact' ? '정확 일치 여러 건' : '유사 검색 ' + firstSelection.agents.length + '건'} → 선택 팝업 표시`)
+                    setPendingAgentSelection(firstSelection)
+                    setShowAgentSelection(true)
+                  }
+                } else {
+                  // 후보가 0건인 경우: 팝업 없이 검증 결과 화면만 표시
+                  console.log(`[검증] ⚠️ 후보 0건 → 선택 팝업 없이 검증 결과만 표시`)
+                  console.log(`[검증] 검증 결과 화면에서 "중개사무소 확인 필요" 메시지 표시됨`)
                 }
               }
             }
@@ -553,10 +882,14 @@ export default function CameraButton() {
                 ? n8nError.message
                 : 'n8n 호출 중 오류가 발생했습니다.'
           )
+          setMode('result')
+          setIsLoading(false)
         }
       } else {
         console.warn('OCR 결과에서 텍스트를 추출할 수 없습니다:', data)
         setN8nError('부동산 계약서를 다시 올려주세요.')
+        setMode('result')
+        setIsLoading(false)
       }
     } catch (error) {
       console.error('OCR 오류:', error)
@@ -573,70 +906,148 @@ export default function CameraButton() {
     }
   }
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (mode === 'camera') {
       stopCamera()
       setMode('select')
     } else if (mode === 'result') {
-      // 검증 결과에서 뒤로 버튼 클릭 시
-      if (n8nResult && Array.isArray(n8nResult) && n8nResult.length > 0) {
-        // 아직 선택되지 않은 중개사무소가 있는지 확인
-        const pendingSelections: Array<{
-          contractIndex: number
-          agentName: string
-          agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string }>
-        }> = []
-        
-        for (let i = 0; i < n8nResult.length; i++) {
-          const contract = n8nResult[i]
-          const key = `${i}_${contract.agent_number || contract.agent_name}`
-          
-          // 선택되지 않은 계약서 확인
-          if (!selectedAgents[key] && contract.agent_name) {
-            try {
-              // agent_name으로 조회해서 여러 개인지 확인
-              const { data, error } = await supabase
-                .from('agent_master')
-                .select('id, agent_number, agent_name, road_address')
-                .eq('agent_name', contract.agent_name)
-              
-              if (!error && data && data.length > 1) {
-                // 2개 이상이면 선택 팝업 표시
-                pendingSelections.push({
-                  contractIndex: i,
-                  agentName: contract.agent_name,
-                  agents: data.map(agent => ({
-                    id: agent.id,
-                    agent_number: agent.agent_number,
-                    agent_name: agent.agent_name,
-                    road_address: agent.road_address || ''
-                  }))
-                })
-              }
-            } catch (error) {
-              console.error('중개사무소 조회 오류:', error)
-            }
-          }
-        }
-        
-        if (pendingSelections.length > 0) {
-          // 2개 이상의 중개사무소가 있으면 선택 팝업 표시
-          setPendingAgentSelection(pendingSelections[0])
-          setShowAgentSelection(true)
-        } else {
-          // 1개이거나 모두 선택된 경우 업로드 모드로 이동
-          setMode('upload')
-        }
-      } else {
-        // n8nResult가 없으면 업로드 모드로 이동
-        setMode('upload')
-      }
+      // 검증 결과에서 뒤로 버튼 클릭 시 -> 업로드 화면으로 이동
+      setMode('upload')
     } else {
       setCapturedImage(null)
       setOriginalFile(null)
       setMode('select')
     }
   }
+
+  const handleReviewSubmit = async () => {
+    if (isReviewSubmitting) return
+
+    try {
+      setIsReviewSubmitting(true)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) {
+        alert('로그인이 필요합니다.')
+        return
+      }
+
+      const reviewLength = reviewText.trim().length
+      if (reviewLength < 20) {
+        alert('상세 리뷰는 20자 이상 작성해주세요.')
+        return
+      }
+
+      const selectedKeys = Object.keys(selectedAgents)
+      if (selectedKeys.length === 0) {
+        alert('중개사무소 확인이 필요합니다. 후보 중 하나를 선택해주세요.')
+        return
+      }
+
+      const reviewIndex = primaryReviewIndex
+      const selectedAgent = selectedAgents[String(reviewIndex)]
+
+      if (!selectedAgent?.agent_id) {
+        alert('중개사무소 정보가 없습니다. 다시 확인해주세요.')
+        return
+      }
+
+      const contractData = primaryContract
+
+      // code_value 또는 code_name으로 평가 점수 찾기
+      const getRatingByKeywords = (keywords: string[]) => {
+        // 먼저 code_value로 검색
+        for (const keyword of keywords) {
+          const value = reviewRatings[keyword]
+          if (typeof value === 'number' && value > 0) {
+            console.log(`[리뷰 저장] ${keyword} 점수 찾음 (code_value): ${value}`)
+            return value
+          }
+        }
+        
+        // code_value로 못 찾으면 detailEvaluations의 code_name으로 검색
+        for (const keyword of keywords) {
+          const evaluation = detailEvaluations.find(e => 
+            e.code_name.includes(keyword) || 
+            e.code_value.toUpperCase().includes(keyword.toUpperCase())
+          )
+          if (evaluation) {
+            const value = reviewRatings[evaluation.code_value]
+            if (typeof value === 'number' && value > 0) {
+              console.log(`[리뷰 저장] ${keyword} 점수 찾음 (code_name 매칭): ${value}`)
+              return value
+            }
+          }
+        }
+        
+        console.log(`[리뷰 저장] ${keywords.join(', ')} 점수 없음`)
+        return null
+      }
+
+      console.log(`[리뷰 저장] 평가 점수 확인:`, reviewRatings)
+      console.log(`[리뷰 저장] 상세 평가 항목:`, detailEvaluations.map(e => ({ code_value: e.code_value, code_name: e.code_name })))
+
+      const { error } = await supabase
+        .from('agent_reviews')
+        .insert({
+          agent_id: selectedAgent.agent_id,
+          supabase_user_id: session.user.id,
+          transaction_tag: transactionTags[0] || null,
+          agent_address: contractData?.agent_address || contractData?.agentAddress || null,
+          agent_name: contractData?.agent_name || contractData?.agentName || getContractAgentName(contractData) || null,
+          confience_score: contractData?.confience_score || contractData?.confidence_score || contractData?.confidenceScore || null,
+          contract_type: contractData?.contract_type || contractData?.contractType || null,
+          doc_title: contractData?.doc_title || contractData?.docTitle || null,
+          reason: contractData?.reason || null,
+          praise_tags: praiseTags,
+          regret_tags: regretTags,
+          fee_satisfaction: getRatingByKeywords(['FEE_SATISFACTION', '수수료']),
+          expertise: getRatingByKeywords(['EXPERTISE', '전문성', '지식']),
+          kindness: getRatingByKeywords(['KINDNESS', '친절', '태도']),
+          property_reliability: getRatingByKeywords(['PROPERTY_RELIABILITY', '매물', '신뢰도']),
+          response_speed: getRatingByKeywords(['RESPONSE_SPEED', 'COMMUNICATION', '응답', '속도']),
+          review_text: reviewText || null,
+          contract_date: contractData?.contract_date || null,
+        })
+
+      if (error) {
+        console.error('리뷰 저장 실패:', error)
+        alert(`리뷰 저장에 실패했습니다: ${error.message}`)
+        return
+      }
+
+      if (reviewAgentName && reviewAgentName !== '-') {
+        window.dispatchEvent(new CustomEvent('review:saved', { detail: { query: reviewAgentName } }))
+      }
+
+      setShowThankYouModal(true)
+    } catch (error) {
+      console.error('리뷰 저장 오류:', error)
+      alert('리뷰 저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsReviewSubmitting(false)
+    }
+  }
+
+  const reviewCharCount = reviewText.trim().length
+  const isReviewLengthValid = reviewCharCount >= 20
+  const primaryReviewIndex = (() => {
+    const keys = Object.keys(selectedAgents)
+    if (keys.length > 0) {
+      const value = Number(keys[0])
+      return Number.isNaN(value) ? 0 : value
+    }
+    return 0
+  })()
+  const primaryReviewKey = String(primaryReviewIndex)
+  const primaryContract = Array.isArray(n8nResult)
+    ? (n8nResult[primaryReviewIndex] || n8nResult[0])
+    : n8nResult
+  const reviewAgentName =
+    selectedAgents[primaryReviewKey]?.agent_name ||
+    getContractAgentName(primaryContract) ||
+    '-'
+  const hasSelectedAgent = Object.keys(selectedAgents).length > 0
 
   // 로그인하지 않은 사용자에게는 버튼을 표시하지 않음
   if (!isLoggedIn) {
@@ -658,33 +1069,7 @@ export default function CameraButton() {
           onClick={handleButtonClick}
           aria-label="리뷰 작성"
         >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M8.5 10.5L9.2 11.85L10.65 12L9.6 13.05L9.9 14.5L8.5 13.8L7.1 14.5L7.4 13.05L6.35 12L7.8 11.85L8.5 10.5Z"
-            fill="currentColor"
-          />
-          <path
-            d="M12 10.5L12.7 11.85L14.15 12L13.1 13.05L13.4 14.5L12 13.8L10.6 14.5L10.9 13.05L9.85 12L11.3 11.85L12 10.5Z"
-            fill="currentColor"
-          />
-          <path
-            d="M15.5 10.5L16.2 11.85L17.65 12L16.6 13.05L16.9 14.5L15.5 13.8L14.1 14.5L14.4 13.05L13.35 12L14.8 11.85L15.5 10.5Z"
-            fill="currentColor"
-          />
-        </svg>
+          리뷰 작성
       </button>
       </div>
 
@@ -730,8 +1115,8 @@ export default function CameraButton() {
       )}
 
       {isOpen && (
-        <div className={styles.overlay} onClick={closeModal}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.overlay}>
+          <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <div>
                 <h3>{mode === 'review' ? '리뷰 작성' : '부동산 계약서 업로드'}</h3>
@@ -988,43 +1373,51 @@ export default function CameraButton() {
                                 <span className={styles.fieldLabel}>계약일자:</span>
                                 <span className={styles.fieldValue}>{contract.contract_date || '-'}</span>
                               </div>
-                              {selectedAgents[`${index}_${contract.agent_number || contract.agent_name}`] ? (
+                              {selectedAgents[`${index}`] ? (
                                 <>
                                   <div className={styles.contractField}>
                                     <span className={styles.fieldLabel}>중개사무소명:</span>
-                                    <span className={styles.fieldValue}>{selectedAgents[`${index}_${contract.agent_number || contract.agent_name}`].agent_name}</span>
+                                    <span className={styles.fieldValue}>{selectedAgents[`${index}`].agent_name}</span>
                                   </div>
+                                  {selectedAgents[`${index}`].representative_name && (
+                                    <div className={styles.contractField}>
+                                      <span className={styles.fieldLabel}>대표자명:</span>
+                                      <span className={styles.fieldValue}>{selectedAgents[`${index}`].representative_name}</span>
+                                    </div>
+                                  )}
                                   <div className={styles.contractField}>
                                     <span className={styles.fieldLabel}>등록번호:</span>
-                                    <span className={styles.fieldValue}>{selectedAgents[`${index}_${contract.agent_number || contract.agent_name}`].agent_number}</span>
+                                    <span className={styles.fieldValue}>{selectedAgents[`${index}`].agent_number}</span>
                                   </div>
                                   <div className={styles.contractField}>
                                     <span className={styles.fieldLabel}>주소(도로명):</span>
-                                    <span className={styles.fieldValue}>{selectedAgents[`${index}_${contract.agent_number || contract.agent_name}`].road_address}</span>
+                                    <span className={styles.fieldValue}>{selectedAgents[`${index}`].road_address}</span>
+                                  </div>
+                                  <div className={styles.contractField}>
+                                    <span className={styles.fieldLabel}>주소(지번):</span>
+                                    <span className={styles.fieldValue}>{selectedAgents[`${index}`].lot_address || '-'}</span>
                                   </div>
                                 </>
                               ) : (
                                 <>
                                   <div className={styles.contractField}>
-                                    <span className={styles.fieldLabel}>중개사무소명:</span>
-                                    <span className={styles.fieldValue}>{contract.agent_name || '-'}</span>
+                                    <span className={styles.fieldLabel}>중개사 정보:</span>
+                                    <span className={styles.fieldValue} style={{ color: '#ef4444', fontWeight: 600 }}>
+                                      중개사무소 확인 필요
+                                    </span>
                                   </div>
-                                  {agentAddresses[`${index}_${contract.agent_number || contract.agent_name}`] && (
+                                  <div className={styles.contractField}>
+                                    <span className={styles.fieldLabel}>안내:</span>
+                                    <span className={styles.fieldValue} style={{ color: '#64748b', fontSize: '13px' }}>
+                                      등록된 중개사무소 정보를 찾을 수 없습니다. 계약서를 다시 확인해주세요.
+                                    </span>
+                                  </div>
+                                  {pendingAgentSelection?.contractIndex === index && (
                                     <div className={styles.contractField}>
-                                      <span className={styles.fieldLabel}>주소(도로명):</span>
-                                      <span className={styles.fieldValue}>{agentAddresses[`${index}_${contract.agent_number || contract.agent_name}`]}</span>
-                                    </div>
-                                  )}
-                                  {!agentAddresses[`${index}_${contract.agent_number || contract.agent_name}`] && pendingAgentSelection?.contractIndex === index && (
-                                    <div className={styles.contractField}>
-                                      <span className={styles.fieldLabel}>주소(도로명):</span>
+                                      <span className={styles.fieldLabel}>검증 상태:</span>
                                       <span className={styles.fieldValue} style={{ color: '#64748b', fontStyle: 'italic' }}>선택 중...</span>
                                     </div>
                                   )}
-                                  <div className={styles.contractField}>
-                                    <span className={styles.fieldLabel}>등록번호:</span>
-                                    <span className={styles.fieldValue}>{contract.agent_number || '-'}</span>
-                                  </div>
                                 </>
                               )}
                             </div>
@@ -1038,26 +1431,77 @@ export default function CameraButton() {
                         )}
                       </div>
                       <div className={styles.resultControls}>
-                        <button
-                          className={styles.cancelButton}
-                          onClick={handleCancel}
-                        >
-                          뒤로
-                        </button>
-                        <button
-                          className={styles.submitButton}
-                          onClick={() => setMode('review')}
-                        >
-                          리뷰 작성
-                        </button>
-                      </div>
-                    </div>
-                  ) : ocrResult ? (
-                    <div className={styles.resultContainer}>
-                      <div className={styles.loadingContainer}>
-                        <div className={styles.loadingSpinnerLarge}></div>
-                        <h3>처리 중...</h3>
-                        <p>검증 결과를 불러오는 중입니다.</p>
+                        {hasSelectedAgent ? (
+                          <>
+                            <button
+                              className={styles.cancelButton}
+                              onClick={handleCancel}
+                            >
+                              뒤로
+                            </button>
+                            <button
+                              className={styles.submitButton}
+                              onClick={() => setMode('review')}
+                            >
+                              리뷰 작성
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className={styles.cancelButton}
+                              onClick={handleCancel}
+                            >
+                              뒤로
+                            </button>
+                            <button
+                              className={styles.findBySimilarityButton}
+                              onClick={async () => {
+                                console.log(`[유사도 찾기] 버튼 클릭 - 수동 검색 시작`)
+                                if (n8nResult && Array.isArray(n8nResult) && n8nResult.length > 0) {
+                                  const contract = n8nResult[0]
+                                  const contractAgentNumber = getContractAgentNumber(contract)
+                                  const contractAgentName = getContractAgentName(contract)
+                                  
+                                  console.log(`[유사도 찾기] 검색 조건: name="${contractAgentName}", number="${contractAgentNumber}"`)
+                                  
+                                  const candidates = await fetchByNameAndNumber(
+                                    contractAgentName || undefined,
+                                    contractAgentNumber || undefined
+                                  )
+                                  
+                                  console.log(`[유사도 찾기] 검색 결과: ${candidates.length}건`)
+                                  
+                                  if (candidates.length > 0) {
+                                    setPendingAgentSelection({
+                                      contractIndex: 0,
+                                      agentName: contractAgentName || '알 수 없음',
+                                      agentNumber: contractAgentNumber || undefined,
+                                      reason: 'fuzzy',
+                                      agents: candidates.slice(0, 5)
+                                    })
+                                    setShowAgentSelection(true)
+                                  } else {
+                                    alert('유사한 중개사무소를 찾을 수 없습니다.\n\n관리자에게 문의해주세요.')
+                                  }
+                                }
+                              }}
+                            >
+                              유사도로 찾기
+                            </button>
+                            <button
+                              className={styles.contactAdminButton}
+                              onClick={() => {
+                                alert('중개사무소 정보를 찾을 수 없습니다.\n\n고객센터 또는 관리자에게 문의해주세요.')
+                              }}
+                            >
+                              관리자에게 문의
+                            </button>
+                          </>
+                        )}
+                        {!hasSelectedAgent && (
+                          <span className={styles.reviewNotice}>등록된 중개사무소 정보가 없습니다. 관리자에게 문의해주세요.</span>
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -1066,25 +1510,32 @@ export default function CameraButton() {
 
               {mode === 'review' && (
                 <div className={styles.reviewContainer}>
-                  {/* 거래 태그 */}
+                  <div className={styles.reviewTargetInfo}>
+                    <h3 className={styles.reviewAgentName}>{reviewAgentName}</h3>
+                  </div>
+                  {/* 거래 태그 (4개 중 하나만 선택 가능) */}
                   <div className={styles.reviewSection}>
                     <h4 className={styles.reviewSectionTitle}>거래 태그</h4>
                     <div className={styles.tagContainer}>
-                      {['#전월세', '#매매'].map((tag) => (
-                        <button
-                          key={tag}
-                          className={`${styles.tagButton} ${transactionTags.includes(tag) ? styles.tagButtonActive : ''}`}
-                          onClick={() => {
-                            if (transactionTags.includes(tag)) {
-                              setTransactionTags(transactionTags.filter((t) => t !== tag))
-                            } else {
-                              setTransactionTags([...transactionTags, tag])
-                            }
-                          }}
-                        >
-                          {tag}
-                        </button>
-                      ))}
+                      {transactionTagOptions.length === 0 ? (
+                        <span className={styles.reviewTagEmpty}>거래 태그가 없습니다.</span>
+                      ) : (
+                        transactionTagOptions.map((tag) => (
+                          <button
+                            key={tag.code_value}
+                            className={`${styles.tagButton} ${transactionTags.includes(tag.code_name) ? styles.tagButtonActive : ''}`}
+                            onClick={() => {
+                              if (transactionTags.includes(tag.code_name)) {
+                                setTransactionTags([])
+                              } else {
+                                setTransactionTags([tag.code_name])
+                              }
+                            }}
+                          >
+                            {tag.code_name}
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
                   
@@ -1092,21 +1543,25 @@ export default function CameraButton() {
                   <div className={styles.reviewSection}>
                     <h4 className={styles.reviewSectionTitle}>칭찬 태그</h4>
                     <div className={styles.tagContainer}>
-                      {['친절하고 상세한 설명', '빠른 응답', '정확한 정보 제공', '좋은 매물 추천', '협상 도움', '전문적인 조언'].map(tag => (
-                        <button
-                          key={tag}
-                          className={`${styles.tagButton} ${praiseTags.includes(tag) ? styles.tagButtonPraiseActive : ''}`}
-                          onClick={() => {
-                            if (praiseTags.includes(tag)) {
-                              setPraiseTags(praiseTags.filter(t => t !== tag))
-                            } else {
-                              setPraiseTags([...praiseTags, tag])
-                            }
-                          }}
-                        >
-                          {tag}
-                        </button>
-                      ))}
+                      {praiseTagOptions.length === 0 ? (
+                        <span className={styles.reviewTagEmpty}>칭찬 태그가 없습니다.</span>
+                      ) : (
+                        praiseTagOptions.map((tag) => (
+                          <button
+                            key={tag.code_value}
+                            className={`${styles.tagButton} ${praiseTags.includes(tag.code_name) ? styles.tagButtonPraiseActive : ''}`}
+                            onClick={() => {
+                              if (praiseTags.includes(tag.code_name)) {
+                                setPraiseTags(praiseTags.filter((t) => t !== tag.code_name))
+                              } else {
+                                setPraiseTags([...praiseTags, tag.code_name])
+                              }
+                            }}
+                          >
+                            {tag.code_name}
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -1114,21 +1569,25 @@ export default function CameraButton() {
                   <div className={styles.reviewSection}>
                     <h4 className={styles.reviewSectionTitle}>아쉬움 태그</h4>
                     <div className={styles.tagContainer}>
-                      {['응답이 느림', '정보 부족', '매물 설명 부족', '협상 미흡', '전문성 부족', '친절하지 않음'].map(tag => (
-                        <button
-                          key={tag}
-                          className={`${styles.tagButton} ${regretTags.includes(tag) ? styles.tagButtonRegretActive : ''}`}
-                          onClick={() => {
-                            if (regretTags.includes(tag)) {
-                              setRegretTags(regretTags.filter(t => t !== tag))
-                            } else {
-                              setRegretTags([...regretTags, tag])
-                            }
-                          }}
-                        >
-                          {tag}
-                        </button>
-                      ))}
+                      {regretTagOptions.length === 0 ? (
+                        <span className={styles.reviewTagEmpty}>아쉬움 태그가 없습니다.</span>
+                      ) : (
+                        regretTagOptions.map((tag) => (
+                          <button
+                            key={tag.code_value}
+                            className={`${styles.tagButton} ${regretTags.includes(tag.code_name) ? styles.tagButtonRegretActive : ''}`}
+                            onClick={() => {
+                              if (regretTags.includes(tag.code_name)) {
+                                setRegretTags(regretTags.filter((t) => t !== tag.code_name))
+                              } else {
+                                setRegretTags([...regretTags, tag.code_name])
+                              }
+                            }}
+                          >
+                            {tag.code_name}
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -1136,101 +1595,41 @@ export default function CameraButton() {
                   <div className={styles.reviewSection}>
                     <h4 className={styles.reviewSectionTitle}>상세 평가</h4>
                     <div className={styles.ratingContainer}>
-                      <div className={styles.ratingItem}>
-                        <span className={styles.ratingLabel}>수수료 만족도</span>
-                        <div className={styles.starRating}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <button
-                              key={star}
-                              className={`${styles.starButton} ${reviewRatings.feeSatisfaction >= star ? styles.starActive : ''}`}
-                              onClick={() => setReviewRatings({...reviewRatings, feeSatisfaction: star})}
-                            >
-                              ★
-                            </button>
-                          ))}
-                          {reviewRatings.feeSatisfaction > 0 && (
-                            <span className={styles.starRatingText}>
-                              {getRatingText('feeSatisfaction', reviewRatings.feeSatisfaction)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={styles.ratingItem}>
-                        <span className={styles.ratingLabel}>전문성/지식</span>
-                        <div className={styles.starRating}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <button
-                              key={star}
-                              className={`${styles.starButton} ${reviewRatings.expertise >= star ? styles.starActive : ''}`}
-                              onClick={() => setReviewRatings({...reviewRatings, expertise: star})}
-                            >
-                              ★
-                            </button>
-                          ))}
-                          {reviewRatings.expertise > 0 && (
-                            <span className={styles.starRatingText}>
-                              {getRatingText('expertise', reviewRatings.expertise)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={styles.ratingItem}>
-                        <span className={styles.ratingLabel}>친절/태도</span>
-                        <div className={styles.starRating}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <button
-                              key={star}
-                              className={`${styles.starButton} ${reviewRatings.kindness >= star ? styles.starActive : ''}`}
-                              onClick={() => setReviewRatings({...reviewRatings, kindness: star})}
-                            >
-                              ★
-                            </button>
-                          ))}
-                          {reviewRatings.kindness > 0 && (
-                            <span className={styles.starRatingText}>
-                              {getRatingText('kindness', reviewRatings.kindness)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={styles.ratingItem}>
-                        <span className={styles.ratingLabel}>매물 신뢰도</span>
-                        <div className={styles.starRating}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <button
-                              key={star}
-                              className={`${styles.starButton} ${reviewRatings.propertyReliability >= star ? styles.starActive : ''}`}
-                              onClick={() => setReviewRatings({...reviewRatings, propertyReliability: star})}
-                            >
-                              ★
-                            </button>
-                          ))}
-                          {reviewRatings.propertyReliability > 0 && (
-                            <span className={styles.starRatingText}>
-                              {getRatingText('propertyReliability', reviewRatings.propertyReliability)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className={styles.ratingItem}>
-                        <span className={styles.ratingLabel}>응답 속도</span>
-                        <div className={styles.starRating}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <button
-                              key={star}
-                              className={`${styles.starButton} ${reviewRatings.responseSpeed >= star ? styles.starActive : ''}`}
-                              onClick={() => setReviewRatings({...reviewRatings, responseSpeed: star})}
-                            >
-                              ★
-                            </button>
-                          ))}
-                          {reviewRatings.responseSpeed > 0 && (
-                            <span className={styles.starRatingText}>
-                              {getRatingText('responseSpeed', reviewRatings.responseSpeed)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      {detailEvaluations.length === 0 ? (
+                        <div className={styles.ratingEmpty}>상세 평가 항목이 없습니다.</div>
+                      ) : (
+                        detailEvaluations.map((item) => {
+                          const currentRating = reviewRatings[item.code_value] || 0
+                          const currentHover = hoverRatings[item.code_value] || 0
+                          const displayedRating = currentHover || currentRating
+
+                          return (
+                            <div key={item.code_value} className={styles.ratingItem}>
+                              <span className={styles.ratingLabel}>{item.code_name}</span>
+                              <div
+                                className={styles.starRating}
+                                onMouseLeave={() => setHoverRatings((prev) => ({ ...prev, [item.code_value]: 0 }))}
+                              >
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <button
+                                    key={star}
+                                    className={`${styles.starButton} ${displayedRating >= star ? styles.starActive : ''}`}
+                                    onClick={() => setReviewRatings((prev) => ({ ...prev, [item.code_value]: star }))}
+                                    onMouseEnter={() => setHoverRatings((prev) => ({ ...prev, [item.code_value]: star }))}
+                                  >
+                                    ★
+                                  </button>
+                                ))}
+                                {displayedRating > 0 && (
+                                  <span className={styles.starRatingText}>
+                                    {getRatingText(item.code_value, displayedRating)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
                     </div>
                   </div>
 
@@ -1244,6 +1643,13 @@ export default function CameraButton() {
                       onChange={(e) => setReviewText(e.target.value)}
                       rows={5}
                     />
+                    <div className={styles.reviewTextMeta}>
+                      <span
+                        className={`${styles.reviewTextCounter} ${isReviewLengthValid ? styles.reviewTextCounterComplete : ''}`}
+                      >
+                        {reviewCharCount} / 20자
+                      </span>
+                    </div>
                   </div>
 
                   {/* 버튼 */}
@@ -1254,21 +1660,18 @@ export default function CameraButton() {
                     >
                       뒤로
                     </button>
+                    {isReviewSubmitting && (
+                      <div className={styles.reviewSaving}>
+                        <span className={styles.loadingSpinner}></span>
+                        저장 중...
+                      </div>
+                    )}
                     <button
                       className={styles.submitButton}
-                      onClick={() => {
-                        // TODO: 리뷰 저장 로직
-                        console.log('리뷰 제출:', {
-                          transactionTags,
-                          praiseTags,
-                          regretTags,
-                          ratings: reviewRatings,
-                          text: reviewText
-                        })
-                        setShowThankYouModal(true)
-                      }}
+                      onClick={handleReviewSubmit}
+                      disabled={isReviewSubmitting || !isReviewLengthValid}
                     >
-                      리뷰 제출
+                      {isReviewSubmitting ? '저장 중...' : '리뷰 저장'}
                     </button>
                   </div>
                 </div>
@@ -1307,9 +1710,27 @@ export default function CameraButton() {
             </div>
             <div className={styles.agentSelectionContent}>
               <p className={styles.agentSelectionMessage}>
-                "{pendingAgentSelection.agentName}"와 동일한 이름의 중개사무소가 여러 개 있습니다.<br />
-                해당하는 사무소를 선택해주세요.
-                <span className={styles.agentSelectionWarning}>(등록번호로 검색 된 중개사무소가 없습니다.)</span>
+                {pendingAgentSelection.reason === 'exact' ? (
+                  <>
+                    등록번호와 일치하는 중개사무소입니다.<br />
+                    해당 정보가 맞는지 확인해주세요.
+                  </>
+                ) : pendingAgentSelection.reason === 'multiple' ? (
+                  <>
+                    "{pendingAgentSelection.agentName}"와 동일한 이름의 중개사무소가 여러 개 있습니다.<br />
+                    해당하는 사무소를 선택해주세요.
+                  </>
+                ) : (
+                  <>
+                    "{pendingAgentSelection.agentName}"와 가장 유사한 중개사무소 후보입니다.<br />
+                    맞는 정보를 선택해주세요.
+                  </>
+                )}
+                {pendingAgentSelection.agentNumber && (
+                  <span className={styles.agentSelectionWarning}>
+                    (OCR 등록번호: {pendingAgentSelection.agentNumber})
+                  </span>
+                )}
               </p>
               <div className={styles.agentList}>
                 {pendingAgentSelection.agents.map((agent) => (
@@ -1321,9 +1742,14 @@ export default function CameraButton() {
                     <div className={styles.agentItemInfo}>
                       <div className={styles.agentItemName}>{agent.agent_name}</div>
                       <div className={styles.agentItemDetails}>
+                        {agent.representative_name && (
+                          <span>대표자: {agent.representative_name}</span>
+                        )}
                         <span>등록번호: {agent.agent_number}</span>
-                        {agent.road_address && (
-                          <span>주소: {agent.road_address}</span>
+                        <span>도로명 주소: {agent.road_address || '-'}</span>
+                        <span>지번 주소: {agent.lot_address || '-'}</span>
+                        {typeof agent.matchScore === 'number' && (
+                          <span>유사도: {Math.round(agent.matchScore * 100)}%</span>
                         )}
                       </div>
                     </div>
@@ -1351,6 +1777,58 @@ export default function CameraButton() {
               >
                 확인
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfirmSelection && confirmingAgent && (
+        <div className={styles.overlay} onClick={handleCancelConfirmAgent}>
+          <div className={styles.confirmSelectionModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.confirmSelectionHeader}>
+              <h3>중개사무소 확인</h3>
+            </div>
+            <div className={styles.confirmSelectionContent}>
+              <p className={styles.confirmSelectionQuestion}>
+                이 공인중개사사무소가 맞습니까?
+              </p>
+              <div className={styles.confirmAgentCard}>
+                <div className={styles.confirmAgentName}>{confirmingAgent.agent.agent_name}</div>
+                <div className={styles.confirmAgentDetails}>
+                  {confirmingAgent.agent.representative_name && (
+                    <div className={styles.confirmAgentRow}>
+                      <span className={styles.confirmAgentLabel}>대표자명:</span>
+                      <span className={styles.confirmAgentValue}>{confirmingAgent.agent.representative_name}</span>
+                    </div>
+                  )}
+                  <div className={styles.confirmAgentRow}>
+                    <span className={styles.confirmAgentLabel}>등록번호:</span>
+                    <span className={styles.confirmAgentValue}>{confirmingAgent.agent.agent_number}</span>
+                  </div>
+                  <div className={styles.confirmAgentRow}>
+                    <span className={styles.confirmAgentLabel}>도로명 주소:</span>
+                    <span className={styles.confirmAgentValue}>{confirmingAgent.agent.road_address || '-'}</span>
+                  </div>
+                  <div className={styles.confirmAgentRow}>
+                    <span className={styles.confirmAgentLabel}>지번 주소:</span>
+                    <span className={styles.confirmAgentValue}>{confirmingAgent.agent.lot_address || '-'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.confirmSelectionButtons}>
+                <button
+                  className={styles.confirmCancelButton}
+                  onClick={handleCancelConfirmAgent}
+                >
+                  아니요
+                </button>
+                <button
+                  className={styles.confirmButton}
+                  onClick={handleConfirmAgent}
+                >
+                  네, 맞습니다
+                </button>
+              </div>
             </div>
           </div>
         </div>

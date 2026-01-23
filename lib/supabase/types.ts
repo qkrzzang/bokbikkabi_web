@@ -89,6 +89,8 @@ export interface Database {
           provider_user_id: string | null
           nickname: string | null
           profile_image_url: string | null
+          user_type: string | null
+          user_grade: string | null
           created_at: string
           updated_at: string
           last_login_at: string | null
@@ -100,6 +102,8 @@ export interface Database {
           provider_user_id?: string | null
           nickname?: string | null
           profile_image_url?: string | null
+          user_type?: string | null
+          user_grade?: string | null
           created_at?: string
           updated_at?: string
           last_login_at?: string | null
@@ -111,6 +115,8 @@ export interface Database {
           provider_user_id?: string | null
           nickname?: string | null
           profile_image_url?: string | null
+          user_type?: string | null
+          user_grade?: string | null
           created_at?: string
           updated_at?: string
           last_login_at?: string | null
@@ -198,6 +204,168 @@ export interface Database {
           supabase_user_id?: string | null
           content?: string
           created_at?: string
+        }
+      }
+      agent_reviews: {
+        Row: {
+          id: string
+          agent_id: number
+          supabase_user_id: string | null
+          transaction_tag: string | null
+          agent_address: string | null
+          agent_name: string | null
+          confience_score: string | null
+          contract_type: string | null
+          doc_title: string | null
+          reason: string | null
+          praise_tags: string[] | null
+          regret_tags: string[] | null
+          fee_satisfaction: number | null
+          expertise: number | null
+          kindness: number | null
+          property_reliability: number | null
+          response_speed: number | null
+          review_text: string | null
+          contract_date: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          agent_id: number
+          supabase_user_id?: string | null
+          transaction_tag?: string | null
+          agent_address?: string | null
+          agent_name?: string | null
+          confience_score?: string | null
+          contract_type?: string | null
+          doc_title?: string | null
+          reason?: string | null
+          praise_tags?: string[] | null
+          regret_tags?: string[] | null
+          fee_satisfaction?: number | null
+          expertise?: number | null
+          kindness?: number | null
+          property_reliability?: number | null
+          response_speed?: number | null
+          review_text?: string | null
+          contract_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          agent_id?: number
+          supabase_user_id?: string | null
+          transaction_tag?: string | null
+          agent_address?: string | null
+          agent_name?: string | null
+          confience_score?: string | null
+          contract_type?: string | null
+          doc_title?: string | null
+          reason?: string | null
+          praise_tags?: string[] | null
+          regret_tags?: string[] | null
+          fee_satisfaction?: number | null
+          expertise?: number | null
+          kindness?: number | null
+          property_reliability?: number | null
+          response_speed?: number | null
+          review_text?: string | null
+          contract_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      common_code_master: {
+        Row: {
+          code_group: string
+          code_group_name: string
+          description: string | null
+          sta_ymd: string
+          end_ymd: string | null
+          sort_order: number
+          use_yn: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          code_group: string
+          code_group_name: string
+          description?: string | null
+          sta_ymd?: string
+          end_ymd?: string | null
+          sort_order?: number
+          use_yn?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          code_group?: string
+          code_group_name?: string
+          description?: string | null
+          sta_ymd?: string
+          end_ymd?: string | null
+          sort_order?: number
+          use_yn?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      common_code_detail: {
+        Row: {
+          id: number
+          code_group: string
+          code_value: string
+          code_name: string
+          description: string | null
+          sta_ymd: string
+          end_ymd: string | null
+          sort_order: number
+          use_yn: string
+          extra_value1: string | null
+          extra_value2: string | null
+          extra_value3: string | null
+          extra_value4: string | null
+          extra_value5: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          code_group: string
+          code_value: string
+          code_name: string
+          description?: string | null
+          sta_ymd?: string
+          end_ymd?: string | null
+          sort_order?: number
+          use_yn?: string
+          extra_value1?: string | null
+          extra_value2?: string | null
+          extra_value3?: string | null
+          extra_value4?: string | null
+          extra_value5?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          code_group?: string
+          code_value?: string
+          code_name?: string
+          description?: string | null
+          sta_ymd?: string
+          end_ymd?: string | null
+          sort_order?: number
+          use_yn?: string
+          extra_value1?: string | null
+          extra_value2?: string | null
+          extra_value3?: string | null
+          extra_value4?: string | null
+          extra_value5?: string | null
+          created_at?: string
+          updated_at?: string
         }
       }
     }

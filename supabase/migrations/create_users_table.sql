@@ -7,7 +7,9 @@ CREATE TABLE public.users (
   profile_image_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  last_login_at TIMESTAMP WITH TIME ZONE
+  last_login_at TIMESTAMP WITH TIME ZONE,
+  user_type VARCHAR(50),
+  user_grade VARCHAR(50)
 );
 
 -- 인덱스 생성

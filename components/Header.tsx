@@ -15,7 +15,93 @@ export default function Header() {
   const [isGradeInfoModalOpen, setIsGradeInfoModalOpen] = useState(false)
   const [isPartnershipModalOpen, setIsPartnershipModalOpen] = useState(false)
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false)
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
+  const [isAdminScreenOpen, setIsAdminScreenOpen] = useState(false)
+  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'analytics'>('common-code')
+  const [selectedCodeGroup, setSelectedCodeGroup] = useState<string | null>(null)
+  const [showSaveSuccessToast, setShowSaveSuccessToast] = useState(false)
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('')
+  const [masterSearchTerm, setMasterSearchTerm] = useState('')
+  const [masterDateFrom, setMasterDateFrom] = useState('')
+  const [masterDateTo, setMasterDateTo] = useState('')
+  const [detailSearchTerm, setDetailSearchTerm] = useState('')
+  const [detailDateFrom, setDetailDateFrom] = useState('')
+  const [detailDateTo, setDetailDateTo] = useState('')
+  const [codeMasterList, setCodeMasterList] = useState<Array<{
+    code_group: string
+    code_group_name: string
+    description: string | null
+    sta_ymd: string
+    end_ymd: string | null
+    use_yn: string
+    detail_count?: number
+  }>>([])
+  const [codeDetailList, setCodeDetailList] = useState<Array<{
+    id: number
+    code_group: string
+    code_value: string
+    code_name: string
+    description: string | null
+    extra_value1: string | null
+    extra_value2: string | null
+    extra_value3: string | null
+    extra_value4: string | null
+    extra_value5: string | null
+    sta_ymd: string
+    end_ymd: string | null
+    use_yn: string
+    sort_order: number
+  }>>([])
+  const [isCodeLoading, setIsCodeLoading] = useState(false)
+  
+  // 마스터 코드 편집 상태
+  const [editingMaster, setEditingMaster] = useState<{
+    code_group: string
+    code_group_name: string
+    description: string
+    sta_ymd: string
+    end_ymd: string
+    use_yn: string
+  } | null>(null)
+  const [isNewMaster, setIsNewMaster] = useState(false)
+  
+  // 상세 코드 편집 상태
+  const [editingDetail, setEditingDetail] = useState<{
+    id: number | null
+    code_group: string
+    code_value: string
+    code_name: string
+    description: string
+    sta_ymd: string
+    end_ymd: string
+    use_yn: string
+    sort_order: number
+  } | null>(null)
+  const [isNewDetail, setIsNewDetail] = useState(false)
+  
+  // 계정 관리 상태
+  const [userList, setUserList] = useState<Array<{
+    supabase_user_id: string
+    email: string | null
+    nickname: string | null
+    user_type: string | null
+    user_grade: string | null
+    created_at: string
+    last_login_at: string | null
+  }>>([])
+  const [isUserLoading, setIsUserLoading] = useState(false)
+  const [userSearchTerm, setUserSearchTerm] = useState('')
+  const [userTypeFilter, setUserTypeFilter] = useState('')
+  const [editingUser, setEditingUser] = useState<{
+    supabase_user_id: string
+    email: string | null
+    nickname: string | null
+    user_type: string | null
+    user_grade: string | null
+  } | null>(null)
+  
   const [user, setUser] = useState<any>(null)
+  const [userType, setUserType] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [notifications, setNotifications] = useState<string[]>([])
 
@@ -47,22 +133,295 @@ export default function Header() {
   ]
   const mockFavoriteCommentsTotal = mockFavoriteAgents.reduce((sum, a) => sum + a.commentCount, 0)
 
+  // users 테이블에서 user_type 조회
+  const fetchUserType = async (supabaseUserId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('user_type')
+        .eq('supabase_user_id', supabaseUserId)
+        .maybeSingle()
+
+      if (error && error.code !== 'PGRST116') {
+        // 조용히 처리
+      }
+
+      if (data) {
+        setUserType(data.user_type || null)
+      } else {
+        setUserType(null)
+      }
+    } catch (error) {
+      // 모든 오류 조용히 처리
+      setUserType(null)
+    }
+  }
+
+  // 공통코드 마스터 조회
+  const fetchCodeMaster = async () => {
+    try {
+      setIsCodeLoading(true)
+      // 마스터 조회
+      const { data: masterData, error: masterError } = await supabase
+        .from('common_code_master')
+        .select('*')
+        .order('sort_order', { ascending: true })
+
+      if (masterError) {
+        setIsCodeLoading(false)
+        return
+      }
+
+      // 상세 개수 조회
+      const { data: detailCountData } = await supabase
+        .from('common_code_detail')
+        .select('code_group')
+
+      // 마스터별 상세 개수 계산
+      const countMap: Record<string, number> = {}
+      if (detailCountData) {
+        detailCountData.forEach((item) => {
+          countMap[item.code_group] = (countMap[item.code_group] || 0) + 1
+        })
+      }
+
+      // 마스터 데이터에 상세 개수 추가
+      const masterWithCount = (masterData || []).map((m) => ({
+        ...m,
+        detail_count: countMap[m.code_group] || 0,
+      }))
+
+      setCodeMasterList(masterWithCount)
+    } catch (error) {
+      // 모든 오류 조용히 처리
+    } finally {
+      setIsCodeLoading(false)
+    }
+  }
+
+  // 공통코드 상세 조회
+  const fetchCodeDetail = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('common_code_detail')
+        .select('*')
+        .order('code_group', { ascending: true })
+        .order('sort_order', { ascending: true })
+
+      if (error) {
+        return
+      }
+
+      setCodeDetailList(data || [])
+    } catch (error) {
+      // 모든 오류 조용히 처리
+    }
+  }
+
+  // 마스터 코드 저장
+  const saveMaster = async () => {
+    if (!editingMaster) return
+    
+    try {
+      if (isNewMaster) {
+        // 신규 추가
+        const { error } = await supabase
+          .from('common_code_master')
+          .insert({
+            code_group: editingMaster.code_group,
+            code_group_name: editingMaster.code_group_name,
+            description: editingMaster.description || null,
+            sta_ymd: editingMaster.sta_ymd,
+            end_ymd: editingMaster.end_ymd || '9999-12-31',
+            use_yn: editingMaster.use_yn,
+          })
+        
+        if (error) {
+          alert('마스터 코드 추가 실패: ' + error.message)
+          return
+        }
+        // 토스트 표시
+        setSaveSuccessMessage('마스터 코드가 추가되었습니다.')
+        setShowSaveSuccessToast(true)
+        setTimeout(() => setShowSaveSuccessToast(false), 3000)
+      } else {
+        // 수정
+        const { error } = await supabase
+          .from('common_code_master')
+          .update({
+            code_group_name: editingMaster.code_group_name,
+            description: editingMaster.description || null,
+            sta_ymd: editingMaster.sta_ymd,
+            end_ymd: editingMaster.end_ymd || '9999-12-31',
+            use_yn: editingMaster.use_yn,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('code_group', editingMaster.code_group)
+        
+        if (error) {
+          alert('마스터 코드 수정 실패: ' + error.message)
+          return
+        }
+        // 토스트 표시
+        setSaveSuccessMessage('마스터 코드가 수정되었습니다.')
+        setShowSaveSuccessToast(true)
+        setTimeout(() => setShowSaveSuccessToast(false), 3000)
+      }
+      
+      setEditingMaster(null)
+      setIsNewMaster(false)
+      fetchCodeMaster()
+    } catch (error) {
+      console.error('마스터 코드 저장 오류:', error)
+      alert('저장 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 상세 코드 저장
+  const saveDetail = async () => {
+    if (!editingDetail) return
+    
+    try {
+      if (isNewDetail) {
+        // 신규 추가
+        const { error } = await supabase
+          .from('common_code_detail')
+          .insert({
+            code_group: editingDetail.code_group,
+            code_value: editingDetail.code_value,
+            code_name: editingDetail.code_name,
+            description: editingDetail.description || null,
+            sta_ymd: editingDetail.sta_ymd,
+            end_ymd: editingDetail.end_ymd || '9999-12-31',
+            use_yn: editingDetail.use_yn,
+            sort_order: editingDetail.sort_order,
+          })
+        
+        if (error) {
+          alert('상세 코드 추가 실패: ' + error.message)
+          return
+        }
+        // 토스트 표시
+        setSaveSuccessMessage('상세 코드가 추가되었습니다.')
+        setShowSaveSuccessToast(true)
+        setTimeout(() => setShowSaveSuccessToast(false), 3000)
+      } else {
+        // 수정
+        const { error } = await supabase
+          .from('common_code_detail')
+          .update({
+            code_group: editingDetail.code_group,
+            code_value: editingDetail.code_value,
+            code_name: editingDetail.code_name,
+            description: editingDetail.description || null,
+            sta_ymd: editingDetail.sta_ymd,
+            end_ymd: editingDetail.end_ymd || '9999-12-31',
+            use_yn: editingDetail.use_yn,
+            sort_order: editingDetail.sort_order,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingDetail.id)
+        
+        if (error) {
+          alert('상세 코드 수정 실패: ' + error.message)
+          return
+        }
+        // 토스트 표시
+        setSaveSuccessMessage('상세 코드가 수정되었습니다.')
+        setShowSaveSuccessToast(true)
+        setTimeout(() => setShowSaveSuccessToast(false), 3000)
+      }
+      
+      setEditingDetail(null)
+      setIsNewDetail(false)
+      fetchCodeDetail()
+      fetchCodeMaster() // 개수 업데이트
+    } catch (error) {
+      console.error('상세 코드 저장 오류:', error)
+      alert('저장 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 사용자 목록 조회
+  const fetchUsers = async () => {
+    try {
+      setIsUserLoading(true)
+      const { data, error } = await supabase
+        .from('users')
+        .select('supabase_user_id, email, nickname, user_type, user_grade, created_at, last_login_at')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        setIsUserLoading(false)
+        return
+      }
+
+      setUserList(data || [])
+    } catch (error) {
+      // 모든 오류 조용히 처리
+    } finally {
+      setIsUserLoading(false)
+    }
+  }
+
+  // 사용자 정보 저장
+  const saveUser = async () => {
+    if (!editingUser) return
+    
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          nickname: editingUser.nickname,
+          user_type: editingUser.user_type,
+          user_grade: editingUser.user_grade,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('supabase_user_id', editingUser.supabase_user_id)
+      
+      if (error) {
+        alert('사용자 정보 수정 실패: ' + error.message)
+        return
+      }
+      
+      // 토스트 표시
+      setSaveSuccessMessage('사용자 정보가 수정되었습니다.')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 3000)
+      
+      setEditingUser(null)
+      fetchUsers()
+    } catch (error) {
+      console.error('사용자 정보 저장 오류:', error)
+      alert('저장 중 오류가 발생했습니다.')
+    }
+  }
+
   useEffect(() => {
+    let isMounted = true
+    
     // 세션이 있을 때만 사용자 정보 확인
     const checkUser = async () => {
       try {
         // 먼저 세션 확인
         const { data: { session } } = await supabase.auth.getSession()
+        if (!isMounted) return
+        
         if (session) {
           // 세션이 있으면 사용자 정보 설정
           setUser(session.user)
+          // user_type 조회
+          await fetchUserType(session.user.id)
         } else {
           // 세션이 없으면 사용자 정보 초기화
           setUser(null)
+          setUserType(null)
         }
       } catch (error) {
-        console.error('사용자 확인 오류:', error)
+        if (!isMounted) return
+        // 모든 오류 조용히 처리
         setUser(null)
+        setUserType(null)
       }
     }
     
@@ -71,6 +430,8 @@ export default function Header() {
     
     // 인증 상태 변경 감지 (로그인/로그아웃 시 자동 업데이트)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return
+      
       if (session) {
         // 로그인 시 사용자 정보 설정
         setUser(session.user)
@@ -80,18 +441,59 @@ export default function Header() {
           const { upsertUserToUsersTable } = await import('@/lib/auth-check')
           await upsertUserToUsersTable(session.user)
         } catch (error) {
-          console.error('Header: 사용자 Upsert 오류 (무시됨):', error)
+          // 모든 오류 조용히 처리
+        }
+
+        // user_type 조회
+        if (isMounted) {
+          await fetchUserType(session.user.id)
         }
       } else {
         // 로그아웃 시 사용자 정보 초기화
         setUser(null)
+        setUserType(null)
       }
     })
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
     }
   }, [])
+
+  // 관리자 화면 열릴 때 공통코드 데이터 로드
+  useEffect(() => {
+    let isMounted = true
+    
+    const loadData = async () => {
+      if (isAdminScreenOpen && adminMenu === 'common-code' && isMounted) {
+        await Promise.all([fetchCodeMaster(), fetchCodeDetail()])
+      }
+    }
+    
+    loadData()
+    
+    return () => {
+      isMounted = false
+    }
+  }, [isAdminScreenOpen, adminMenu])
+
+  // 관리자 화면 열릴 때 계정 데이터 로드
+  useEffect(() => {
+    let isMounted = true
+    
+    const loadData = async () => {
+      if (isAdminScreenOpen && adminMenu === 'account' && isMounted) {
+        await fetchUsers()
+      }
+    }
+    
+    loadData()
+    
+    return () => {
+      isMounted = false
+    }
+  }, [isAdminScreenOpen, adminMenu])
 
   const handleLogin = () => {
     setIsLoginModalOpen(true)
@@ -196,6 +598,44 @@ export default function Header() {
     setIsPolicyModalOpen(false)
   }
 
+  const openAdminModal = () => {
+    setIsAdminModalOpen(true)
+  }
+
+  const closeAdminModal = () => {
+    setIsAdminModalOpen(false)
+  }
+
+  const openAdminScreen = () => {
+    setIsAdminScreenOpen(true)
+  }
+
+  const closeAdminScreen = () => {
+    setIsAdminScreenOpen(false)
+  }
+
+  // 관리자 체크 (user_type이 'ADMIN'인 경우)
+  const isAdmin = userType === 'ADMIN'
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toISOString().slice(0, 10)
+  }
+
+  const filteredUsers = userList.filter((item) => {
+    const term = userSearchTerm.trim().toLowerCase()
+    const matchesTerm =
+      term === '' ||
+      (item.email || '').toLowerCase().includes(term) ||
+      (item.nickname || '').toLowerCase().includes(term)
+
+    const matchesType = userTypeFilter === '' || item.user_type === userTypeFilter
+
+    return matchesTerm && matchesType
+  })
+
   const openFavoritesModal = () => {
     setIsFavoritesModalOpen(true)
   }
@@ -272,6 +712,36 @@ export default function Header() {
                     />
                   </svg>
                 </button>
+                {isAdmin && (
+                  <button
+                    className={`${styles.iconButton} ${styles.adminIconButton}`}
+                    onClick={openAdminScreen}
+                    aria-label="관리자"
+                  >
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M19.4 15C19.2669 15.3016 19.2272 15.6362 19.286 15.9606C19.3448 16.285 19.4995 16.5843 19.73 16.82L19.79 16.88C19.976 17.0657 20.1235 17.2863 20.2241 17.5291C20.3248 17.7719 20.3766 18.0322 20.3766 18.295C20.3766 18.5578 20.3248 18.8181 20.2241 19.0609C20.1235 19.3037 19.976 19.5243 19.79 19.71C19.6043 19.896 19.3837 20.0435 19.1409 20.1441C18.8981 20.2448 18.6378 20.2966 18.375 20.2966C18.1122 20.2966 17.8519 20.2448 17.6091 20.1441C17.3663 20.0435 17.1457 19.896 16.96 19.71L16.9 19.65C16.6643 19.4195 16.365 19.2648 16.0406 19.206C15.7162 19.1472 15.3816 19.1869 15.08 19.32C14.7842 19.4468 14.532 19.6572 14.3543 19.9255C14.1766 20.1938 14.0813 20.5082 14.08 20.83V21C14.08 21.5304 13.8693 22.0391 13.4942 22.4142C13.1191 22.7893 12.6104 23 12.08 23C11.5496 23 11.0409 22.7893 10.6658 22.4142C10.2907 22.0391 10.08 21.5304 10.08 21V20.91C10.0723 20.579 9.96512 20.258 9.77251 19.9887C9.5799 19.7194 9.31074 19.5143 9 19.4C8.69838 19.2669 8.36381 19.2272 8.03941 19.286C7.71502 19.3448 7.41568 19.4995 7.18 19.73L7.12 19.79C6.93425 19.976 6.71368 20.1235 6.47088 20.2241C6.22808 20.3248 5.96783 20.3766 5.705 20.3766C5.44217 20.3766 5.18192 20.3248 4.93912 20.2241C4.69632 20.1235 4.47575 19.976 4.29 19.79C4.10405 19.6043 3.95653 19.3837 3.85588 19.1409C3.75523 18.8981 3.70343 18.6378 3.70343 18.375C3.70343 18.1122 3.75523 17.8519 3.85588 17.6091C3.95653 17.3663 4.10405 17.1457 4.29 16.96L4.35 16.9C4.58054 16.6643 4.73519 16.365 4.794 16.0406C4.85282 15.7162 4.81312 15.3816 4.68 15.08C4.55324 14.7842 4.34276 14.532 4.07447 14.3543C3.80618 14.1766 3.49179 14.0813 3.17 14.08H3C2.46957 14.08 1.96086 13.8693 1.58579 13.4942C1.21071 13.1191 1 12.6104 1 12.08C1 11.5496 1.21071 11.0409 1.58579 10.6658C1.96086 10.2907 2.46957 10.08 3 10.08H3.09C3.42099 10.0723 3.742 9.96512 4.0113 9.77251C4.28059 9.5799 4.48572 9.31074 4.6 9C4.73312 8.69838 4.77282 8.36381 4.714 8.03941C4.65519 7.71502 4.50054 7.41568 4.27 7.18L4.21 7.12C4.02405 6.93425 3.87653 6.71368 3.77588 6.47088C3.67523 6.22808 3.62343 5.96783 3.62343 5.705C3.62343 5.44217 3.67523 5.18192 3.77588 4.93912C3.87653 4.69632 4.02405 4.47575 4.21 4.29C4.39575 4.10405 4.61632 3.95653 4.85912 3.85588C5.10192 3.75523 5.36217 3.70343 5.625 3.70343C5.88783 3.70343 6.14808 3.75523 6.39088 3.85588C6.63368 3.95653 6.85425 4.10405 7.04 4.29L7.1 4.35C7.33568 4.58054 7.63502 4.73519 7.95941 4.794C8.28381 4.85282 8.61838 4.81312 8.92 4.68H9C9.29577 4.55324 9.54802 4.34276 9.72569 4.07447C9.90337 3.80618 9.99872 3.49179 10 3.17V3C10 2.46957 10.2107 1.96086 10.5858 1.58579C10.9609 1.21071 11.4696 1 12 1C12.5304 1 13.0391 1.21071 13.4142 1.58579C13.7893 1.96086 14 2.46957 14 3V3.09C14.0013 3.41179 14.0966 3.72618 14.2743 3.99447C14.452 4.26276 14.7042 4.47324 15 4.6C15.3016 4.73312 15.6362 4.77282 15.9606 4.714C16.285 4.65519 16.5843 4.50054 16.82 4.27L16.88 4.21C17.0657 4.02405 17.2863 3.87653 17.5291 3.77588C17.7719 3.67523 18.0322 3.62343 18.295 3.62343C18.5578 3.62343 18.8181 3.67523 19.0609 3.77588C19.3037 3.87653 19.5243 4.02405 19.71 4.21C19.896 4.39575 20.0435 4.61632 20.1441 4.85912C20.2448 5.10192 20.2966 5.36217 20.2966 5.625C20.2966 5.88783 20.2448 6.14808 20.1441 6.39088C20.0435 6.63368 19.896 6.85425 19.71 7.04L19.65 7.1C19.4195 7.33568 19.2648 7.63502 19.206 7.95941C19.1472 8.28381 19.1869 8.61838 19.32 8.92V9C19.4468 9.29577 19.6572 9.54802 19.9255 9.72569C20.1938 9.90337 20.5082 9.99872 20.83 10H21C21.5304 10 22.0391 10.2107 22.4142 10.5858C22.7893 10.9609 23 11.4696 23 12C23 12.5304 22.7893 13.0391 22.4142 13.4142C22.0391 13.7893 21.5304 14 21 14H20.91C20.5882 14.0013 20.2738 14.0966 20.0055 14.2743C19.7372 14.452 19.5268 14.7042 19.4 15Z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                )}
               </div>
             ) : (
               <button className={styles.loginButton} onClick={handleLogin}>
@@ -829,6 +1299,1171 @@ export default function Header() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 모달 (프로필에서 접근) */}
+      {isAdminModalOpen && user && isAdmin && (
+        <div className={styles.overlay} onClick={closeAdminModal}>
+          <div className={styles.adminModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.adminModalContent}>
+              <div className={styles.adminModalHeader}>
+                <h3 className={styles.adminModalTitle}>관리자</h3>
+                <button className={styles.closeButton} onClick={closeAdminModal} aria-label="닫기">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M18 6L6 18M6 6L18 18"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className={styles.adminMenuList}>
+                <button
+                  className={styles.adminMenuItem}
+                  type="button"
+                  onClick={() => {
+                    closeAdminModal()
+                    openAdminScreen()
+                  }}
+                >
+                  <span className={styles.adminMenuIcon}>📋</span>
+                  <span className={styles.adminMenuLabel}>공통코드 관리</span>
+                </button>
+                <button
+                  className={styles.adminMenuItem}
+                  type="button"
+                  onClick={() => alert('사용자 관리 (목)')}
+                >
+                  <span className={styles.adminMenuIcon}>👥</span>
+                  <span className={styles.adminMenuLabel}>사용자 관리</span>
+                </button>
+                <button
+                  className={styles.adminMenuItem}
+                  type="button"
+                  onClick={() => alert('리뷰 관리 (목)')}
+                >
+                  <span className={styles.adminMenuIcon}>📝</span>
+                  <span className={styles.adminMenuLabel}>리뷰 관리</span>
+                </button>
+                <button
+                  className={styles.adminMenuItem}
+                  type="button"
+                  onClick={() => alert('신고 관리 (목)')}
+                >
+                  <span className={styles.adminMenuIcon}>🚨</span>
+                  <span className={styles.adminMenuLabel}>신고 관리</span>
+                </button>
+                <button
+                  className={styles.adminMenuItem}
+                  type="button"
+                  onClick={() => alert('통계 (목)')}
+                >
+                  <span className={styles.adminMenuIcon}>📊</span>
+                  <span className={styles.adminMenuLabel}>통계</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 화면 (전체 화면 - 사이드바 레이아웃) */}
+      {isAdminScreenOpen && user && isAdmin && (
+        <div className={styles.adminScreen}>
+          {/* 상단 헤더 */}
+          <div className={styles.adminScreenHeader}>
+            <button
+              className={styles.adminScreenBackButton}
+              onClick={closeAdminScreen}
+              aria-label="뒤로가기"
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M19 12H5M12 19L5 12L12 5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <h1 className={styles.adminScreenTitle}>관리자</h1>
+          </div>
+
+          <div className={styles.adminScreenBody}>
+            {/* 좌측 사이드바 */}
+            <aside className={styles.adminSidebar}>
+              <nav className={styles.adminSidebarNav}>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'common-code' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('common-code')}
+                >
+                  <span className={styles.adminSidebarIcon}>📋</span>
+                  <span className={styles.adminSidebarLabel}>공통코드 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'account' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('account')}
+                >
+                  <span className={styles.adminSidebarIcon}>👥</span>
+                  <span className={styles.adminSidebarLabel}>계정 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'batch' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('batch')}
+                >
+                  <span className={styles.adminSidebarIcon}>⚙️</span>
+                  <span className={styles.adminSidebarLabel}>배치 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'analytics' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('analytics')}
+                >
+                  <span className={styles.adminSidebarIcon}>📊</span>
+                  <span className={styles.adminSidebarLabel}>데이터 분석</span>
+                </button>
+              </nav>
+            </aside>
+
+            {/* 우측 컨텐츠 영역 */}
+            <main className={styles.adminMainContent}>
+              {/* 공통코드 관리 */}
+              {adminMenu === 'common-code' && (
+                <div className={styles.adminSectionWide}>
+                  <div className={styles.adminSectionHeader}>
+                    <div>
+                      <h2 className={styles.adminSectionTitle}>공통코드 관리</h2>
+                      <p className={styles.adminSectionDesc}>
+                        마스터를 클릭하면 해당 코드그룹의 상세 정보가 표시됩니다.
+                      </p>
+                    </div>
+                    {selectedCodeGroup && (
+                      <button
+                        className={styles.adminClearFilterBtn}
+                        onClick={() => setSelectedCodeGroup(null)}
+                      >
+                        전체 보기
+                      </button>
+                    )}
+                  </div>
+
+                  <div className={styles.codeManagementGrid}>
+                    {/* 좌측: Master 테이블 */}
+                    <div className={styles.codeMasterPanel}>
+                      <div className={styles.panelHeader}>
+                        <h3 className={styles.panelTitle}>📋 코드 마스터</h3>
+                        <button
+                          className={styles.adminSmallAddButton}
+                          type="button"
+                          onClick={() => {
+                            setIsNewMaster(true)
+                            setEditingMaster({
+                              code_group: '',
+                              code_group_name: '',
+                              description: '',
+                              sta_ymd: new Date().toISOString().slice(0, 10),
+                              end_ymd: '9999-12-31',
+                              use_yn: 'Y',
+                            })
+                          }}
+                        >
+                          + 추가
+                        </button>
+                      </div>
+                      <div className={styles.masterSearchBox}>
+                        <input
+                          type="text"
+                          className={styles.masterSearchInput}
+                          placeholder="코드그룹명 검색..."
+                          value={masterSearchTerm}
+                          onChange={(e) => setMasterSearchTerm(e.target.value)}
+                        />
+                        {masterSearchTerm && (
+                          <button
+                            className={styles.masterSearchClear}
+                            onClick={() => setMasterSearchTerm('')}
+                            type="button"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <div className={styles.masterDateFilter}>
+                        <label className={styles.dateFilterLabel}>기간</label>
+                        <input
+                          type="date"
+                          className={styles.dateFilterInput}
+                          value={masterDateFrom}
+                          onChange={(e) => setMasterDateFrom(e.target.value)}
+                        />
+                        <span className={styles.dateFilterSeparator}>~</span>
+                        <input
+                          type="date"
+                          className={styles.dateFilterInput}
+                          value={masterDateTo}
+                          onChange={(e) => setMasterDateTo(e.target.value)}
+                        />
+                        {(masterDateFrom || masterDateTo) && (
+                          <button
+                            className={styles.dateFilterClear}
+                            onClick={() => { setMasterDateFrom(''); setMasterDateTo(''); }}
+                            type="button"
+                          >
+                            초기화
+                          </button>
+                        )}
+                      </div>
+                      <div className={styles.masterList}>
+                        {isCodeLoading ? (
+                          <div className={styles.loadingMessage}>데이터를 불러오는 중...</div>
+                        ) : codeMasterList.length === 0 ? (
+                          <div className={styles.emptyMessage}>등록된 코드 마스터가 없습니다.</div>
+                        ) : (
+                          codeMasterList
+                            .filter((item) => {
+                              // 명칭 검색
+                              const matchSearch = masterSearchTerm === '' || 
+                                item.code_group_name.toLowerCase().includes(masterSearchTerm.toLowerCase()) ||
+                                item.code_group.toLowerCase().includes(masterSearchTerm.toLowerCase())
+                              
+                              // 기간 필터
+                              let matchDate = true
+                              if (masterDateFrom) {
+                                matchDate = matchDate && item.sta_ymd >= masterDateFrom
+                              }
+                              if (masterDateTo) {
+                                const endDate = item.end_ymd || '9999-12-31'
+                                matchDate = matchDate && endDate <= masterDateTo
+                              }
+                              
+                              return matchSearch && matchDate
+                            })
+                            .map((item) => (
+                              <div
+                                key={item.code_group}
+                                className={`${styles.masterItem} ${selectedCodeGroup === item.code_group ? styles.masterItemSelected : ''}`}
+                                onClick={() => setSelectedCodeGroup(selectedCodeGroup === item.code_group ? null : item.code_group)}
+                              >
+                                <div className={styles.masterItemMain}>
+                                  <code className={styles.masterCode}>{item.code_group}</code>
+                                  <span className={styles.masterName}>{item.code_group_name}</span>
+                                </div>
+                                <div className={styles.masterItemSub}>
+                                  <span className={styles.masterDesc}>{item.description || '-'}</span>
+                                  <span className={styles.masterCount}>{item.detail_count || 0}건</span>
+                                </div>
+                                <div className={styles.masterItemMeta}>
+                                  <span className={styles.masterDate}>{item.sta_ymd} ~ {item.end_ymd || '9999-12-31'}</span>
+                                  <span className={item.use_yn === 'Y' ? styles.statusActive : styles.statusInactive}>{item.use_yn}</span>
+                                  <button
+                                    className={styles.masterEditButton}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setIsNewMaster(false)
+                                      setEditingMaster({
+                                        code_group: item.code_group,
+                                        code_group_name: item.code_group_name,
+                                        description: item.description || '',
+                                        sta_ymd: item.sta_ymd,
+                                        end_ymd: item.end_ymd || '9999-12-31',
+                                        use_yn: item.use_yn,
+                                      })
+                                    }}
+                                  >
+                                    수정
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 우측: Detail 테이블 */}
+                    <div className={styles.codeDetailPanel}>
+                      <div className={styles.panelHeader}>
+                        <h3 className={styles.panelTitle}>
+                          📝 코드 상세
+                          {selectedCodeGroup && <span className={styles.filterBadge}>{selectedCodeGroup}</span>}
+                        </h3>
+                        <button
+                          className={styles.adminSmallAddButton}
+                          type="button"
+                          onClick={() => {
+                            setIsNewDetail(true)
+                            setEditingDetail({
+                              id: null,
+                              code_group: selectedCodeGroup || '',
+                              code_value: '',
+                              code_name: '',
+                              description: '',
+                              sta_ymd: new Date().toISOString().slice(0, 10),
+                              end_ymd: '9999-12-31',
+                              use_yn: 'Y',
+                              sort_order: 0,
+                            })
+                          }}
+                        >
+                          + 추가
+                        </button>
+                      </div>
+
+                      {/* 상세 검색/필터 */}
+                      <div className={styles.detailFilterBox}>
+                        <input
+                          type="text"
+                          className={styles.detailSearchInput}
+                          placeholder="코드명 검색..."
+                          value={detailSearchTerm}
+                          onChange={(e) => setDetailSearchTerm(e.target.value)}
+                        />
+                        <div className={styles.detailDateFilter}>
+                          <input
+                            type="date"
+                            className={styles.dateFilterInput}
+                            value={detailDateFrom}
+                            onChange={(e) => setDetailDateFrom(e.target.value)}
+                          />
+                          <span className={styles.dateFilterSeparator}>~</span>
+                          <input
+                            type="date"
+                            className={styles.dateFilterInput}
+                            value={detailDateTo}
+                            onChange={(e) => setDetailDateTo(e.target.value)}
+                          />
+                        </div>
+                        {(detailSearchTerm || detailDateFrom || detailDateTo) && (
+                          <button
+                            className={styles.dateFilterClear}
+                            onClick={() => { setDetailSearchTerm(''); setDetailDateFrom(''); setDetailDateTo(''); }}
+                            type="button"
+                          >
+                            초기화
+                          </button>
+                        )}
+                      </div>
+
+                      {editingDetail && (
+                        <div className={styles.codeEditor}>
+                          <div className={styles.codeEditorTitle}>
+                            {isNewDetail ? '상세 코드 추가' : '상세 코드 수정'}
+                          </div>
+                          <div className={styles.codeEditorGrid}>
+                            <label className={styles.codeEditorLabel}>
+                              코드 그룹
+                              <select
+                                className={styles.codeEditorSelect}
+                                value={editingDetail.code_group}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, code_group: e.target.value } : prev)}
+                              >
+                                <option value="">선택</option>
+                                {codeMasterList.map((master) => (
+                                  <option key={master.code_group} value={master.code_group}>
+                                    {master.code_group} - {master.code_group_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              코드값
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.code_value}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, code_value: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              코드명
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.code_name}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, code_name: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              정렬 순서
+                              <input
+                                type="number"
+                                className={styles.codeEditorInput}
+                                value={editingDetail.sort_order}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, sort_order: Number(e.target.value) || 0 } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              시작일자
+                              <input
+                                type="date"
+                                className={styles.codeEditorInput}
+                                value={editingDetail.sta_ymd}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, sta_ymd: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              종료일자
+                              <input
+                                type="date"
+                                className={styles.codeEditorInput}
+                                value={editingDetail.end_ymd}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, end_ymd: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              사용 여부
+                              <select
+                                className={styles.codeEditorSelect}
+                                value={editingDetail.use_yn}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, use_yn: e.target.value } : prev)}
+                              >
+                                <option value="Y">Y</option>
+                                <option value="N">N</option>
+                              </select>
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              설명
+                              <textarea
+                                className={styles.codeEditorTextarea}
+                                value={editingDetail.description}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, description: e.target.value } : prev)}
+                              />
+                            </label>
+                          </div>
+                          <div className={styles.codeEditorActions}>
+                            <button className={styles.adminTableBtn} type="button" onClick={saveDetail}>저장</button>
+                            <button
+                              className={styles.adminTableBtn}
+                              type="button"
+                              onClick={() => {
+                                setEditingDetail(null)
+                                setIsNewDetail(false)
+                              }}
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className={styles.detailTableScrollWrapper}>
+                        <table className={styles.detailTable}>
+                          <thead>
+                            <tr>
+                              <th className={styles.stickyCol}>코드그룹</th>
+                              <th className={styles.stickyCol2}>코드값</th>
+                              <th>코드명</th>
+                              <th>설명</th>
+                              <th>Extra1</th>
+                              <th>Extra2</th>
+                              <th>Extra3</th>
+                              <th>Extra4</th>
+                              <th>Extra5</th>
+                              <th>기간</th>
+                              <th>사용</th>
+                              <th className={styles.stickyColRight}>관리</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {isCodeLoading ? (
+                              <tr>
+                                <td colSpan={12} className={styles.loadingCell}>데이터를 불러오는 중...</td>
+                              </tr>
+                            ) : codeDetailList.length === 0 ? (
+                              <tr>
+                                <td colSpan={12} className={styles.emptyCell}>등록된 코드 상세가 없습니다.</td>
+                              </tr>
+                            ) : (
+                              codeDetailList
+                                .filter((item) => {
+                                  // 선택된 코드그룹 필터
+                                  const matchGroup = !selectedCodeGroup || item.code_group === selectedCodeGroup
+                                  
+                                  // 코드명 검색
+                                  const matchSearch = detailSearchTerm === '' ||
+                                    item.code_name.toLowerCase().includes(detailSearchTerm.toLowerCase()) ||
+                                    item.code_value.toLowerCase().includes(detailSearchTerm.toLowerCase())
+                                  
+                                  // 기간 필터
+                                  let matchDate = true
+                                  if (detailDateFrom) {
+                                    matchDate = matchDate && item.sta_ymd >= detailDateFrom
+                                  }
+                                  if (detailDateTo) {
+                                    const endDate = item.end_ymd || '9999-12-31'
+                                    matchDate = matchDate && endDate <= detailDateTo
+                                  }
+                                  
+                                  return matchGroup && matchSearch && matchDate
+                                })
+                                .map((item) => (
+                                  <tr key={item.id}>
+                                    <td className={styles.stickyCol}><code className={styles.codeGroupBadge}>{item.code_group}</code></td>
+                                    <td className={styles.stickyCol2}><strong>{item.code_value}</strong></td>
+                                    <td>{item.code_name}</td>
+                                    <td className={styles.descriptionCell}>{item.description || '-'}</td>
+                                    <td>{item.extra_value1 || '-'}</td>
+                                    <td>{item.extra_value2 || '-'}</td>
+                                    <td>{item.extra_value3 || '-'}</td>
+                                    <td>{item.extra_value4 || '-'}</td>
+                                    <td>{item.extra_value5 || '-'}</td>
+                                    <td className={styles.dateCell}>{item.sta_ymd} ~ {item.end_ymd || '9999-12-31'}</td>
+                                    <td><span className={item.use_yn === 'Y' ? styles.statusActive : styles.statusInactive}>{item.use_yn}</span></td>
+                                    <td className={styles.stickyColRight}>
+                                      <button
+                                        className={styles.adminTableBtn}
+                                        type="button"
+                                        onClick={() => {
+                                          setIsNewDetail(false)
+                                          setEditingDetail({
+                                            id: item.id,
+                                            code_group: item.code_group,
+                                            code_value: item.code_value,
+                                            code_name: item.code_name,
+                                            description: item.description || '',
+                                            sta_ymd: item.sta_ymd,
+                                            end_ymd: item.end_ymd || '9999-12-31',
+                                            use_yn: item.use_yn,
+                                            sort_order: item.sort_order || 0,
+                                          })
+                                        }}
+                                      >
+                                        수정
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 계정 관리 */}
+              {adminMenu === 'account' && (
+                <div className={styles.adminSection}>
+                  <h2 className={styles.adminSectionTitle}>계정 관리</h2>
+                  <p className={styles.adminSectionDesc}>
+                    사용자 계정을 조회하고 관리합니다.
+                  </p>
+
+                  {/* 검색 필터 */}
+                  <div className={styles.adminFilterBar}>
+                    <input
+                      type="text"
+                      className={styles.adminSearchInput}
+                      placeholder="이메일 또는 닉네임으로 검색..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                    />
+                    <select
+                      className={styles.adminFilterSelect}
+                      value={userTypeFilter}
+                      onChange={(e) => setUserTypeFilter(e.target.value)}
+                    >
+                      <option value="">전체 유형</option>
+                      <option value="ADMIN">관리자</option>
+                      <option value="USER">일반 사용자</option>
+                    </select>
+                    <button
+                      className={styles.adminSearchButton}
+                      type="button"
+                      onClick={fetchUsers}
+                    >
+                      검색
+                    </button>
+                  </div>
+
+                  {/* 계정 목록 테이블 */}
+                  <div className={styles.adminTableWrapper}>
+                    <table className={styles.adminTable}>
+                      <thead>
+                        <tr>
+                          <th>이메일</th>
+                          <th>닉네임</th>
+                          <th>유형</th>
+                          <th>등급</th>
+                          <th>가입일</th>
+                          <th>최근 로그인</th>
+                          <th>관리</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {isUserLoading ? (
+                          <tr>
+                            <td colSpan={7} className={styles.loadingCell}>계정 정보를 불러오는 중...</td>
+                          </tr>
+                        ) : filteredUsers.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className={styles.emptyCell}>조회된 계정이 없습니다.</td>
+                          </tr>
+                        ) : (
+                          filteredUsers.map((account) => {
+                            const isEditing = editingUser?.supabase_user_id === account.supabase_user_id
+                            return (
+                              <tr key={account.supabase_user_id}>
+                                <td>{account.email || '-'}</td>
+                                <td>
+                                  {isEditing ? (
+                                    <input
+                                      className={styles.adminInlineInput}
+                                      value={editingUser?.nickname || ''}
+                                      onChange={(e) => setEditingUser((prev) => prev ? { ...prev, nickname: e.target.value } : prev)}
+                                    />
+                                  ) : (
+                                    account.nickname || '-'
+                                  )}
+                                </td>
+                                <td>
+                                  {isEditing ? (
+                                    <select
+                                      className={styles.adminInlineSelect}
+                                      value={editingUser?.user_type || ''}
+                                      onChange={(e) => setEditingUser((prev) => prev ? { ...prev, user_type: e.target.value } : prev)}
+                                    >
+                                      <option value="">미지정</option>
+                                      <option value="ADMIN">ADMIN</option>
+                                      <option value="USER">USER</option>
+                                    </select>
+                                  ) : (
+                                    account.user_type === 'ADMIN'
+                                      ? <span className={styles.adminBadge}>ADMIN</span>
+                                      : <span className={styles.userBadge}>USER</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {isEditing ? (
+                                    <select
+                                      className={styles.adminInlineSelect}
+                                      value={editingUser?.user_grade || ''}
+                                      onChange={(e) => setEditingUser((prev) => prev ? { ...prev, user_grade: e.target.value } : prev)}
+                                    >
+                                      <option value="">미지정</option>
+                                      <option value="IMJANG">IMJANG</option>
+                                      <option value="INJU">INJU</option>
+                                      <option value="MYUNGDANG">MYUNGDANG</option>
+                                      <option value="GOD">GOD</option>
+                                    </select>
+                                  ) : (
+                                    <span className={styles.userGradeBadge}>{account.user_grade || '-'}</span>
+                                  )}
+                                </td>
+                                <td>{formatDate(account.created_at)}</td>
+                                <td>{formatDate(account.last_login_at)}</td>
+                                <td>
+                                  {isEditing ? (
+                                    <>
+                                      <button className={styles.adminTableBtn} type="button" onClick={saveUser}>저장</button>
+                                      <button className={styles.adminTableBtn} type="button" onClick={() => setEditingUser(null)}>취소</button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      className={styles.adminTableBtn}
+                                      type="button"
+                                      onClick={() => setEditingUser({
+                                        supabase_user_id: account.supabase_user_id,
+                                        email: account.email,
+                                        nickname: account.nickname,
+                                        user_type: account.user_type,
+                                        user_grade: account.user_grade,
+                                      })}
+                                    >
+                                      수정
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* 페이지네이션 */}
+                  <div className={styles.adminPagination}>
+                    <button className={styles.adminPageBtn} disabled>이전</button>
+                    <span className={styles.adminPageInfo}>1 / 1</span>
+                    <button className={styles.adminPageBtn} disabled>다음</button>
+                  </div>
+                </div>
+              )}
+
+              {/* 배치 관리 */}
+              {adminMenu === 'batch' && (
+                <div className={styles.adminSection}>
+                  <h2 className={styles.adminSectionTitle}>배치 관리</h2>
+                  <p className={styles.adminSectionDesc}>
+                    시스템 배치 작업을 관리하고 실행합니다.
+                  </p>
+
+                  {/* 배치 작업 목록 */}
+                  <div className={styles.adminBatchList}>
+                    <div className={styles.adminBatchItem}>
+                      <div className={styles.adminBatchInfo}>
+                        <h3 className={styles.adminBatchName}>중개사 데이터 동기화</h3>
+                        <p className={styles.adminBatchDesc}>공공데이터 API에서 중개사 정보를 가져와 동기화합니다.</p>
+                        <div className={styles.adminBatchMeta}>
+                          <span className={styles.adminBatchSchedule}>⏰ 매일 02:00</span>
+                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 02:00:15</span>
+                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                        </div>
+                      </div>
+                      <div className={styles.adminBatchActions}>
+                        <button className={styles.adminBatchRunBtn} type="button">
+                          수동 실행
+                        </button>
+                        <button className={styles.adminBatchLogBtn} type="button">
+                          로그 보기
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={styles.adminBatchItem}>
+                      <div className={styles.adminBatchInfo}>
+                        <h3 className={styles.adminBatchName}>리뷰 통계 집계</h3>
+                        <p className={styles.adminBatchDesc}>리뷰 데이터를 집계하여 통계를 업데이트합니다.</p>
+                        <div className={styles.adminBatchMeta}>
+                          <span className={styles.adminBatchSchedule}>⏰ 매일 03:00</span>
+                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 03:00:08</span>
+                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                        </div>
+                      </div>
+                      <div className={styles.adminBatchActions}>
+                        <button className={styles.adminBatchRunBtn} type="button">
+                          수동 실행
+                        </button>
+                        <button className={styles.adminBatchLogBtn} type="button">
+                          로그 보기
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={styles.adminBatchItem}>
+                      <div className={styles.adminBatchInfo}>
+                        <h3 className={styles.adminBatchName}>사용자 등급 업데이트</h3>
+                        <p className={styles.adminBatchDesc}>리뷰 수에 따라 사용자 등급을 자동 업데이트합니다.</p>
+                        <div className={styles.adminBatchMeta}>
+                          <span className={styles.adminBatchSchedule}>⏰ 매시간</span>
+                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 14:00:03</span>
+                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                        </div>
+                      </div>
+                      <div className={styles.adminBatchActions}>
+                        <button className={styles.adminBatchRunBtn} type="button">
+                          수동 실행
+                        </button>
+                        <button className={styles.adminBatchLogBtn} type="button">
+                          로그 보기
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={styles.adminBatchItem}>
+                      <div className={styles.adminBatchInfo}>
+                        <h3 className={styles.adminBatchName}>접속 로그 정리</h3>
+                        <p className={styles.adminBatchDesc}>30일 이상 된 접속 로그를 아카이빙합니다.</p>
+                        <div className={styles.adminBatchMeta}>
+                          <span className={styles.adminBatchSchedule}>⏰ 매주 일요일 04:00</span>
+                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-19 04:00:22</span>
+                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                        </div>
+                      </div>
+                      <div className={styles.adminBatchActions}>
+                        <button className={styles.adminBatchRunBtn} type="button">
+                          수동 실행
+                        </button>
+                        <button className={styles.adminBatchLogBtn} type="button">
+                          로그 보기
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.adminActionButtons}>
+                    <button
+                      className={styles.adminAddButton}
+                      type="button"
+                      onClick={() => alert('배치 작업 추가 (목)')}
+                    >
+                      + 배치 작업 추가
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 데이터 분석 */}
+              {adminMenu === 'analytics' && (
+                <div className={styles.adminSectionWide}>
+                  <h2 className={styles.adminSectionTitle}>데이터 분석</h2>
+                  <p className={styles.adminSectionDesc}>
+                    입력된 데이터를 분석하여 인사이트를 제공합니다.
+                  </p>
+
+                  {/* 요약 카드 */}
+                  <div className={styles.analyticsCards}>
+                    <div className={styles.analyticsCard}>
+                      <div className={styles.analyticsCardIcon}>👥</div>
+                      <div className={styles.analyticsCardContent}>
+                        <span className={styles.analyticsCardValue}>1,234</span>
+                        <span className={styles.analyticsCardLabel}>총 사용자</span>
+                      </div>
+                      <span className={styles.analyticsCardTrend}>+12.5%</span>
+                    </div>
+                    <div className={styles.analyticsCard}>
+                      <div className={styles.analyticsCardIcon}>📝</div>
+                      <div className={styles.analyticsCardContent}>
+                        <span className={styles.analyticsCardValue}>5,678</span>
+                        <span className={styles.analyticsCardLabel}>총 리뷰</span>
+                      </div>
+                      <span className={styles.analyticsCardTrend}>+8.3%</span>
+                    </div>
+                    <div className={styles.analyticsCard}>
+                      <div className={styles.analyticsCardIcon}>🏢</div>
+                      <div className={styles.analyticsCardContent}>
+                        <span className={styles.analyticsCardValue}>3,456</span>
+                        <span className={styles.analyticsCardLabel}>중개사무소</span>
+                      </div>
+                      <span className={styles.analyticsCardTrend}>+2.1%</span>
+                    </div>
+                    <div className={styles.analyticsCard}>
+                      <div className={styles.analyticsCardIcon}>⭐</div>
+                      <div className={styles.analyticsCardContent}>
+                        <span className={styles.analyticsCardValue}>4.2</span>
+                        <span className={styles.analyticsCardLabel}>평균 평점</span>
+                      </div>
+                      <span className={styles.analyticsCardTrend}>+0.3</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.analyticsGrid}>
+                    {/* 리뷰 태그 분석 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>📊 칭찬 태그 TOP 5</h3>
+                      <div className={styles.analyticsBarChart}>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>친절하고 상세한 설명</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '85%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>1,245</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>빠른 응답</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '72%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>1,056</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>전문적인 조언</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '65%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>952</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>정확한 정보 제공</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '58%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>847</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>협상 도움</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '45%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>658</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 아쉬움 태그 분석 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>📉 아쉬움 태그 TOP 5</h3>
+                      <div className={styles.analyticsBarChart}>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>응답이 느림</span>
+                          <div className={styles.barContainer}>
+                            <div className={`${styles.bar} ${styles.barNegative}`} style={{ width: '78%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>423</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>정보 부족</span>
+                          <div className={styles.barContainer}>
+                            <div className={`${styles.bar} ${styles.barNegative}`} style={{ width: '62%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>336</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>친절하지 않음</span>
+                          <div className={styles.barContainer}>
+                            <div className={`${styles.bar} ${styles.barNegative}`} style={{ width: '45%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>244</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>예약 후 태도 변화</span>
+                          <div className={styles.barContainer}>
+                            <div className={`${styles.bar} ${styles.barNegative}`} style={{ width: '38%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>206</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>매물 설명 부족</span>
+                          <div className={styles.barContainer}>
+                            <div className={`${styles.bar} ${styles.barNegative}`} style={{ width: '32%' }}></div>
+                          </div>
+                          <span className={styles.barValue}>173</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 거래 유형 분석 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>🏠 거래 유형 분포</h3>
+                      <div className={styles.analyticsPieChart}>
+                        <div className={styles.pieChartVisual}>
+                          <div className={styles.pieSlice} style={{ background: 'conic-gradient(#7c3aed 0% 65%, #f59e0b 65% 100%)' }}></div>
+                        </div>
+                        <div className={styles.pieChartLegend}>
+                          <div className={styles.legendItem}>
+                            <span className={styles.legendDot} style={{ backgroundColor: '#7c3aed' }}></span>
+                            <span className={styles.legendLabel}>전월세</span>
+                            <span className={styles.legendValue}>65% (3,690건)</span>
+                          </div>
+                          <div className={styles.legendItem}>
+                            <span className={styles.legendDot} style={{ backgroundColor: '#f59e0b' }}></span>
+                            <span className={styles.legendLabel}>매매</span>
+                            <span className={styles.legendValue}>35% (1,988건)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 사용자 등급 분포 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>🎖️ 사용자 등급 분포</h3>
+                      <div className={styles.analyticsBarChart}>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>임장까비 (신규)</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '55%', backgroundColor: '#94a3b8' }}></div>
+                          </div>
+                          <span className={styles.barValue}>679명</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>인주까비 (1~3건)</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '28%', backgroundColor: '#60a5fa' }}></div>
+                          </div>
+                          <span className={styles.barValue}>345명</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>명당까비 (4~9건)</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '12%', backgroundColor: '#a78bfa' }}></div>
+                          </div>
+                          <span className={styles.barValue}>148명</span>
+                        </div>
+                        <div className={styles.analyticsBarItem}>
+                          <span className={styles.barLabel}>갓까비 (10건+)</span>
+                          <div className={styles.barContainer}>
+                            <div className={styles.bar} style={{ width: '5%', backgroundColor: '#f59e0b' }}></div>
+                          </div>
+                          <span className={styles.barValue}>62명</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 상세 평가 평균 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>⭐ 상세 평가 평균</h3>
+                      <div className={styles.analyticsRatingList}>
+                        <div className={styles.ratingItem}>
+                          <span className={styles.ratingLabel}>수수료 만족도</span>
+                          <div className={styles.ratingStars}>★★★★☆</div>
+                          <span className={styles.ratingValue}>4.1</span>
+                        </div>
+                        <div className={styles.ratingItem}>
+                          <span className={styles.ratingLabel}>전문성/지식</span>
+                          <div className={styles.ratingStars}>★★★★☆</div>
+                          <span className={styles.ratingValue}>4.3</span>
+                        </div>
+                        <div className={styles.ratingItem}>
+                          <span className={styles.ratingLabel}>친절도</span>
+                          <div className={styles.ratingStars}>★★★★☆</div>
+                          <span className={styles.ratingValue}>4.2</span>
+                        </div>
+                        <div className={styles.ratingItem}>
+                          <span className={styles.ratingLabel}>소통/응대</span>
+                          <div className={styles.ratingStars}>★★★★☆</div>
+                          <span className={styles.ratingValue}>4.0</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 월별 리뷰 추이 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>📈 월별 리뷰 추이</h3>
+                      <div className={styles.monthlyTrend}>
+                        <div className={styles.trendRow}>
+                          <span className={styles.trendMonth}>2025.01</span>
+                          <div className={styles.trendBarWrap}>
+                            <div className={styles.trendBar} style={{ width: '100%' }}></div>
+                          </div>
+                          <span className={styles.trendValue}>542</span>
+                        </div>
+                        <div className={styles.trendRow}>
+                          <span className={styles.trendMonth}>2024.12</span>
+                          <div className={styles.trendBarWrap}>
+                            <div className={styles.trendBar} style={{ width: '89%' }}></div>
+                          </div>
+                          <span className={styles.trendValue}>482</span>
+                        </div>
+                        <div className={styles.trendRow}>
+                          <span className={styles.trendMonth}>2024.11</span>
+                          <div className={styles.trendBarWrap}>
+                            <div className={styles.trendBar} style={{ width: '76%' }}></div>
+                          </div>
+                          <span className={styles.trendValue}>412</span>
+                        </div>
+                        <div className={styles.trendRow}>
+                          <span className={styles.trendMonth}>2024.10</span>
+                          <div className={styles.trendBarWrap}>
+                            <div className={styles.trendBar} style={{ width: '82%' }}></div>
+                          </div>
+                          <span className={styles.trendValue}>445</span>
+                        </div>
+                        <div className={styles.trendRow}>
+                          <span className={styles.trendMonth}>2024.09</span>
+                          <div className={styles.trendBarWrap}>
+                            <div className={styles.trendBar} style={{ width: '68%' }}></div>
+                          </div>
+                          <span className={styles.trendValue}>369</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 마스터 코드 편집 모달 */}
+              {editingMaster && (
+                <div className={styles.modalOverlay} onClick={() => {
+                  setEditingMaster(null)
+                  setIsNewMaster(false)
+                }}>
+                  <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                    <div className={styles.modalHeader}>
+                      <h3>{isNewMaster ? '마스터 코드 추가' : '마스터 코드 수정'}</h3>
+                      <button 
+                        className={styles.modalCloseButton}
+                        onClick={() => {
+                          setEditingMaster(null)
+                          setIsNewMaster(false)
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className={styles.modalBody}>
+                      <div className={styles.codeEditorGrid}>
+                        <label className={styles.codeEditorLabel}>
+                          코드 그룹
+                          <input
+                            className={styles.codeEditorInput}
+                            value={editingMaster.code_group}
+                            onChange={(e) => setEditingMaster((prev) => prev ? { ...prev, code_group: e.target.value } : prev)}
+                            disabled={!isNewMaster}
+                          />
+                        </label>
+                        <label className={styles.codeEditorLabel}>
+                          코드 그룹명
+                          <input
+                            className={styles.codeEditorInput}
+                            value={editingMaster.code_group_name}
+                            onChange={(e) => setEditingMaster((prev) => prev ? { ...prev, code_group_name: e.target.value } : prev)}
+                          />
+                        </label>
+                        <label className={styles.codeEditorLabel}>
+                          시작일자
+                          <input
+                            type="date"
+                            className={styles.codeEditorInput}
+                            value={editingMaster.sta_ymd}
+                            onChange={(e) => setEditingMaster((prev) => prev ? { ...prev, sta_ymd: e.target.value } : prev)}
+                          />
+                        </label>
+                        <label className={styles.codeEditorLabel}>
+                          종료일자
+                          <input
+                            type="date"
+                            className={styles.codeEditorInput}
+                            value={editingMaster.end_ymd}
+                            onChange={(e) => setEditingMaster((prev) => prev ? { ...prev, end_ymd: e.target.value } : prev)}
+                          />
+                        </label>
+                        <label className={styles.codeEditorLabel}>
+                          사용 여부
+                          <select
+                            className={styles.codeEditorSelect}
+                            value={editingMaster.use_yn}
+                            onChange={(e) => setEditingMaster((prev) => prev ? { ...prev, use_yn: e.target.value } : prev)}
+                          >
+                            <option value="Y">Y</option>
+                            <option value="N">N</option>
+                          </select>
+                        </label>
+                        <label className={styles.codeEditorLabel}>
+                          설명
+                          <textarea
+                            className={styles.codeEditorTextarea}
+                            value={editingMaster.description}
+                            onChange={(e) => setEditingMaster((prev) => prev ? { ...prev, description: e.target.value } : prev)}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className={styles.modalFooter}>
+                      <button className={styles.modalCancelButton} type="button" onClick={() => {
+                        setEditingMaster(null)
+                        setIsNewMaster(false)
+                      }}>취소</button>
+                      <button className={styles.modalSaveButton} type="button" onClick={saveMaster}>저장</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 저장 성공 토스트 */}
+              {showSaveSuccessToast && (
+                <div className={styles.saveSuccessToast}>
+                  <div className={styles.toastIcon}>✓</div>
+                  <div className={styles.toastMessage}>{saveSuccessMessage}</div>
+                </div>
+              )}
+            </main>
           </div>
         </div>
       )}

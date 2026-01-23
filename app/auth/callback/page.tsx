@@ -1,113 +1,116 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { logAccess } from '@/lib/accessLog'
 
-export default function CallbackPage() {
+function CallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isProcessing, setIsProcessing] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let isMounted = true
+    
     const handleCallback = async () => {
       try {
-        console.log('1. Callback 페이지 도달: 세션 확인 시작')
-
-        // 1. URL에서 에러 확인
-        const errorParam = searchParams.get('error')
-        const code = searchParams.get('code')
+        console.log('[콜백] 1. 시작')
+        console.log('[콜백] URL:', window.location.href.substring(0, 100))
+        console.log('[콜백] Hash 길이:', window.location.hash.length)
         
+        // 오류 확인
+        const errorParam = searchParams.get('error')
         if (errorParam) {
-          console.error('OAuth 에러:', errorParam)
-          setError(`인증 오류: ${errorParam}`)
-          router.push(`/?error=oauth_error&message=${errorParam}`)
+          console.error('[콜백] OAuth 오류:', errorParam)
+          if (isMounted) {
+            setError('인증 오류')
+            setTimeout(() => router.replace('/'), 2000)
+          }
           return
         }
 
-        // 2. 세션 확인 (Supabase가 자동으로 URL에서 세션 정보를 처리)
-        // code가 있으면 Supabase가 자동으로 세션으로 교환
-        let session = null
-        let retryCount = 0
-        const maxRetries = 5
+        // Hash에 access_token이 있는지 확인
+        const hasAccessToken = window.location.hash.includes('access_token')
+        const hasCode = searchParams.get('code')
+        
+        console.log('[콜백] 2. 인증 데이터:', { hasAccessToken, hasCode })
+        
+        if (!hasAccessToken && !hasCode) {
+          console.error('[콜백] 인증 데이터 없음')
+          if (isMounted) {
+            router.replace('/')
+          }
+          return
+        }
 
-        while (!session && retryCount < maxRetries) {
-          const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
-
-          if (sessionError) {
-            console.error('세션 확인 오류:', sessionError)
-            setError('세션 확인 중 오류가 발생했습니다.')
-            router.push('/?error=session_error')
+        // Supabase 자동 처리 대기
+        console.log('[콜백] 3. Supabase 자동 처리 대기 중...')
+        
+        // onAuthStateChange로 실시간 감지
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          console.log('[콜백] 이벤트:', event)
+          
+          if (event === 'SIGNED_IN' && session && isMounted) {
+            console.log('[콜백] 4. 로그인 완료! userId:', session.user.id)
+            
+            // Upsert
+            import('@/lib/auth-check')
+              .then(({ upsertUserToUsersTable }) => upsertUserToUsersTable(session.user))
+              .catch(() => {})
+            
+            // 리다이렉트
+            setTimeout(() => {
+              if (isMounted) {
+                console.log('[콜백] 5. 메인 이동')
+                setIsProcessing(false)
+                router.replace('/')
+              }
+            }, 300)
+          }
+        })
+        
+        // 백업: 3초 후 직접 세션 확인
+        setTimeout(async () => {
+          if (!isMounted) {
+            subscription.unsubscribe()
             return
           }
-
-          if (currentSession) {
-            session = currentSession
-            break
-          }
-
-          // 세션이 아직 준비되지 않았으면 잠시 대기 후 재시도
-          if (code && retryCount < maxRetries - 1) {
-            console.log(`세션 대기 중... (${retryCount + 1}/${maxRetries})`)
-            await new Promise(resolve => setTimeout(resolve, 500))
-            retryCount++
+          
+          console.log('[콜백] 6. 백업 세션 확인')
+          const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+          
+          if (session) {
+            console.log('[콜백] 7. 세션 있음! 메인 이동')
+            
+            import('@/lib/auth-check')
+              .then(({ upsertUserToUsersTable }) => upsertUserToUsersTable(session.user))
+              .catch(() => {})
+            
+            setIsProcessing(false)
+            router.replace('/')
           } else {
-            break
+            console.error('[콜백] 8. 세션 없음')
+            setError('로그인 처리 실패')
+            setTimeout(() => router.replace('/'), 2000)
           }
-        }
-
-        if (!session) {
-          console.warn('세션 없음: 사용자가 로그인하지 않았습니다.')
-          setError('세션을 찾을 수 없습니다.')
-          router.push('/?error=no_session')
-          return
-        }
-
-        console.log('2. 세션 확인 성공:', { userId: session.user.id, provider: session.user.app_metadata?.provider })
-
-        // 3. users 테이블에 사용자 정보 Upsert (반드시 await로 완료 대기)
-        console.log('3. users 테이블에 사용자 정보 Upsert 시작')
-        try {
-          const { upsertUserToUsersTable } = await import('@/lib/auth-check')
-          const upsertSuccess = await upsertUserToUsersTable(session.user)
-          if (upsertSuccess) {
-            console.log('3-1. 사용자 정보 Upsert 완료')
-          } else {
-            console.warn('3-1. 사용자 정보 Upsert 실패 (계속 진행)')
-          }
-        } catch (upsertError) {
-          console.error('사용자 Upsert 오류 (계속 진행):', upsertError)
-          // Upsert 실패해도 로그인은 계속 진행
-        }
-
-        // 4. 접속 이력 기록 (session 확인 후)
-        console.log('4. 접속 이력 기록 시작')
-        try {
-          await logAccess({
-            action: 'login',
-            endpoint: '/auth/callback',
-            statusCode: 200,
-          })
-          console.log('4-1. 접속 이력 기록 완료')
-        } catch (logError) {
-          console.error('접속 이력 기록 오류 (무시됨):', logError)
-          // 접속 이력 기록 실패는 로그인을 막지 않음
-        }
-
-        // 4. 메인 페이지로 리다이렉트
-        console.log('5. 메인 페이지로 리다이렉트')
-        setIsProcessing(false)
-        router.push('/')
+          
+          subscription.unsubscribe()
+        }, 3000)
       } catch (err) {
-        console.error('Callback 처리 중 오류:', err)
-        setError('처리 중 오류가 발생했습니다.')
-        router.push('/?error=callback_error')
+        console.error('[콜백] 오류:', err)
+        if (isMounted) {
+          setTimeout(() => router.replace('/'), 1000)
+        }
       }
     }
 
     handleCallback()
+    
+    return () => {
+      isMounted = false
+    }
   }, [router, searchParams])
 
   if (error) {
@@ -127,7 +130,7 @@ export default function CallbackPage() {
           onClick={() => router.push('/')}
           style={{
             padding: '10px 20px',
-            backgroundColor: '#063561',
+            backgroundColor: '#7C3AED',
             color: '#ffffff',
             border: 'none',
             borderRadius: '8px',
@@ -156,7 +159,7 @@ export default function CallbackPage() {
         width: '48px',
         height: '48px',
         border: '4px solid #e1e8f0',
-        borderTopColor: '#063561',
+        borderTopColor: '#7C3AED',
         borderRadius: '50%',
         animation: 'spin 0.8s linear infinite',
         marginBottom: '24px'
@@ -172,5 +175,43 @@ export default function CallbackPage() {
         }
       `}</style>
     </div>
+  )
+}
+
+export default function CallbackPage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        padding: '20px',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          width: '48px',
+          height: '48px',
+          border: '4px solid #e1e8f0',
+          borderTopColor: '#7C3AED',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+          marginBottom: '24px'
+        }} />
+        <p style={{ color: '#64748b', fontSize: '16px' }}>
+          로딩 중...
+        </p>
+        <style jsx>{`
+          @keyframes spin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+        `}</style>
+      </div>
+    }>
+      <CallbackContent />
+    </Suspense>
   )
 }

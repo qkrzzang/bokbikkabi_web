@@ -4,12 +4,18 @@ import { supabase } from './supabase/client'
 export const upsertUserToUsersTable = async (user: any): Promise<boolean> => {
   try {
     if (!user || !user.id) {
-      console.error('유효하지 않은 사용자 정보')
       return false
     }
 
+    // 기존 사용자 확인 (신규 가입자인지 체크)
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('supabase_user_id, user_grade')
+      .eq('supabase_user_id', user.id)
+      .maybeSingle()
+
     // 데이터 매핑
-    const userData = {
+    const userData: Record<string, any> = {
       supabase_user_id: user.id,
       email: user.email || null,
       provider: user.app_metadata?.provider || 'unknown',
@@ -30,6 +36,12 @@ export const upsertUserToUsersTable = async (user: any): Promise<boolean> => {
       last_login_at: new Date().toISOString(),
     }
 
+    // 신규 가입자인 경우 기본 등급 설정 (IMJANG - 임장까비)
+    if (!existingUser) {
+      userData.user_grade = 'IMJANG'
+      userData.user_type = 'USER'  // 기본 사용자 유형
+    }
+
     // Upsert 실행 (ON CONFLICT로 중복 방지)
     const { error } = await supabase
       .from('users')
@@ -39,14 +51,12 @@ export const upsertUserToUsersTable = async (user: any): Promise<boolean> => {
       })
 
     if (error) {
-      console.error('사용자 Upsert 오류:', error)
       return false
     }
 
-    console.log('사용자 정보 Upsert 성공:', { userId: user.id, provider: userData.provider })
     return true
   } catch (error) {
-    console.error('사용자 Upsert 중 오류:', error)
+    // 모든 오류 조용히 처리
     return false
   }
 }
@@ -58,20 +68,15 @@ export const isUserInUsersTable = async (supabaseUserId: string): Promise<boolea
       .from('users')
       .select('supabase_user_id')
       .eq('supabase_user_id', supabaseUserId)
-      .single()
+      .maybeSingle()
 
-    if (error) {
-      // 사용자를 찾을 수 없는 경우는 정상적인 경우일 수 있음 (404 등)
-      if (error.code === 'PGRST116') {
-        return false
-      }
-      console.error('사용자 확인 오류:', error)
+    if (error && error.code !== 'PGRST116') {
       return false
     }
 
     return !!data
   } catch (error) {
-    console.error('사용자 확인 중 오류:', error)
+    // 모든 오류 조용히 처리
     return false
   }
 }
@@ -98,13 +103,7 @@ export const checkUserAccess = async (): Promise<{
 
     // 2. 세션이 있는 경우 users 테이블에 Upsert (반드시 await로 완료 대기)
     try {
-      console.log('사용자 정보 Upsert 시작:', { userId: session.user.id })
-      const upsertSuccess = await upsertUserToUsersTable(session.user)
-      
-      if (!upsertSuccess) {
-        console.warn('사용자 Upsert 실패했지만 접근은 허용합니다.')
-        // Upsert 실패해도 접근은 허용 (오류는 로그만 남김)
-      }
+      await upsertUserToUsersTable(session.user)
 
       // Upsert 완료 후 접근 허용
       return {
@@ -112,21 +111,17 @@ export const checkUserAccess = async (): Promise<{
         user: session.user,
       }
     } catch (upsertError) {
-      console.error('사용자 Upsert 중 오류:', upsertError)
-      // 오류 발생 시에도 사용자에게 접근 허용 (오류는 로그만 남김)
+      // 오류 발생 시에도 사용자에게 접근 허용
       return {
         hasAccess: true,
         user: session.user,
-        message: '사용자 정보 동기화 중 오류가 발생했지만 접근을 허용합니다.'
       }
     }
   } catch (error) {
-    console.error('접근 확인 중 오류:', error)
-    // 최종 오류 발생 시에도 접근 허용 (오류는 로그만 남김)
+    // 최종 오류 발생 시에도 접근 허용
     return {
       hasAccess: true,
       user: null,
-      message: '접근 확인 중 오류가 발생했지만 접근을 허용합니다.'
     }
   }
 }
