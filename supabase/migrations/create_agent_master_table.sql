@@ -46,8 +46,8 @@ CREATE TRIGGER update_agent_master_updated_at
 -- 코멘트 추가 (PostgreSQL은 COMMENT ON 구문 사용)
 COMMENT ON TABLE agent_master IS '공인중개사 정보 Master 테이블';
 COMMENT ON COLUMN agent_master.id IS '고유 ID';
-COMMENT ON COLUMN agent_master.office_name IS '중개사무소명';
-COMMENT ON COLUMN agent_master.registration_number IS '개설등록번호';
+COMMENT ON COLUMN agent_master.agent_name IS '중개사무소명';
+COMMENT ON COLUMN agent_master.agent_number IS '개설등록번호';
 COMMENT ON COLUMN agent_master.agent_type IS '개업공인중개사종별구분';
 COMMENT ON COLUMN agent_master.road_address IS '소재지도로명주소';
 COMMENT ON COLUMN agent_master.lot_address IS '소재지지번주소';

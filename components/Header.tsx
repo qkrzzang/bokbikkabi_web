@@ -76,6 +76,11 @@ export default function Header() {
     end_ymd: string
     use_yn: string
     sort_order: number
+    extra_value1: string
+    extra_value2: string
+    extra_value3: string
+    extra_value4: string
+    extra_value5: string
   } | null>(null)
   const [isNewDetail, setIsNewDetail] = useState(false)
   
@@ -295,6 +300,11 @@ export default function Header() {
             end_ymd: editingDetail.end_ymd || '9999-12-31',
             use_yn: editingDetail.use_yn,
             sort_order: editingDetail.sort_order,
+            extra_value1: editingDetail.extra_value1 || null,
+            extra_value2: editingDetail.extra_value2 || null,
+            extra_value3: editingDetail.extra_value3 || null,
+            extra_value4: editingDetail.extra_value4 || null,
+            extra_value5: editingDetail.extra_value5 || null,
           })
         
         if (error) {
@@ -318,6 +328,11 @@ export default function Header() {
             end_ymd: editingDetail.end_ymd || '9999-12-31',
             use_yn: editingDetail.use_yn,
             sort_order: editingDetail.sort_order,
+            extra_value1: editingDetail.extra_value1 || null,
+            extra_value2: editingDetail.extra_value2 || null,
+            extra_value3: editingDetail.extra_value3 || null,
+            extra_value4: editingDetail.extra_value4 || null,
+            extra_value5: editingDetail.extra_value5 || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', editingDetail.id)
@@ -612,6 +627,8 @@ export default function Header() {
 
   const closeAdminScreen = () => {
     setIsAdminScreenOpen(false)
+    // 페이지 최상단으로 스크롤
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // 관리자 체크 (user_type이 'ADMIN'인 경우)
@@ -1619,6 +1636,11 @@ export default function Header() {
                               end_ymd: '9999-12-31',
                               use_yn: 'Y',
                               sort_order: 0,
+                              extra_value1: '',
+                              extra_value2: '',
+                              extra_value3: '',
+                              extra_value4: '',
+                              extra_value5: '',
                             })
                           }}
                         >
@@ -1744,6 +1766,46 @@ export default function Header() {
                                 onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, description: e.target.value } : prev)}
                               />
                             </label>
+                            <label className={styles.codeEditorLabel}>
+                              EXTRA1
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.extra_value1 || ''}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, extra_value1: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              EXTRA2
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.extra_value2 || ''}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, extra_value2: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              EXTRA3
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.extra_value3 || ''}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, extra_value3: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              EXTRA4
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.extra_value4 || ''}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, extra_value4: e.target.value } : prev)}
+                              />
+                            </label>
+                            <label className={styles.codeEditorLabel}>
+                              EXTRA5
+                              <input
+                                className={styles.codeEditorInput}
+                                value={editingDetail.extra_value5 || ''}
+                                onChange={(e) => setEditingDetail((prev) => prev ? { ...prev, extra_value5: e.target.value } : prev)}
+                              />
+                            </label>
                           </div>
                           <div className={styles.codeEditorActions}>
                             <button className={styles.adminTableBtn} type="button" onClick={saveDetail}>저장</button>
@@ -1840,6 +1902,11 @@ export default function Header() {
                                             end_ymd: item.end_ymd || '9999-12-31',
                                             use_yn: item.use_yn,
                                             sort_order: item.sort_order || 0,
+                                            extra_value1: item.extra_value1 || '',
+                                            extra_value2: item.extra_value2 || '',
+                                            extra_value3: item.extra_value3 || '',
+                                            extra_value4: item.extra_value4 || '',
+                                            extra_value5: item.extra_value5 || '',
                                           })
                                         }}
                                       >
@@ -1864,6 +1931,50 @@ export default function Header() {
                   <p className={styles.adminSectionDesc}>
                     사용자 계정을 조회하고 관리합니다.
                   </p>
+
+                  {/* 계정 통계 요약 */}
+                  <div className={styles.adminStatsSummary}>
+                    <div className={styles.adminStatCard}>
+                      <div className={styles.adminStatLabel}>가입 채널별</div>
+                      <div className={styles.adminStatValues}>
+                        <div className={styles.adminStatItem}>
+                          <span className={styles.statTagKakao}>Kakao</span>
+                          <span className={styles.statCount}>
+                            {userList.filter(u => u.email?.includes('kakao')).length}
+                          </span>
+                        </div>
+                        <div className={styles.adminStatItem}>
+                          <span className={styles.statTagGmail}>Gmail</span>
+                          <span className={styles.statCount}>
+                            {userList.filter(u => u.email?.includes('gmail')).length}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className={styles.adminStatCard}>
+                      <div className={styles.adminStatLabel}>사용자 등급별</div>
+                      <div className={styles.adminStatValues}>
+                        <div className={styles.adminStatItem}>
+                          <span className={styles.statTagGrade}>동네주민</span>
+                          <span className={styles.statCount}>
+                            {userList.filter(u => u.user_grade === '동네주민').length}
+                          </span>
+                        </div>
+                        <div className={styles.adminStatItem}>
+                          <span className={styles.statTagGrade}>동네보안관</span>
+                          <span className={styles.statCount}>
+                            {userList.filter(u => u.user_grade === '동네보안관').length}
+                          </span>
+                        </div>
+                        <div className={styles.adminStatItem}>
+                          <span className={styles.statTagGrade}>동네시장</span>
+                          <span className={styles.statCount}>
+                            {userList.filter(u => u.user_grade === '동네시장').length}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* 검색 필터 */}
                   <div className={styles.adminFilterBar}>
@@ -2039,51 +2150,31 @@ export default function Header() {
 
                     <div className={styles.adminBatchItem}>
                       <div className={styles.adminBatchInfo}>
-                        <h3 className={styles.adminBatchName}>리뷰 통계 집계</h3>
-                        <p className={styles.adminBatchDesc}>리뷰 데이터를 집계하여 통계를 업데이트합니다.</p>
-                        <div className={styles.adminBatchMeta}>
-                          <span className={styles.adminBatchSchedule}>⏰ 매일 03:00</span>
-                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 03:00:08</span>
-                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
-                        </div>
-                      </div>
-                      <div className={styles.adminBatchActions}>
-                        <button className={styles.adminBatchRunBtn} type="button">
-                          수동 실행
-                        </button>
-                        <button className={styles.adminBatchLogBtn} type="button">
-                          로그 보기
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className={styles.adminBatchItem}>
-                      <div className={styles.adminBatchInfo}>
-                        <h3 className={styles.adminBatchName}>사용자 등급 업데이트</h3>
-                        <p className={styles.adminBatchDesc}>리뷰 수에 따라 사용자 등급을 자동 업데이트합니다.</p>
-                        <div className={styles.adminBatchMeta}>
-                          <span className={styles.adminBatchSchedule}>⏰ 매시간</span>
-                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 14:00:03</span>
-                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
-                        </div>
-                      </div>
-                      <div className={styles.adminBatchActions}>
-                        <button className={styles.adminBatchRunBtn} type="button">
-                          수동 실행
-                        </button>
-                        <button className={styles.adminBatchLogBtn} type="button">
-                          로그 보기
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className={styles.adminBatchItem}>
-                      <div className={styles.adminBatchInfo}>
                         <h3 className={styles.adminBatchName}>접속 로그 정리</h3>
                         <p className={styles.adminBatchDesc}>30일 이상 된 접속 로그를 아카이빙합니다.</p>
                         <div className={styles.adminBatchMeta}>
                           <span className={styles.adminBatchSchedule}>⏰ 매주 일요일 04:00</span>
                           <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-19 04:00:22</span>
+                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                        </div>
+                      </div>
+                      <div className={styles.adminBatchActions}>
+                        <button className={styles.adminBatchRunBtn} type="button">
+                          수동 실행
+                        </button>
+                        <button className={styles.adminBatchLogBtn} type="button">
+                          로그 보기
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={styles.adminBatchItem}>
+                      <div className={styles.adminBatchInfo}>
+                        <h3 className={styles.adminBatchName}>부동산 계약서 정리</h3>
+                        <p className={styles.adminBatchDesc}>검증이 완료되거나 만료된 계약서 파일을 정리합니다.</p>
+                        <div className={styles.adminBatchMeta}>
+                          <span className={styles.adminBatchSchedule}>⏰ 매일 05:00</span>
+                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 05:00:12</span>
                           <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
                         </div>
                       </div>

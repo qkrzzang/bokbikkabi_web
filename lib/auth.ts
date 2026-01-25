@@ -2,35 +2,73 @@ import { supabase } from './supabase/client'
 
 // OAuth 로그인
 export const signInWithKakao = async () => {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'kakao',
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-    },
-  })
-  
-  if (error) {
-    console.error('카카오 로그인 오류:', error)
-    throw error
+  try {
+    // 리다이렉트 URL 생성
+    const redirectUrl = typeof window !== 'undefined' 
+      ? `${window.location.origin}/auth/callback`
+      : `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`
+    
+    console.log('[카카오 로그인] 시작')
+    console.log('[카카오 로그인] Redirect URL:', redirectUrl)
+    console.log('[카카오 로그인] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'kakao',
+      options: {
+        redirectTo: redirectUrl,
+        skipBrowserRedirect: false,
+      },
+    })
+    
+    if (error) {
+      console.error('[카카오 로그인] 오류:', error)
+      console.error('[카카오 로그인] 오류 상세:', {
+        message: error.message,
+        status: error.status,
+        name: error.name
+      })
+      throw error
+    }
+    
+    console.log('[카카오 로그인] OAuth URL 생성 성공')
+    console.log('[카카오 로그인] URL:', data.url?.substring(0, 100))
+    
+    return data
+  } catch (err) {
+    console.error('[카카오 로그인] 예외 발생:', err)
+    throw err
   }
-  
-  return data
 }
 
 export const signInWithGoogle = async () => {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-    },
-  })
-  
-  if (error) {
-    console.error('구글 로그인 오류:', error)
-    throw error
+  try {
+    const redirectUrl = typeof window !== 'undefined' 
+      ? `${window.location.origin}/auth/callback`
+      : `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`
+    
+    console.log('[구글 로그인] 시작')
+    console.log('[구글 로그인] Redirect URL:', redirectUrl)
+    
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        skipBrowserRedirect: false,
+      },
+    })
+    
+    if (error) {
+      console.error('[구글 로그인] 오류:', error)
+      throw error
+    }
+    
+    console.log('[구글 로그인] OAuth URL 생성 성공')
+    
+    return data
+  } catch (err) {
+    console.error('[구글 로그인] 예외 발생:', err)
+    throw err
   }
-  
-  return data
 }
 
 // 로그아웃

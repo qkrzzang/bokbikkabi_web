@@ -2107,6 +2107,74 @@
   flex-shrink: 0;
 }
 
+/* 계정 관리 - 통계 요약 */
+.adminStatsSummary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.adminStatCard {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.adminStatLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.adminStatValues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.adminStatItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statTagKakao {
+  background-color: #fee500;
+  color: #3c1e1e;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.statTagGmail {
+  background-color: #ea4335;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.statTagGrade {
+  background-color: #f1f5f9;
+  color: #475569;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.statCount {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
 /* 계정 관리 - 필터 바 */
 .adminFilterBar {
   display: flex;

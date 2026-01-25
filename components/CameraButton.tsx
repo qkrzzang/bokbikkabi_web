@@ -1795,12 +1795,10 @@ export default function CameraButton() {
               <div className={styles.confirmAgentCard}>
                 <div className={styles.confirmAgentName}>{confirmingAgent.agent.agent_name}</div>
                 <div className={styles.confirmAgentDetails}>
-                  {confirmingAgent.agent.representative_name && (
-                    <div className={styles.confirmAgentRow}>
-                      <span className={styles.confirmAgentLabel}>대표자명:</span>
-                      <span className={styles.confirmAgentValue}>{confirmingAgent.agent.representative_name}</span>
-                    </div>
-                  )}
+                  <div className={styles.confirmAgentRow}>
+                    <span className={styles.confirmAgentLabel}>대표자명:</span>
+                    <span className={styles.confirmAgentValue}>{confirmingAgent.agent.representative_name || '-'}</span>
+                  </div>
                   <div className={styles.confirmAgentRow}>
                     <span className={styles.confirmAgentLabel}>등록번호:</span>
                     <span className={styles.confirmAgentValue}>{confirmingAgent.agent.agent_number}</span>

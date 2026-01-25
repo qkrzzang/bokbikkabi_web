@@ -229,6 +229,7 @@ const getPropertyDetail = (id: string): PropertyDetail | null => {
 export default function PropertyList({ searchQuery }: PropertyListProps) {
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false) // 검색 실행 여부 추적
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -236,6 +237,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
     if (!searchQuery.trim()) {
       // 검색어가 없을 때는 부동산 정보를 표시하지 않음
       setProperties([])
+      setHasSearched(false)
       return
     }
 
@@ -328,6 +330,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           )
           console.log(`[검색] DB 조회 실패, 목업 데이터 사용: ${mockMatches.length}건`)
           setProperties(mockMatches)
+          setHasSearched(true)
           setLoading(false)
           return
         }
@@ -335,18 +338,64 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         console.log(`[검색] ✅ DB 조회 성공: ${data?.length || 0}건`)
         
         if (data && data.length > 0) {
-          console.log(`[검색] 샘플 데이터:`, data.slice(0, 3).map(d => ({
+          console.log(`[검색] 샘플 데이터:`, data.slice(0, 3).map((d: any) => ({
             id: d.id,
             name: d.agent_name
           })))
         }
 
+        // 각 중개사무소의 평균 별점 조회
+        const agentIds = (data || []).map((agent: any) => agent.id)
+        let ratingsMap = new Map<number, number>()
+        
+        if (agentIds.length > 0) {
+          try {
+            const { data: reviewsData, error: reviewsError } = await supabase
+              .from('agent_reviews')
+              .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
+              .in('agent_id', agentIds)
+            
+            if (!reviewsError && reviewsData) {
+              // 각 중개사무소별 평균 별점 계산
+              const agentReviews = new Map<number, number[]>()
+              
+              reviewsData.forEach(review => {
+                const ratings = [
+                  review.fee_satisfaction,
+                  review.expertise,
+                  review.kindness,
+                  review.property_reliability,
+                  review.response_speed
+                ].filter(r => r !== null && r !== undefined) as number[]
+                
+                if (ratings.length > 0) {
+                  const avg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+                  if (!agentReviews.has(review.agent_id)) {
+                    agentReviews.set(review.agent_id, [])
+                  }
+                  agentReviews.get(review.agent_id)!.push(avg)
+                }
+              })
+              
+              // 각 중개사무소의 전체 평균 계산
+              agentReviews.forEach((ratings, agentId) => {
+                const overallAvg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+                ratingsMap.set(agentId, Math.round(overallAvg * 10) / 10)
+              })
+              
+              console.log(`[검색] 평균 별점 조회 완료: ${ratingsMap.size}개 중개사무소`)
+            }
+          } catch (reviewsError) {
+            console.error('[검색] 리뷰 데이터 조회 오류:', reviewsError)
+          }
+        }
+
         // 검색 결과를 Property 형식으로 변환
-        const propertiesData: Property[] = (data || []).map((agent) => ({
+        const propertiesData: Property[] = (data || []).map((agent: any) => ({
           id: agent.id.toString(),
           name: agent.agent_name || '',
           address: agent.road_address || agent.lot_address || '',
-          rating: 0, // 기본값 (실제 리뷰 데이터가 있으면 계산)
+          rating: ratingsMap.get(agent.id) || 0,
         }))
 
         // 목업 데이터도 검색 결과에 포함 (예: "미금" 검색 시 미금퍼스트 노출)
@@ -367,6 +416,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         console.log(`[검색] 최종 결과: ${finalResults.length}건`)
         
         setProperties(finalResults)
+        setHasSearched(true)
       } catch (error) {
         console.error('[검색] ❌ 예외 발생:', error)
         const q = searchQuery.trim().toLowerCase()
@@ -375,6 +425,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         )
         console.log(`[검색] 예외 발생, 목업 데이터 사용: ${mockMatches.length}건`)
         setProperties(mockMatches)
+        setHasSearched(true)
       } finally {
         setLoading(false)
       }
@@ -402,7 +453,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
     )
   }
 
-  if (properties.length === 0) {
+  if (hasSearched && properties.length === 0) {
     return (
       <div className={styles.emptyState}>
         <div className={styles.emptyIcon}>😢</div>
@@ -413,11 +464,133 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
     )
   }
 
-  const handlePropertyClick = (property: Property) => {
-    const detail = getPropertyDetail(property.id)
-    if (detail) {
-      setSelectedProperty(detail)
+  if (!hasSearched) {
+    return null
+  }
+
+  const handlePropertyClick = async (property: Property) => {
+    // 리뷰가 없으면 팝업을 표시하지 않음
+    if (property.rating === 0) {
+      return
+    }
+
+    // 목업 데이터가 있으면 그대로 사용
+    const mockDetail = getPropertyDetail(property.id)
+    if (mockDetail) {
+      setSelectedProperty(mockDetail)
       setIsModalOpen(true)
+      return
+    }
+
+    // 실제 DB 데이터 조회
+    try {
+      console.log(`[상세 조회] agent_id: ${property.id}`)
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('agent_reviews')
+        .select('*')
+        .eq('agent_id', parseInt(property.id))
+        .order('created_at', { ascending: false })
+
+      if (reviewsError) {
+        console.error('[상세 조회] 리뷰 조회 오류:', reviewsError)
+        return
+      }
+
+      if (!reviewsData || reviewsData.length === 0) {
+        console.log('[상세 조회] 리뷰 없음')
+        return
+      }
+
+      console.log(`[상세 조회] 리뷰 ${reviewsData.length}건 조회 완료`)
+
+      // 태그 집계
+      const allTransactionTags = new Set<string>()
+      const allPraiseTags = new Set<string>()
+      const allRegretTags = new Set<string>()
+      
+      reviewsData.forEach(review => {
+        if (review.transaction_tag) allTransactionTags.add(review.transaction_tag)
+        if (review.praise_tags) review.praise_tags.forEach((tag: string) => allPraiseTags.add(tag))
+        if (review.regret_tags) review.regret_tags.forEach((tag: string) => allRegretTags.add(tag))
+      })
+
+      // 평가 항목별 평균 계산
+      const evaluationCategories = [
+        { key: 'fee_satisfaction', label: '수수료 만족도' },
+        { key: 'expertise', label: '전문성/지식' },
+        { key: 'kindness', label: '친절/태도' },
+        { key: 'property_reliability', label: '매물 신뢰도' },
+        { key: 'response_speed', label: '응답 속도' },
+      ]
+
+      const detailedEvaluation = evaluationCategories.map(cat => {
+        const scores = reviewsData
+          .map((r: any) => r[cat.key])
+          .filter((s: any) => s !== null && s !== undefined) as number[]
+        const avg = scores.length > 0 
+          ? scores.reduce((sum, s) => sum + s, 0) / scores.length 
+          : 0
+        return {
+          category: cat.label,
+          score: Math.round(avg * 10) / 10,
+        }
+      })
+
+      // 전체 평균 별점
+      const allScores = reviewsData.flatMap((r: any) => 
+        [r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed]
+          .filter(s => s !== null && s !== undefined)
+      ) as number[]
+      const overallRating = allScores.length > 0
+        ? allScores.reduce((sum, s) => sum + s, 0) / allScores.length
+        : 0
+
+      // 리뷰 변환
+      const reviews = reviewsData.map((r: any) => ({
+        id: r.id,
+        author: '익명', // 익명 처리
+        rating: Math.round(
+          ([r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed]
+            .filter(s => s !== null && s !== undefined) as number[])
+            .reduce((sum, s) => sum + s, 0) / 5 * 10
+        ) / 10,
+        date: new Date(r.created_at).toLocaleDateString('ko-KR', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit' 
+        }).replace(/\. /g, '.'),
+        content: r.review_text || '',
+        transactionTags: r.transaction_tag ? [r.transaction_tag] : [],
+        praiseTags: r.praise_tags || [],
+        regretTags: r.regret_tags || [],
+        detailedEvaluation: evaluationCategories.map(cat => ({
+          category: cat.label,
+          score: (r as any)[cat.key] || 0,
+        })),
+      }))
+
+      const propertyDetail: PropertyDetail = {
+        id: property.id,
+        name: property.name,
+        address: property.address,
+        rating: Math.round(overallRating * 10) / 10,
+        reviewCount: reviewsData.length,
+        transactionTags: Array.from(allTransactionTags),
+        praiseTags: Array.from(allPraiseTags),
+        regretTags: Array.from(allRegretTags),
+        detailedEvaluation,
+        keySummary: {
+          recommendRate: 85, // TODO: 실제 계산 로직 필요
+          discountRate: 40, // TODO: 실제 계산 로직 필요
+          explanationRate: 90, // TODO: 실제 계산 로직 필요
+        },
+        reviews,
+      }
+
+      setSelectedProperty(propertyDetail)
+      setIsModalOpen(true)
+    } catch (error) {
+      console.error('[상세 조회] 예외 발생:', error)
     }
   }
 
@@ -434,13 +607,19 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
               <h3 className={styles.propertyName}>{property.name}</h3>
             </div>
             <p className={styles.propertyAddress}>{property.address}</p>
-            <div className={styles.propertyRating}>
-              <span className={styles.ratingStars}>
-                {'★'.repeat(Math.floor(property.rating))}
-                {'☆'.repeat(5 - Math.floor(property.rating))}
-              </span>
-              <span className={styles.ratingValue}>{property.rating}</span>
-            </div>
+            {property.rating > 0 ? (
+              <div className={styles.propertyRating}>
+                <span className={styles.ratingStars}>
+                  {'★'.repeat(Math.floor(property.rating))}
+                  {'☆'.repeat(5 - Math.floor(property.rating))}
+                </span>
+                <span className={styles.ratingValue}>{property.rating.toFixed(1)}</span>
+              </div>
+            ) : (
+              <div className={styles.propertyRating}>
+                <span className={styles.noRating}>아직 리뷰가 없어요</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
