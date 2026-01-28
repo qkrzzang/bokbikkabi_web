@@ -5,6 +5,7 @@ import styles from './Header.module.css'
 import { signInWithKakao, signInWithGoogle, getCurrentUser, signOut } from '@/lib/auth'
 import { logAccess } from '@/lib/accessLog'
 import { supabase } from '@/lib/supabase/client'
+import { decryptFile } from '@/lib/encryption'
 
 export default function Header() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
@@ -15,6 +16,12 @@ export default function Header() {
   const [isGradeInfoModalOpen, setIsGradeInfoModalOpen] = useState(false)
   const [isPartnershipModalOpen, setIsPartnershipModalOpen] = useState(false)
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false)
+  const [isMyContractsModalOpen, setIsMyContractsModalOpen] = useState(false)
+  const [myContracts, setMyContracts] = useState<any[]>([])
+  const [selectedContract, setSelectedContract] = useState<any>(null)
+  const [isContractDetailModalOpen, setIsContractDetailModalOpen] = useState(false)
+  const [decryptedImageUrl, setDecryptedImageUrl] = useState<string | null>(null)
+  const [isImageLoading, setIsImageLoading] = useState(false)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
   const [isAdminScreenOpen, setIsAdminScreenOpen] = useState(false)
   const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'analytics'>('common-code')
@@ -1036,12 +1043,35 @@ export default function Header() {
               </div>
               <div className={styles.profileActions}>
                 <div className={styles.navList}>
-                  <button className={styles.navItem} type="button">
+                  <button 
+                    className={styles.navItem} 
+                    type="button"
+                    onClick={async () => {
+                      const { data: { session } } = await supabase.auth.getSession()
+                      if (!session) return
+
+                      // 내 계약서 리스트 가져오기
+                      const { data, error } = await supabase
+                        .from('agent_reviews')
+                        .select(`
+                          *,
+                          agent:agent_master(agent_name, road_address, lot_address)
+                        `)
+                        .eq('supabase_user_id', session.user.id)
+                        .order('created_at', { ascending: false })
+
+                      if (!error && data) {
+                        setMyContracts(data)
+                        setIsMyContractsModalOpen(true)
+                        closeProfileModal()
+                      }
+                    }}
+                  >
                     <span className={styles.navLeft}>
                       <span className={styles.navIcon} aria-hidden="true">
-                        📝
+                        📄
                       </span>
-                      <span className={styles.navLabel}>내 리뷰 보기</span>
+                      <span className={styles.navLabel}>내 계약서 보기</span>
                     </span>
                     <span className={styles.navRight} aria-hidden="true">
                       <span className={styles.chevron}>›</span>
@@ -2555,6 +2585,370 @@ export default function Header() {
                 </div>
               )}
             </main>
+          </div>
+        </div>
+      )}
+
+      {/* 내 계약서 보기 모달 */}
+      {isMyContractsModalOpen && (
+        <div className={styles.overlay} onClick={() => setIsMyContractsModalOpen(false)}>
+          <div className={styles.infoModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.infoModalContent}>
+              <div className={styles.infoModalHeader}>
+                <h3 className={styles.infoModalTitle}>내 계약서</h3>
+                <button className={styles.closeButton} onClick={() => setIsMyContractsModalOpen(false)} aria-label="닫기">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M18 6L6 18M6 6L18 18"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className={styles.infoModalBody}>
+                {myContracts.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                    등록된 계약서가 없습니다.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {myContracts.map((contract) => (
+                      <button
+                        key={contract.id}
+                        onClick={async () => {
+                          setSelectedContract(contract)
+                          setIsContractDetailModalOpen(true)
+                          setDecryptedImageUrl(null)
+                          setIsImageLoading(true)
+
+                          // 계약서 이미지가 있으면 복호화
+                          if (contract.contract_image_url) {
+                            try {
+                              console.log('[계약서 조회] 암호화된 파일 다운로드 시작:', contract.contract_image_url)
+                              
+                              // Storage에서 암호화된 파일 다운로드
+                              const { data: fileData, error: downloadError } = await supabase.storage
+                                .from('contracts')
+                                .download(contract.contract_image_url)
+
+                              if (downloadError) {
+                                console.error('[계약서 조회] 다운로드 실패:', downloadError)
+                                setIsImageLoading(false)
+                                return
+                              }
+
+                              // Blob을 텍스트로 변환
+                              const encryptedText = await fileData.text()
+                              console.log('[계약서 조회] 파일 다운로드 완료, 복호화 시작')
+
+                              // 복호화
+                              const decryptedBase64 = decryptFile(encryptedText)
+                              setDecryptedImageUrl(decryptedBase64)
+                              console.log('[계약서 조회] 복호화 완료')
+                            } catch (error) {
+                              console.error('[계약서 조회] 복호화 실패:', error)
+                            } finally {
+                              setIsImageLoading(false)
+                            }
+                          } else {
+                            setIsImageLoading(false)
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '16px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          backgroundColor: '#ffffff',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = '#063561'
+                          e.currentTarget.style.backgroundColor = '#f8fafc'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = '#e2e8f0'
+                          e.currentTarget.style.backgroundColor = '#ffffff'
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '8px' }}>
+                          {contract.agent?.agent_name || '알 수 없음'}
+                        </div>
+                        <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px' }}>
+                          계약일: {contract.contract_date || '-'}
+                        </div>
+                        <div style={{ fontSize: '14px', color: '#64748b' }}>
+                          등록일: {new Date(contract.created_at).toLocaleDateString('ko-KR')}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 계약서 상세 모달 */}
+      {isContractDetailModalOpen && selectedContract && (
+        <div className={styles.overlay} onClick={() => {
+          setIsContractDetailModalOpen(false)
+          setSelectedContract(null)
+          setDecryptedImageUrl(null)
+          setIsImageLoading(false)
+        }}>
+          <div 
+            className={styles.infoModal} 
+            style={{ maxWidth: '800px', maxHeight: '90vh', overflow: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.infoModalContent}>
+              <div className={styles.infoModalHeader}>
+                <h3 className={styles.infoModalTitle}>계약서 상세</h3>
+                <button 
+                  className={styles.closeButton} 
+                  onClick={() => {
+                    setIsContractDetailModalOpen(false)
+                    setSelectedContract(null)
+                  }} 
+                  aria-label="닫기"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M18 6L6 18M6 6L18 18"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className={styles.infoModalBody} style={{ padding: '20px' }}>
+                {/* 계약서 이미지 */}
+                {selectedContract.contract_image_url && (
+                  <div style={{ marginBottom: '24px' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#1e293b' }}>
+                      계약서 이미지
+                    </h4>
+                    {isImageLoading ? (
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'center', 
+                        alignItems: 'center', 
+                        minHeight: '200px',
+                        backgroundColor: '#f8fafc',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            border: '4px solid #e1e8f0',
+                            borderTopColor: '#063561',
+                            borderRadius: '50%',
+                            animation: 'spin 0.8s linear infinite',
+                            margin: '0 auto 12px'
+                          }} />
+                          <p style={{ color: '#64748b', fontSize: '14px' }}>복호화 중...</p>
+                          <style dangerouslySetInnerHTML={{__html: `
+                            @keyframes spin {
+                              to { transform: rotate(360deg); }
+                            }
+                          `}} />
+                        </div>
+                      </div>
+                    ) : decryptedImageUrl ? (
+                      <>
+                        <img 
+                          src={decryptedImageUrl} 
+                          alt="계약서"
+                          style={{
+                            width: '100%',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '8px',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            const newWindow = window.open('', '_blank')
+                            if (newWindow) {
+                              newWindow.document.write(`
+                                <html>
+                                  <head><title>계약서</title></head>
+                                  <body style="margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;">
+                                    <img src="${decryptedImageUrl}" style="max-width:100%;max-height:100vh;" />
+                                  </body>
+                                </html>
+                              `)
+                            }
+                          }}
+                        />
+                        <p style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
+                          * 이미지를 클릭하면 새 창에서 볼 수 있습니다
+                        </p>
+                      </>
+                    ) : (
+                      <div style={{ 
+                        padding: '40px',
+                        textAlign: 'center',
+                        backgroundColor: '#f8fafc',
+                        borderRadius: '8px',
+                        color: '#64748b'
+                      }}>
+                        계약서 이미지를 불러올 수 없습니다.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 중개사 정보 */}
+                <div style={{ marginBottom: '24px' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#1e293b' }}>
+                    중개사 정보
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ width: '100px', color: '#64748b', fontSize: '14px' }}>사무소명:</span>
+                      <span style={{ color: '#1e293b', fontSize: '14px', fontWeight: 500 }}>
+                        {selectedContract.agent?.agent_name || '알 수 없음'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ width: '100px', color: '#64748b', fontSize: '14px' }}>주소:</span>
+                      <span style={{ color: '#1e293b', fontSize: '14px' }}>
+                        {selectedContract.agent?.road_address || selectedContract.agent?.lot_address || '-'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ width: '100px', color: '#64748b', fontSize: '14px' }}>계약일:</span>
+                      <span style={{ color: '#1e293b', fontSize: '14px' }}>
+                        {selectedContract.contract_date || '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 리뷰 정보 */}
+                <div style={{ marginBottom: '24px' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#1e293b' }}>
+                    리뷰
+                  </h4>
+                  
+                  {/* 거래 태그 */}
+                  {selectedContract.transaction_tag && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <span style={{ 
+                        display: 'inline-block',
+                        padding: '4px 12px',
+                        backgroundColor: '#e0f2fe',
+                        color: '#0369a1',
+                        borderRadius: '16px',
+                        fontSize: '13px',
+                        fontWeight: 500
+                      }}>
+                        {selectedContract.transaction_tag}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 칭찬/아쉬움 태그 */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                    {selectedContract.praise_tags?.map((tag: string, idx: number) => (
+                      <span 
+                        key={`praise-${idx}`}
+                        style={{
+                          padding: '4px 12px',
+                          backgroundColor: '#dcfce7',
+                          color: '#166534',
+                          borderRadius: '16px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {selectedContract.regret_tags?.map((tag: string, idx: number) => (
+                      <span 
+                        key={`regret-${idx}`}
+                        style={{
+                          padding: '4px 12px',
+                          backgroundColor: '#fee2e2',
+                          color: '#991b1b',
+                          borderRadius: '16px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* 평가 점수 */}
+                  <div style={{ marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {[
+                      { label: '수수료 만족도', value: selectedContract.fee_satisfaction },
+                      { label: '전문성/지식', value: selectedContract.expertise },
+                      { label: '친절/태도', value: selectedContract.kindness },
+                      { label: '매물 신뢰도', value: selectedContract.property_reliability },
+                      { label: '응답 속도', value: selectedContract.response_speed },
+                    ].map((item, idx) => item.value && (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '14px', color: '#64748b' }}>{item.label}:</span>
+                        <span style={{ fontSize: '14px', color: '#f59e0b' }}>
+                          {'★'.repeat(item.value)}{'☆'.repeat(5 - item.value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 상세 리뷰 */}
+                  {selectedContract.review_text && (
+                    <div>
+                      <div style={{ 
+                        padding: '16px',
+                        backgroundColor: '#f8fafc',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        lineHeight: '1.6',
+                        color: '#334155',
+                        whiteSpace: 'pre-wrap'
+                      }}>
+                        {selectedContract.review_text}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 뒤로 가기 버튼 */}
+                <button
+                  onClick={() => {
+                    setIsContractDetailModalOpen(false)
+                    setSelectedContract(null)
+                    setDecryptedImageUrl(null)
+                    setIsImageLoading(false)
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    backgroundColor: '#063561',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  목록으로
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

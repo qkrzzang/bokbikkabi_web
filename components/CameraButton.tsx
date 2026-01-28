@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { encryptFile, encryptedDataToBlob } from '@/lib/encryption'
 
 export default function CameraButton() {
   const [isOpen, setIsOpen] = useState(false)
@@ -938,6 +939,34 @@ export default function CameraButton() {
         return
       }
 
+      // 거래 태그 필수 체크
+      if (transactionTags.length === 0) {
+        alert('거래 태그를 선택해주세요.')
+        return
+      }
+
+      // 칭찬 태그 또는 아쉬움 태그 필수 체크 (최소 1개)
+      if (praiseTags.length === 0 && regretTags.length === 0) {
+        alert('칭찬 태그 또는 아쉬움 태그 중 최소 1개를 선택해주세요.')
+        return
+      }
+
+      // 상세 평가 필수 체크
+      const requiredEvaluations = detailEvaluations.map(e => e.code_value)
+      const missingEvaluations = requiredEvaluations.filter(code => {
+        const rating = reviewRatings[code]
+        return !rating || rating === 0
+      })
+
+      if (missingEvaluations.length > 0) {
+        const missingNames = missingEvaluations
+          .map(code => detailEvaluations.find(e => e.code_value === code)?.code_name)
+          .filter(Boolean)
+          .join(', ')
+        alert(`모든 상세 평가 항목을 선택해주세요.\n미선택 항목: ${missingNames}`)
+        return
+      }
+
       const selectedKeys = Object.keys(selectedAgents)
       if (selectedKeys.length === 0) {
         alert('중개사무소 확인이 필요합니다. 후보 중 하나를 선택해주세요.')
@@ -953,6 +982,43 @@ export default function CameraButton() {
       }
 
       const contractData = primaryContract
+
+      // 계약서 이미지를 암호화하여 Supabase Storage에 업로드
+      let contractImageUrl: string | null = null
+      if (originalFile) {
+        try {
+          console.log('[리뷰 저장] 계약서 암호화 시작...')
+          
+          // 1. 파일 암호화
+          const encryptedData = await encryptFile(originalFile)
+          console.log('[리뷰 저장] 암호화 완료')
+          
+          // 2. 암호화된 데이터를 Blob으로 변환
+          const encryptedBlob = encryptedDataToBlob(encryptedData)
+          
+          // 3. Supabase Storage에 업로드 (암호화된 파일)
+          const fileName = `${session.user.id}/${Date.now()}.encrypted`
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('contracts')
+            .upload(fileName, encryptedBlob, {
+              cacheControl: '3600',
+              upsert: false,
+              contentType: 'text/plain'
+            })
+
+          if (uploadError) {
+            console.error('[리뷰 저장] 계약서 업로드 실패:', uploadError)
+            // 업로드 실패 시 계약서 없이 리뷰만 저장
+          } else {
+            // Storage 경로 저장 (publicUrl이 아닌 path 저장)
+            contractImageUrl = uploadData.path
+            console.log('[리뷰 저장] 암호화된 계약서 업로드 성공:', contractImageUrl)
+          }
+        } catch (uploadError) {
+          console.error('[리뷰 저장] 계약서 업로드 중 오류:', uploadError)
+          // 업로드 실패해도 리뷰는 저장
+        }
+      }
 
       // code_value 또는 code_name으로 평가 점수 찾기
       const getRatingByKeywords = (keywords: string[]) => {
@@ -1008,6 +1074,7 @@ export default function CameraButton() {
           response_speed: getRatingByKeywords(['RESPONSE_SPEED', 'COMMUNICATION', '응답', '속도']),
           review_text: reviewText || null,
           contract_date: contractData?.contract_date || null,
+          contract_image_url: contractImageUrl,
         })
 
       if (error) {
@@ -1031,6 +1098,22 @@ export default function CameraButton() {
 
   const reviewCharCount = reviewText.trim().length
   const isReviewLengthValid = reviewCharCount >= 20
+  
+  // 거래 태그 선택 확인
+  const hasTransactionTag = transactionTags.length > 0
+  
+  // 칭찬 또는 아쉬움 태그 최소 1개 선택 확인
+  const hasAtLeastOneTag = praiseTags.length > 0 || regretTags.length > 0
+  
+  // 모든 상세 평가 항목 선택 확인
+  const allEvaluationsSelected = detailEvaluations.every(evaluation => {
+    const rating = reviewRatings[evaluation.code_value]
+    return rating && rating > 0
+  })
+  
+  // 전체 리뷰 유효성 확인
+  const isReviewValid = isReviewLengthValid && hasTransactionTag && hasAtLeastOneTag && allEvaluationsSelected
+  
   const primaryReviewIndex = (() => {
     const keys = Object.keys(selectedAgents)
     if (keys.length > 0) {
@@ -1081,6 +1164,37 @@ export default function CameraButton() {
               <p className={styles.confirmMessage}>
                 부동산 거래 후기를 작성하여 다른 분들에게 도움을 주세요.
               </p>
+              
+              {/* 개인정보 보호 안내 */}
+              <div style={{
+                padding: '16px',
+                backgroundColor: '#fef3c7',
+                border: '2px solid #f59e0b',
+                borderRadius: '8px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ 
+                  fontSize: '15px', 
+                  fontWeight: 600, 
+                  color: '#92400e',
+                  marginBottom: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  개인정보 보호 필수
+                </div>
+                <div style={{ fontSize: '14px', color: '#78350f', lineHeight: '1.6' }}>
+                  <strong style={{ color: '#b45309' }}>주민등록번호와 전화번호는 반드시 가려주세요.</strong><br />
+                  가려진 계약서만 업로드 가능합니다.
+                </div>
+              </div>
+
               <div className={styles.agreementContainer}>
                 <label className={styles.agreementLabel}>
                   <input
@@ -1090,7 +1204,7 @@ export default function CameraButton() {
                     className={styles.agreementCheckbox}
                   />
                   <span className={styles.agreementText}>
-                    (필수) 위조된 문서가 아님을 확인하며, 허위 등록 시 관련 법령(<strong>사문서 위조</strong> 등)에 따른 <strong>처벌</strong>을 감수합니다.
+                    (필수) 위조된 문서가 아님을 확인하며, <strong>주민등록번호·전화번호를 가렸음</strong>을 확인합니다. 허위 등록 시 관련 법령(<strong>사문서 위조</strong> 등)에 따른 <strong>처벌</strong>을 감수합니다.
                   </span>
                 </label>
               </div>
@@ -1120,9 +1234,6 @@ export default function CameraButton() {
             <div className={styles.modalHeader}>
               <div>
                 <h3>{mode === 'review' ? '리뷰 작성' : '부동산 계약서 업로드'}</h3>
-                {mode !== 'review' && (
-                  <p className={styles.uploadWarning}>부동산 계약서는 검증 후 즉시 삭제 처리됩니다.</p>
-                )}
               </div>
               <button
                 className={styles.closeButton}
@@ -1150,6 +1261,35 @@ export default function CameraButton() {
             <div className={styles.modalContent}>
               {mode === 'select' && (
                 <>
+                  {/* 개인정보 보호 안내 */}
+                  <div style={{
+                    padding: '16px',
+                    backgroundColor: '#fef3c7',
+                    border: '2px solid #f59e0b',
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{ 
+                      fontSize: '15px', 
+                      fontWeight: 600, 
+                      color: '#92400e',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="2"/>
+                        <path d="M12 8V12" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M12 16H12.01" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                      주민등록번호와 전화번호는 반드시 가려주세요
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#78350f', lineHeight: '1.6' }}>
+                      가려진 계약서만 업로드 가능합니다.
+                    </div>
+                  </div>
+
                   {isMobile ? (
                     <div className={styles.selectMode}>
                       <button
@@ -1307,6 +1447,21 @@ export default function CameraButton() {
                       </div>
                     </div>
                   )}
+                  
+                  {/* 개인정보 보호 안내 */}
+                  <div style={{
+                    padding: '12px 16px',
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '8px',
+                    marginBottom: '16px',
+                    fontSize: '13px',
+                    color: '#78350f',
+                    lineHeight: '1.5'
+                  }}>
+                    <strong style={{ color: '#b45309' }}>⚠️ 개인정보 확인:</strong> 주민등록번호와 전화번호가 가려져 있는지 확인해주세요.
+                  </div>
+                  
                   <img
                     src={capturedImage}
                     alt="업로드할 이미지"
@@ -1515,7 +1670,9 @@ export default function CameraButton() {
                   </div>
                   {/* 거래 태그 (4개 중 하나만 선택 가능) */}
                   <div className={styles.reviewSection}>
-                    <h4 className={styles.reviewSectionTitle}>거래 태그</h4>
+                    <h4 className={styles.reviewSectionTitle}>
+                      거래 태그 <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+                    </h4>
                     <div className={styles.tagContainer}>
                       {transactionTagOptions.length === 0 ? (
                         <span className={styles.reviewTagEmpty}>거래 태그가 없습니다.</span>
@@ -1541,7 +1698,12 @@ export default function CameraButton() {
                   
                   {/* 칭찬 태그 */}
                   <div className={styles.reviewSection}>
-                    <h4 className={styles.reviewSectionTitle}>칭찬 태그</h4>
+                    <h4 className={styles.reviewSectionTitle}>
+                      칭찬 태그 
+                      <span style={{ color: '#f59e0b', marginLeft: '4px', fontSize: '13px', fontWeight: 'normal' }}>
+                        (칭찬 또는 아쉬움 중 최소 1개 선택)
+                      </span>
+                    </h4>
                     <div className={styles.tagContainer}>
                       {praiseTagOptions.length === 0 ? (
                         <span className={styles.reviewTagEmpty}>칭찬 태그가 없습니다.</span>
@@ -1593,7 +1755,9 @@ export default function CameraButton() {
 
                   {/* 상세 평가 */}
                   <div className={styles.reviewSection}>
-                    <h4 className={styles.reviewSectionTitle}>상세 평가</h4>
+                    <h4 className={styles.reviewSectionTitle}>
+                      상세 평가 <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+                    </h4>
                     <div className={styles.ratingContainer}>
                       {detailEvaluations.length === 0 ? (
                         <div className={styles.ratingEmpty}>상세 평가 항목이 없습니다.</div>
@@ -1652,6 +1816,27 @@ export default function CameraButton() {
                     </div>
                   </div>
 
+                  {/* 필수 항목 체크 상태 */}
+                  {!isReviewValid && (
+                    <div style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#fef2f2',
+                      borderLeft: '4px solid #ef4444',
+                      borderRadius: '4px',
+                      marginTop: '16px'
+                    }}>
+                      <div style={{ fontSize: '14px', color: '#991b1b', fontWeight: 500, marginBottom: '8px' }}>
+                        필수 항목을 모두 입력해주세요
+                      </div>
+                      <ul style={{ fontSize: '13px', color: '#dc2626', paddingLeft: '20px', margin: 0 }}>
+                        {!hasTransactionTag && <li>거래 태그 선택</li>}
+                        {!hasAtLeastOneTag && <li>칭찬 태그 또는 아쉬움 태그 중 최소 1개 선택</li>}
+                        {!allEvaluationsSelected && <li>모든 상세 평가 항목 선택</li>}
+                        {!isReviewLengthValid && <li>상세 리뷰 20자 이상 작성</li>}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* 버튼 */}
                   <div className={styles.reviewControls}>
                     <button
@@ -1669,7 +1854,8 @@ export default function CameraButton() {
                     <button
                       className={styles.submitButton}
                       onClick={handleReviewSubmit}
-                      disabled={isReviewSubmitting || !isReviewLengthValid}
+                      disabled={isReviewSubmitting || !isReviewValid}
+                      title={!isReviewValid ? '모든 필수 항목을 입력해주세요' : ''}
                     >
                       {isReviewSubmitting ? '저장 중...' : '리뷰 저장'}
                     </button>

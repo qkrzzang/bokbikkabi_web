@@ -232,41 +232,29 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
   const [hasSearched, setHasSearched] = useState(false) // 검색 실행 여부 추적
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
 
   useEffect(() => {
+    // 이전 요청 취소
+    if (abortController) {
+      console.log(`[검색] 이전 요청 취소`)
+      abortController.abort()
+    }
+
     if (!searchQuery.trim()) {
       // 검색어가 없을 때는 부동산 정보를 표시하지 않음
       setProperties([])
       setHasSearched(false)
+      setAbortController(null)
       return
     }
 
-    const searchAgents = async () => {
+    const searchAgents = async (controller: AbortController) => {
       setLoading(true)
       console.log(`[검색] 검색어: "${searchQuery}"`)
-      console.log(`[검색] Supabase URL:`, process.env.NEXT_PUBLIC_SUPABASE_URL ? '설정됨' : '❌ 없음')
-      console.log(`[검색] Supabase Anon Key:`, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '설정됨' : '❌ 없음')
-      
-      // Supabase 연결 테스트
-      try {
-        const testStart = Date.now()
-        const connectionTest = await supabase
-          .from('agent_master')
-          .select('id', { count: 'exact', head: true })
-        const testEnd = Date.now()
-        
-        if (connectionTest.error) {
-          console.error(`[검색] ❌ Supabase 연결 테스트 실패:`, connectionTest.error)
-        } else {
-          console.log(`[검색] ✅ Supabase 연결 성공 (${testEnd - testStart}ms)`)
-          console.log(`[검색] agent_master 테이블 총 건수:`, connectionTest.count || '알 수 없음')
-        }
-      } catch (connError) {
-        console.error(`[검색] ❌ Supabase 연결 예외:`, connError)
-      }
       
       try {
-        // agent_master 테이블에서 agent_name으로 검색 (타임아웃 5초)
+        // agent_master 테이블에서 agent_name으로 검색
         console.log(`[검색] agent_master 테이블 조회 시작: agent_name ILIKE '%${searchQuery}%'`)
         const startTime = Date.now()
         
@@ -276,17 +264,18 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           .select('id, agent_name, road_address, lot_address')
           .ilike('agent_name', `%${searchQuery}%`)
           .limit(50)
+          .abortSignal(controller.signal)
 
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => {
             reject(new Error('TIMEOUT'))
-          }, 5000)
+          }, 15000) // 15초로 증가 (Cold start 대응)
         })
 
         const result = await Promise.race([queryPromise, timeoutPromise])
           .catch((err) => {
             if (err.message === 'TIMEOUT') {
-              console.error('[검색] ⏱️ 타임아웃 (5초 초과) - DB 응답 없음')
+              console.error('[검색] ⏱️ 타임아웃 (15초 초과) - DB 응답 없음')
               return { data: null, error: { code: 'TIMEOUT', message: 'Query timeout' } }
             }
             throw err
@@ -308,12 +297,13 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           
           // 타임아웃 오류
           if (error.code === 'TIMEOUT') {
-            console.error('[검색] 🚨 원인: Supabase 서버 응답 없음 (5초 초과)')
+            console.error('[검색] 🚨 원인: Supabase 서버 응답 없음 (15초 초과)')
             console.error('[검색] 🔧 해결 방법:')
             console.error('  1. Supabase Dashboard 접속 → 프로젝트 상태 확인')
             console.error('  2. 프로젝트가 일시중지(Paused) 상태인지 확인')
             console.error('  3. 무료 티어: 7일 미사용 시 자동 일시중지')
             console.error('  4. Dashboard에서 "Resume" 버튼 클릭')
+            console.error('  5. Cold start 시 첫 요청은 10-20초 소요될 수 있음')
           }
           
           // RLS 권한 오류인 경우 안내 메시지
@@ -354,6 +344,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
               .from('agent_reviews')
               .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
               .in('agent_id', agentIds)
+              .abortSignal(controller.signal)
             
             if (!reviewsError && reviewsData) {
               // 각 중개사무소별 평균 별점 계산
@@ -417,7 +408,13 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         
         setProperties(finalResults)
         setHasSearched(true)
-      } catch (error) {
+      } catch (error: any) {
+        // AbortError는 정상적인 취소이므로 무시
+        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+          console.log('[검색] 요청 취소됨 (새로운 검색 시작)')
+          return
+        }
+        
         console.error('[검색] ❌ 예외 발생:', error)
         const q = searchQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
@@ -432,11 +429,17 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
     }
 
     // 디바운싱: 300ms 후 검색 실행
+    const controller = new AbortController()
+    setAbortController(controller)
+
     const timeoutId = setTimeout(() => {
-      searchAgents()
+      searchAgents(controller)
     }, 300)
 
-    return () => clearTimeout(timeoutId)
+    return () => {
+      clearTimeout(timeoutId)
+      controller.abort()
+    }
   }, [searchQuery])
 
   // 검색어가 없을 때는 아무것도 표시하지 않음
@@ -487,7 +490,10 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
       console.log(`[상세 조회] agent_id: ${property.id}`)
       const { data: reviewsData, error: reviewsError } = await supabase
         .from('agent_reviews')
-        .select('*')
+        .select(`
+          *,
+          user:users!supabase_user_id(email)
+        `)
         .eq('agent_id', parseInt(property.id))
         .order('created_at', { ascending: false })
 
@@ -546,9 +552,25 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         : 0
 
       // 리뷰 변환
-      const reviews = reviewsData.map((r: any) => ({
-        id: r.id,
-        author: '익명', // 익명 처리
+      const reviews = reviewsData.map((r: any) => {
+        // 작성자 email 마스킹: @도메인 제외, 앞 3자리만 보여주고 나머지는 * 처리
+        let maskedAuthor = '익명'
+        
+        if (r.user && r.user.email) {
+          const email = r.user.email
+          // @앞부분만 추출 (도메인 제외)
+          const localPart = email.split('@')[0]
+          
+          if (localPart.length >= 3) {
+            maskedAuthor = localPart.substring(0, 3) + '*****'
+          } else if (localPart.length > 0) {
+            maskedAuthor = localPart.substring(0, 1) + '*****'
+          }
+        }
+        
+        return {
+          id: r.id,
+          author: maskedAuthor,
         rating: Math.round(
           ([r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed]
             .filter(s => s !== null && s !== undefined) as number[])
@@ -567,7 +589,8 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           category: cat.label,
           score: (r as any)[cat.key] || 0,
         })),
-      }))
+        }
+      })
 
       const propertyDetail: PropertyDetail = {
         id: property.id,
