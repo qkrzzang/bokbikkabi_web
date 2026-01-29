@@ -672,7 +672,15 @@ export default function Header() {
     <>
       <header className={styles.header}>
         <div className={styles.headerContent}>
-          <div className={styles.logo}>
+          <div 
+            className={styles.logo}
+            onClick={() => {
+              console.log('[Header] 로고 클릭 - 홈으로 이동 및 검색 초기화')
+              window.dispatchEvent(new CustomEvent('logo:click'))
+              // 페이지 새로고침이나 라우터 이동 없이 검색만 초기화
+            }}
+            style={{ cursor: 'pointer' }}
+          >
             복비까비
           </div>
           <div className={styles.rightSection}>

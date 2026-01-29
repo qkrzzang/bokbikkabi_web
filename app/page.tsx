@@ -20,10 +20,17 @@ export default function Home() {
       }
     }
 
+    const handleLogoClick = () => {
+      console.log(`[메인] 로고 클릭 - 검색 초기화`)
+      setSearchQuery('')
+    }
+
     window.addEventListener('review:saved', handleReviewSaved as EventListener)
+    window.addEventListener('logo:click', handleLogoClick)
 
     return () => {
       window.removeEventListener('review:saved', handleReviewSaved as EventListener)
+      window.removeEventListener('logo:click', handleLogoClick)
     }
   }, [])
 

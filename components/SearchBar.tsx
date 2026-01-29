@@ -55,6 +55,12 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
     console.log(`[검색창] 포커스 해제`)
   }
 
+  const handleClear = () => {
+    console.log(`[검색창] 검색어 초기화`)
+    setQuery('')
+    onSearch('')
+  }
+
   return (
     <div className={styles.searchContainer}>
       <form onSubmit={handleSubmit} className={styles.searchForm}>
@@ -69,6 +75,48 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
           className={styles.searchInput}
           autoComplete="off"
         />
+        {query && (
+          <button 
+            type="button" 
+            onClick={handleClear}
+            className={styles.clearButton}
+            aria-label="검색어 지우기"
+            style={{
+              position: 'absolute',
+              right: '52px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#94a3b8',
+              transition: 'color 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#475569'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.1"/>
+              <path
+                d="M15 9L9 15M9 9L15 15"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
         <button type="submit" className={styles.searchButton}>
           <svg
             width="20"
