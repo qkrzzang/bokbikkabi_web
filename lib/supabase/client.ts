@@ -22,6 +22,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     headers: {
       'X-Client-Info': 'bokbikkabi-web',
     },
+    fetch: (url, options = {}) => {
+      // fetch 옵션 개선: keepalive, timeout 설정
+      return fetch(url, {
+        ...options,
+        keepalive: true,
+        // signal이 이미 있으면 유지, 없으면 30초 타임아웃 설정
+        signal: options.signal || AbortSignal.timeout(30000),
+      })
+    },
   },
   db: {
     schema: 'public',

@@ -62,6 +62,8 @@ export default function PropertyDetailModal({
 }: PropertyDetailModalProps) {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null)
+  const [isLoadingMap, setIsLoadingMap] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
   const naverMapInstance = useRef<any>(null)
 
@@ -76,9 +78,48 @@ export default function PropertyDetailModal({
     }
   }, [isOpen])
 
-  // 네이버 지도 초기화
+  // 주소를 좌표로 변환
   useEffect(() => {
-    if (!isOpen || !isLoggedIn || !property || !mapRef.current) {
+    if (!isOpen || !isLoggedIn || !property) {
+      return
+    }
+
+    const fetchCoordinates = async () => {
+      setIsLoadingMap(true)
+      setCoordinates(null)
+      
+      try {
+        console.log('[네이버 지도] 주소 → 좌표 변환 시작:', property.address)
+        
+        const response = await fetch(`/api/geocode?address=${encodeURIComponent(property.address)}`)
+        
+        if (!response.ok) {
+          console.error('[네이버 지도] Geocoding 실패:', response.status)
+          setIsLoadingMap(false)
+          return
+        }
+
+        const data = await response.json()
+        
+        if (data.lat && data.lng) {
+          console.log('[네이버 지도] 좌표 변환 성공:', { lat: data.lat, lng: data.lng })
+          setCoordinates({ lat: data.lat, lng: data.lng })
+        } else {
+          console.error('[네이버 지도] 좌표 데이터 없음')
+        }
+      } catch (error) {
+        console.error('[네이버 지도] Geocoding 오류:', error)
+      } finally {
+        setIsLoadingMap(false)
+      }
+    }
+
+    fetchCoordinates()
+  }, [isOpen, isLoggedIn, property])
+
+  // 네이버 지도 초기화 (좌표 확보 후)
+  useEffect(() => {
+    if (!isOpen || !isLoggedIn || !property || !mapRef.current || !coordinates) {
       return
     }
 
@@ -88,12 +129,12 @@ export default function PropertyDetailModal({
       return
     }
 
-    // 네이버 지도 초기화 (간단한 버전 - 클릭 시 네이버 지도에서 검색)
+    // 네이버 지도 초기화
     const initMap = async () => {
       try {
         console.log('[네이버 지도] 초기화 시작')
         console.log('[네이버 지도] 주소:', property.address)
-        console.log('[네이버 지도] naver.maps 객체:', window.naver?.maps ? '존재' : '없음')
+        console.log('[네이버 지도] 좌표:', coordinates)
 
         // 지도 인스턴스가 이미 있으면 제거
         if (naverMapInstance.current) {
@@ -101,14 +142,17 @@ export default function PropertyDetailModal({
           naverMapInstance.current = null
         }
 
-        // 서울 중심 좌표 (대한민국 중심 표시)
-        const defaultCenter = new window.naver.maps.LatLng(37.5665, 126.9780)
+        // 주소의 좌표로 지도 중심 설정
+        const center = new window.naver.maps.LatLng(coordinates.lat, coordinates.lng)
 
         // 지도 옵션 설정
         const mapOptions = {
-          center: defaultCenter,
+          center: center,
           zoom: 17, // 매우 확대 (건물 단위까지 보임)
-          zoomControl: false, // 줌 컨트롤 숨김
+          zoomControl: true, // 줌 컨트롤 표시
+          zoomControlOptions: {
+            position: window.naver.maps.Position.TOP_RIGHT,
+          },
           mapTypeControl: false, // 지도 타입 변경 버튼 숨김
           mapTypeId: window.naver.maps.MapTypeId.NORMAL, // 일반 지도로 고정
         }
@@ -117,11 +161,21 @@ export default function PropertyDetailModal({
         const map = new window.naver.maps.Map(mapRef.current, mapOptions)
         naverMapInstance.current = map
 
-        // 마커 생성 (중심에 표시)
+        // 마커 생성 (실제 주소의 좌표에 표시)
         const marker = new window.naver.maps.Marker({
-          position: defaultCenter,
+          position: center,
           map: map,
           title: property.name,
+          icon: {
+            content: `
+              <div style="position:relative;">
+                <div style="width:40px;height:40px;background:#ef4444;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>
+                <div style="position:absolute;top:8px;left:8px;width:24px;height:24px;background:#fff;border-radius:50%;transform:rotate(45deg);"></div>
+              </div>
+            `,
+            size: new window.naver.maps.Size(40, 40),
+            anchor: new window.naver.maps.Point(20, 40),
+          },
         })
 
         // 정보 창 생성 - 클릭하여 정확한 위치 확인 유도
@@ -193,7 +247,7 @@ export default function PropertyDetailModal({
         naverMapInstance.current = null
       }
     }
-  }, [isOpen, isLoggedIn, property])
+  }, [isOpen, isLoggedIn, property, coordinates])
 
   if (!isOpen || !property) return null
 
@@ -519,56 +573,80 @@ export default function PropertyDetailModal({
                 {/* 네이버 지도 */}
                 <div className={styles.mapSection}>
                   <h3 className={styles.sectionTitle}>위치</h3>
-                  <div 
-                    ref={mapRef} 
-                    className={styles.naverMap}
-                    style={{ 
-                      width: '100%', 
+                  
+                  {isLoadingMap ? (
+                    <div style={{
+                      width: '100%',
                       height: '300px',
-                      borderRadius: '12px',
-                      overflow: 'hidden'
-                    }}
-                  >
-                    {/* 네이버 지도 API가 없을 때 대체 UI */}
-                    {(!window.naver || !window.naver.maps) && (
-                      <div 
-                        className={styles.miniMap} 
-                        onClick={handleMapClick}
-                        style={{ height: '300px' }}
-                      >
-                        <div className={styles.mapPlaceholder}>
-                          <svg
-                            width="48"
-                            height="48"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            className={styles.mapIcon}
-                          >
-                            <path
-                              d="M21 10C21 17 12 23 12 23C12 23 3 17 3 10C3 7.61305 3.94821 5.32387 5.63604 3.63604C7.32387 1.94821 9.61305 1 12 1C14.3869 1 16.6761 1.94821 18.364 3.63604C20.0518 5.32387 21 7.61305 21 10Z"
-                              stroke="#7C3AED"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                            <circle
-                              cx="12"
-                              cy="10"
-                              r="3"
-                              stroke="#7C3AED"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                          <span className={styles.mapText}>
-                            클릭하여 네이버 지도에서 위치 확인
-                          </span>
-                        </div>
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '12px'
+                    }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          border: '4px solid #e1e8f0',
+                          borderTopColor: '#063561',
+                          borderRadius: '50%',
+                          animation: 'spin 0.8s linear infinite',
+                          margin: '0 auto 12px'
+                        }} />
+                        <p style={{ color: '#64748b', fontSize: '14px' }}>지도 로딩 중...</p>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : !coordinates ? (
+                    <div 
+                      className={styles.miniMap} 
+                      onClick={handleMapClick}
+                      style={{ height: '300px', cursor: 'pointer' }}
+                    >
+                      <div className={styles.mapPlaceholder}>
+                        <svg
+                          width="48"
+                          height="48"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className={styles.mapIcon}
+                        >
+                          <path
+                            d="M21 10C21 17 12 23 12 23C12 23 3 17 3 10C3 7.61305 3.94821 5.32387 5.63604 3.63604C7.32387 1.94821 9.61305 1 12 1C14.3869 1 16.6761 1.94821 18.364 3.63604C20.0518 5.32387 21 7.61305 21 10Z"
+                            stroke="#7C3AED"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <circle
+                            cx="12"
+                            cy="10"
+                            r="3"
+                            stroke="#7C3AED"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span className={styles.mapText}>
+                          클릭하여 네이버 지도에서 위치 확인
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      ref={mapRef} 
+                      className={styles.naverMap}
+                      style={{ 
+                        width: '100%', 
+                        height: '300px',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        border: '1px solid #e2e8f0'
+                      }}
+                    />
+                  )}
                 </div>
               </>
             )}
