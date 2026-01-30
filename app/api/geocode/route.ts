@@ -12,37 +12,57 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
-  const clientSecret = process.env.NAVER_MAP_CLIENT_SECRET
+  // Geocoding 전용 키 우선 사용, 없으면 Maps 키 사용
+  const clientId = process.env.NAVER_GEOCODING_CLIENT_ID || process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
+  const clientSecret = process.env.NAVER_GEOCODING_CLIENT_SECRET || process.env.NAVER_MAP_CLIENT_SECRET
 
   if (!clientId || !clientSecret) {
     console.error('[Geocoding] API 키가 설정되지 않았습니다.')
+    console.error('[Geocoding] 필요한 환경변수: NAVER_GEOCODING_CLIENT_ID, NAVER_GEOCODING_CLIENT_SECRET')
     return NextResponse.json(
       { error: 'API 키가 설정되지 않았습니다.' },
       { status: 500 }
     )
   }
 
+  console.log('[Geocoding] 사용 중인 키:', clientId.substring(0, 5) + '...')
+
   try {
     const encodedAddress = encodeURIComponent(address)
-    const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodedAddress}`
+    const url = `https://maps.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodedAddress}`
+
+    console.log('[Geocoding] API 호출:', { address, url: url.substring(0, 100) })
+    console.log('[Geocoding] Client ID:', clientId)
 
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'X-NCP-APIGW-API-KEY-ID': clientId,
-        'X-NCP-APIGW-API-KEY': clientSecret,
+        'x-ncp-apigw-api-key-id': clientId,
+        'x-ncp-apigw-api-key': clientSecret,
+        'Accept': 'application/json',
       },
+    })
+    
+    console.log('[Geocoding] 요청 헤더:', {
+      'x-ncp-apigw-api-key-id': clientId,
+      'x-ncp-apigw-api-key': clientSecret.substring(0, 10) + '...'
     })
 
     if (!response.ok) {
-      console.error('[Geocoding] API 호출 실패:', response.status, response.statusText)
+      const errorText = await response.text()
+      console.error('[Geocoding] API 호출 실패:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      })
       return NextResponse.json(
-        { error: 'Geocoding API 호출 실패' },
+        { error: `Geocoding API 호출 실패: ${response.status}`, details: errorText },
         { status: response.status }
       )
     }
 
     const data = await response.json()
+    console.log('[Geocoding] API 응답:', data)
 
     // 결과가 있는지 확인
     if (!data.addresses || data.addresses.length === 0) {

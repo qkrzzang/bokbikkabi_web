@@ -49,6 +49,8 @@ interface PropertyDetail {
     explanationRate: number
   }
   reviews?: Review[]
+  latitude?: number
+  longitude?: number
 }
 
 interface PropertyListProps {

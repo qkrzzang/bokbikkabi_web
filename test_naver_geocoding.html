@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>네이버 Geocoding API 테스트</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    .input-group {
+      margin: 20px 0;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      padding: 12px 24px;
+      background: #1890ff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #096dd9;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .success { color: #52c41a; }
+    .error { color: #ff4d4f; }
+  </style>
+</head>
+<body>
+  <h1>네이버 Geocoding API 테스트</h1>
+  
+  <div class="input-group">
+    <label>Client ID (X-NCP-APIGW-API-KEY-ID):</label>
+    <input type="text" id="clientId" value="k4l6jv8v5v" placeholder="네이버 클라우드 플랫폼에서 확인">
+  </div>
+  
+  <div class="input-group">
+    <label>Client Secret (X-NCP-APIGW-API-KEY):</label>
+    <input type="password" id="clientSecret" value="f3f1WYdW3ZOE7KDnJbvfN0mXqdtjCZnNcNRJM7YD" placeholder="네이버 클라우드 플랫폼에서 확인">
+  </div>
+  
+  <div class="input-group">
+    <label>검색할 주소:</label>
+    <input type="text" id="address" value="경기도 성남시 분당구 불정로 6" placeholder="예: 경기도 성남시 분당구 불정로 6">
+  </div>
+  
+  <button onclick="testGeocoding()">테스트 실행</button>
+  
+  <div id="result">결과가 여기에 표시됩니다...</div>
+
+  <script>
+    async function testGeocoding() {
+      const clientId = document.getElementById('clientId').value.trim()
+      const clientSecret = document.getElementById('clientSecret').value.trim()
+      const address = document.getElementById('address').value.trim()
+      const resultDiv = document.getElementById('result')
+
+      if (!clientId || !clientSecret || !address) {
+        resultDiv.innerHTML = '<span class="error">❌ 모든 필드를 입력해주세요.</span>'
+        return
+      }
+
+      resultDiv.innerHTML = '⏳ API 호출 중...'
+
+      try {
+        const encodedAddress = encodeURIComponent(address)
+        const url = `https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodedAddress}`
+
+        console.log('=== 네이버 Geocoding API 테스트 ===')
+        console.log('URL:', url)
+        console.log('Client ID:', clientId)
+        console.log('Client Secret:', clientSecret.substring(0, 10) + '...')
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'X-NCP-APIGW-API-KEY-ID': clientId,
+            'X-NCP-APIGW-API-KEY': clientSecret,
+            'Accept': 'application/json',
+          },
+        })
+
+        console.log('응답 상태:', response.status)
+
+        const data = await response.json()
+        console.log('응답 데이터:', data)
+
+        if (!response.ok) {
+          resultDiv.innerHTML = `<span class="error">❌ API 호출 실패</span>
+          
+<strong>상태 코드:</strong> ${response.status} ${response.statusText}
+
+<strong>응답:</strong>
+${JSON.stringify(data, null, 2)}
+
+<strong>해결 방법:</strong>
+1. 네이버 클라우드 플랫폼 접속: https://console.ncloud.com
+2. Services → AI·NAVER API → Maps
+3. Application 선택
+4. Client ID, Client Secret 확인
+5. Geocoding 서비스가 추가되어 있는지 확인
+6. API Key가 활성화 상태인지 확인`
+          return
+        }
+
+        if (!data.addresses || data.addresses.length === 0) {
+          resultDiv.innerHTML = `<span class="error">❌ 주소를 찾을 수 없습니다</span>
+          
+검색 주소: ${address}
+          
+다른 주소로 시도해보세요.`
+          return
+        }
+
+        const result = data.addresses[0]
+        resultDiv.innerHTML = `<span class="success">✅ 성공!</span>
+
+<strong>검색 주소:</strong> ${address}
+
+<strong>도로명 주소:</strong> ${result.roadAddress || 'N/A'}
+<strong>지번 주소:</strong> ${result.jibunAddress || 'N/A'}
+
+<strong>좌표:</strong>
+- 위도 (latitude, y): ${result.y}
+- 경도 (longitude, x): ${result.x}
+
+<strong>전체 응답:</strong>
+${JSON.stringify(data, null, 2)}`
+      } catch (error) {
+        console.error('오류:', error)
+        resultDiv.innerHTML = `<span class="error">❌ 오류 발생</span>
+        
+${error.message}
+
+네트워크 연결을 확인하세요.`
+      }
+    }
+  </script>
+</body>
+</html>
+
