@@ -10,6 +10,8 @@ interface Property {
   name: string
   address: string
   rating: number
+  latitude?: number
+  longitude?: number
 }
 
 interface Review {
@@ -261,7 +263,7 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         // Promise.race로 타임아웃 구현
         const queryPromise = supabase
           .from('agent_master')
-          .select('id, agent_name, road_address, lot_address')
+          .select('id, agent_name, road_address, lot_address, latitude, longitude')
           .ilike('agent_name', `%${searchQuery}%`)
           .limit(50)
           .abortSignal(controller.signal)
@@ -330,7 +332,9 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         if (data && data.length > 0) {
           console.log(`[검색] 샘플 데이터:`, data.slice(0, 3).map((d: any) => ({
             id: d.id,
-            name: d.agent_name
+            name: d.agent_name,
+            lat: d.latitude,
+            lng: d.longitude
           })))
         }
 
@@ -387,6 +391,8 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           name: agent.agent_name || '',
           address: agent.road_address || agent.lot_address || '',
           rating: ratingsMap.get(agent.id) || 0,
+          latitude: agent.latitude,
+          longitude: agent.longitude,
         }))
 
         // 목업 데이터도 검색 결과에 포함 (예: "미금" 검색 시 미금퍼스트 노출)
@@ -608,6 +614,8 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           explanationRate: 90, // TODO: 실제 계산 로직 필요
         },
         reviews,
+        latitude: property.latitude,
+        longitude: property.longitude,
       }
 
       setSelectedProperty(propertyDetail)

@@ -47,6 +47,8 @@ interface PropertyDetail {
     explanationRate: number
   }
   reviews?: Review[]
+  latitude?: number
+  longitude?: number
 }
 
 interface PropertyDetailModalProps {
@@ -78,7 +80,7 @@ export default function PropertyDetailModal({
     }
   }, [isOpen])
 
-  // 주소를 좌표로 변환
+  // 주소를 좌표로 변환 (DB에 좌표가 있으면 사용, 없으면 Geocoding API 호출)
   useEffect(() => {
     if (!isOpen || !isLoggedIn || !property) {
       return
@@ -89,6 +91,15 @@ export default function PropertyDetailModal({
       setCoordinates(null)
       
       try {
+        // DB에 좌표가 있으면 바로 사용
+        if (property.latitude && property.longitude) {
+          console.log('[네이버 지도] DB 좌표 사용:', { lat: property.latitude, lng: property.longitude })
+          setCoordinates({ lat: property.latitude, lng: property.longitude })
+          setIsLoadingMap(false)
+          return
+        }
+
+        // DB에 좌표가 없으면 Geocoding API 호출
         console.log('[네이버 지도] 주소 → 좌표 변환 시작:', property.address)
         
         const response = await fetch(`/api/geocode?address=${encodeURIComponent(property.address)}`)
