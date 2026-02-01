@@ -25,12 +25,19 @@ export default function Home() {
       setSearchQuery('')
     }
 
+    const handleLogout = () => {
+      console.log(`[메인] 로그아웃 - 화면 초기화`)
+      setSearchQuery('')
+    }
+
     window.addEventListener('review:saved', handleReviewSaved as EventListener)
     window.addEventListener('logo:click', handleLogoClick)
+    window.addEventListener('user:logout', handleLogout)
 
     return () => {
       window.removeEventListener('review:saved', handleReviewSaved as EventListener)
       window.removeEventListener('logo:click', handleLogoClick)
+      window.removeEventListener('user:logout', handleLogout)
     }
   }, [])
 

@@ -558,7 +558,9 @@ export default function Header() {
       setUser(null)
       setIsProfileModalOpen(false)
       logAccess({ action: 'logout' })
-      // 팝업 없이 바로 로그아웃
+      
+      // 로그아웃 시 화면 초기화 이벤트 발생
+      window.dispatchEvent(new CustomEvent('user:logout'))
     } catch (error) {
       console.error('로그아웃 오류:', error)
       // 오류 발생 시에만 알림

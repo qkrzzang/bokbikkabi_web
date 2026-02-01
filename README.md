@@ -122,6 +122,7 @@ bokbikkabi_web/
 
 - [Supabase 데이터베이스 설정](supabase/README.md)
 - [네이버 지도 API 설정 가이드](docs/NAVER_MAP_API_SETUP.md)
+- [보안 가이드 (RLS 없이 안전하게 운영)](SECURITY_GUIDE.md)
 
 ## 데이터베이스 스키마
 

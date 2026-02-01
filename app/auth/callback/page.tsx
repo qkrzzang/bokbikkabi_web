@@ -59,6 +59,10 @@ function CallbackContent() {
         
         // 먼저 즉시 세션 확인 (코드 교환 완료 여부)
         const { data: { session: immediateSession } } = await supabase.auth.getSession()
+          .catch((err) => {
+            console.error('[콜백] getSession 오류:', err)
+            return { data: { session: null } }
+          })
         
         if (immediateSession) {
           console.log('[콜백] ✅ 즉시 세션 확인 성공!')

@@ -236,24 +236,16 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
   const [hasSearched, setHasSearched] = useState(false) // 검색 실행 여부 추적
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [abortController, setAbortController] = useState<AbortController | null>(null)
 
   useEffect(() => {
-    // 이전 요청 취소
-    if (abortController) {
-      console.log(`[검색] 이전 요청 취소`)
-      abortController.abort()
-    }
-
     if (!searchQuery.trim()) {
       // 검색어가 없을 때는 부동산 정보를 표시하지 않음
       setProperties([])
       setHasSearched(false)
-      setAbortController(null)
       return
     }
 
-    const searchAgents = async (controller: AbortController) => {
+    const searchAgents = async () => {
       setLoading(true)
       console.log(`[검색] 검색어: "${searchQuery}"`)
       
@@ -262,33 +254,14 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         console.log(`[검색] agent_master 테이블 조회 시작: agent_name ILIKE '%${searchQuery}%'`)
         const startTime = Date.now()
         
-        // Promise.race로 타임아웃 구현
-        const queryPromise = supabase
+        const { data, error } = await supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address, latitude, longitude')
           .ilike('agent_name', `%${searchQuery}%`)
           .limit(50)
-          .abortSignal(controller.signal)
-
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('TIMEOUT'))
-          }, 15000) // 15초로 증가 (Cold start 대응)
-        })
-
-        const result = await Promise.race([queryPromise, timeoutPromise])
-          .catch((err) => {
-            if (err.message === 'TIMEOUT') {
-              console.error('[검색] ⏱️ 타임아웃 (15초 초과) - DB 응답 없음')
-              return { data: null, error: { code: 'TIMEOUT', message: 'Query timeout' } }
-            }
-            throw err
-          })
 
         const endTime = Date.now()
         console.log(`[검색] 조회 완료 (소요 시간: ${endTime - startTime}ms)`)
-
-        const { data, error } = result as any
 
         if (error) {
           console.error('[검색] ❌ Supabase 조회 오류:', error)
@@ -350,7 +323,6 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
               .from('agent_reviews')
               .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
               .in('agent_id', agentIds)
-              .abortSignal(controller.signal)
             
             if (!reviewsError && reviewsData) {
               // 각 중개사무소별 평균 별점 계산
@@ -417,12 +389,6 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         setProperties(finalResults)
         setHasSearched(true)
       } catch (error: any) {
-        // AbortError는 정상적인 취소이므로 무시
-        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-          console.log('[검색] 요청 취소됨 (새로운 검색 시작)')
-          return
-        }
-        
         console.error('[검색] ❌ 예외 발생:', error)
         const q = searchQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
@@ -437,16 +403,12 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
     }
 
     // 디바운싱: 300ms 후 검색 실행
-    const controller = new AbortController()
-    setAbortController(controller)
-
     const timeoutId = setTimeout(() => {
-      searchAgents(controller)
+      searchAgents()
     }, 300)
 
     return () => {
       clearTimeout(timeoutId)
-      controller.abort()
     }
   }, [searchQuery])
 
