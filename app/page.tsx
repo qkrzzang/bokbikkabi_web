@@ -51,8 +51,8 @@ export default function Home() {
           {!searchQuery.trim() && <CopyBanner />}
           <PropertyList searchQuery={searchQuery} />
         </div>
-        <CameraButton />
       </main>
+      <CameraButton />
     </>
   )
 }

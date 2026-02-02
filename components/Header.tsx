@@ -743,40 +743,19 @@ export default function Header() {
             {user ? (
               <div className={styles.userMenu}>
                 <button
+                  className={styles.reviewButton}
+                  onClick={() => {
+                    const event = new CustomEvent('review:start')
+                    window.dispatchEvent(event)
+                  }}
+                >
+                  리뷰 작성
+                </button>
+                <button
                   className={styles.iconButton}
                   onClick={() => setIsSidebarOpen(true)}
                   aria-label="메뉴"
                 >
-                  {/* 햄버거 아이콘 */}
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M3 12H21"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M3 6H21"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M3 18H21"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
                   {/* 햄버거 아이콘 */}
                   <svg
                     width="24"

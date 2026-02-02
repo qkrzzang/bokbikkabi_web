@@ -105,9 +105,19 @@ export default function CameraButton() {
       }
     })
 
+    // 리뷰 작성 이벤트 리스너
+    const handleReviewStart = () => {
+      if (isMounted) {
+        handleButtonClick()
+      }
+    }
+
+    window.addEventListener('review:start', handleReviewStart)
+
     return () => {
       isMounted = false
       subscription.unsubscribe()
+      window.removeEventListener('review:start', handleReviewStart)
     }
   }, [])
 

@@ -41,6 +41,31 @@
   gap: 12px;
 }
 
+.userMenu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reviewButton {
+  padding: 8px 20px;
+  border: 2px solid #ffffff;
+  border-radius: 10px;
+  background-color: transparent;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reviewButton:hover {
+  background-color: #ffffff;
+  color: #7C3AED;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+}
+
 .loginButton {
   padding: 8px 20px;
   border: 2px solid #ffffff;
