@@ -504,6 +504,7 @@ export default function PropertyDetailModal({
                     </div>
                   ) : (
                     <div style={{
+                      width: '100%',
                       padding: '32px 24px',
                       backgroundColor: '#fef3c7',
                       border: '2px solid #f59e0b',
@@ -512,7 +513,8 @@ export default function PropertyDetailModal({
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '12px'
+                      gap: '12px',
+                      margin: '0 auto'
                     }}>
                       <div style={{ 
                         fontSize: '16px', 
