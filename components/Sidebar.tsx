@@ -42,9 +42,8 @@ export default function Sidebar({
       
       {/* 사이드바 */}
       <div className={styles.sidebar}>
-        {/* 헤더 */}
-        <div className={styles.sidebarHeader}>
-          <h3 className={styles.sidebarTitle}>메뉴</h3>
+        {/* 프로필 정보 - 최상단 */}
+        <div className={styles.profileSection}>
           <button
             className={styles.closeButton}
             onClick={onClose}
@@ -66,10 +65,6 @@ export default function Sidebar({
               />
             </svg>
           </button>
-        </div>
-
-        {/* 프로필 정보 */}
-        <div className={styles.profileSection}>
           <div className={styles.profileInfo}>
             <h4 className={styles.profileName}>
               {user.user_metadata?.name ||
@@ -85,7 +80,10 @@ export default function Sidebar({
               <span>갓까비</span>
               <button
                 className={styles.gradeInfoButton}
-                onClick={onGradeInfoClick}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onGradeInfoClick()
+                }}
                 aria-label="등급 안내"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -100,31 +98,61 @@ export default function Sidebar({
 
         {/* 메뉴 리스트 */}
         <nav className={styles.navList}>
-          <button className={styles.navItem} onClick={onMyContractsClick}>
+          <button 
+            className={styles.navItem} 
+            onClick={(e) => {
+              e.stopPropagation()
+              onMyContractsClick()
+            }}
+          >
             <span className={styles.navIcon}>📄</span>
             <span className={styles.navLabel}>내 계약서 보기</span>
             <span className={styles.chevron}>›</span>
           </button>
 
-          <button className={styles.navItem} onClick={onFavoritesClick}>
+          <button 
+            className={styles.navItem} 
+            onClick={(e) => {
+              e.stopPropagation()
+              onFavoritesClick()
+            }}
+          >
             <span className={styles.navIcon}>❤️</span>
             <span className={styles.navLabel}>내 관심 부동산</span>
             <span className={styles.chevron}>›</span>
           </button>
 
-          <button className={styles.navItem} onClick={onSettingsClick}>
+          <button 
+            className={styles.navItem} 
+            onClick={(e) => {
+              e.stopPropagation()
+              onSettingsClick()
+            }}
+          >
             <span className={styles.navIcon}>⚙️</span>
             <span className={styles.navLabel}>설정</span>
             <span className={styles.chevron}>›</span>
           </button>
 
-          <button className={styles.navItem} onClick={onPartnershipClick}>
+          <button 
+            className={styles.navItem} 
+            onClick={(e) => {
+              e.stopPropagation()
+              onPartnershipClick()
+            }}
+          >
             <span className={styles.navIcon}>🤝</span>
             <span className={styles.navLabel}>광고/제휴 문의</span>
             <span className={styles.chevron}>›</span>
           </button>
 
-          <button className={styles.navItem} onClick={onPolicyClick}>
+          <button 
+            className={styles.navItem} 
+            onClick={(e) => {
+              e.stopPropagation()
+              onPolicyClick()
+            }}
+          >
             <span className={styles.navIcon}>📋</span>
             <span className={styles.navLabel}>약관/정책</span>
             <span className={styles.chevron}>›</span>
@@ -132,7 +160,13 @@ export default function Sidebar({
 
           {/* 관리자 메뉴 - 관리자만 표시 */}
           {isAdmin && (
-            <button className={`${styles.navItem} ${styles.adminNavItem}`} onClick={onAdminClick}>
+            <button 
+              className={`${styles.navItem} ${styles.adminNavItem}`} 
+              onClick={(e) => {
+                e.stopPropagation()
+                onAdminClick()
+              }}
+            >
               <span className={styles.navIcon}>⚙️</span>
               <span className={styles.navLabel}>관리자 메뉴</span>
               <span className={styles.chevron}>›</span>
@@ -142,7 +176,13 @@ export default function Sidebar({
 
         {/* 로그아웃 */}
         <div className={styles.sidebarFooter}>
-          <button className={styles.logoutButton} onClick={onLogout}>
+          <button 
+            className={styles.logoutButton} 
+            onClick={(e) => {
+              e.stopPropagation()
+              onLogout()
+            }}
+          >
             로그아웃
           </button>
         </div>
