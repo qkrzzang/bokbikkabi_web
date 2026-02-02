@@ -115,7 +115,6 @@ export default function Header() {
   const [user, setUser] = useState<any>(null)
   const [userType, setUserType] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [notifications, setNotifications] = useState<string[]>([])
 
   // TODO: Supabase 연동 전까지 목 데이터 사용
   const mockFavoriteAgents: Array<{
@@ -582,12 +581,8 @@ export default function Header() {
     setIsProfileModalOpen(true)
   }
 
-  const closeNotificationModal = () => {
-    setIsNotificationModalOpen(false)
-  }
-
   const closeProfileModal = () => {
-    setIsProfileModalOpen(false)
+    // 프로필 모달 제거됨 (사이드바로 대체)
   }
 
   const openSettingsModal = () => {
@@ -914,81 +909,8 @@ export default function Header() {
         </div>
       )}
 
-      {/* 알림 모달 */}
-      {isNotificationModalOpen && (
-        <div className={styles.overlay} onClick={closeNotificationModal}>
-          <div className={styles.notificationModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.notificationModalContent}>
-              <div className={styles.notificationModalHeader}>
-                <h3 className={styles.notificationModalTitle}>알림</h3>
-                <button
-                  className={styles.closeButton}
-                  onClick={closeNotificationModal}
-                  aria-label="닫기"
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M18 6L6 18M6 6L18 18"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className={styles.notificationList}>
-                {notifications.length > 0 ? (
-                  notifications.map((notification, index) => (
-                    <div key={index} className={styles.notificationItem}>
-                      <div className={styles.notificationIcon}>
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-                            stroke="#063561"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M13.73 21a2 2 0 0 1-3.46 0"
-                            stroke="#063561"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </div>
-                      <div className={styles.notificationText}>
-                        {notification}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className={styles.emptyNotification}>
-                    알림이 없습니다.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 프로필 모달 */}
-      {isProfileModalOpen && user && (
+      {/* 프로필 모달 - 사이드바로 대체되어 제거됨 */}
+      {false && (
         <div className={styles.overlay} onClick={closeProfileModal}>
           <div className={styles.profileModal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.profileModalContent}>
