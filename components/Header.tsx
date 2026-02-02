@@ -192,13 +192,13 @@ export default function Header() {
       // 마스터별 상세 개수 계산
       const countMap: Record<string, number> = {}
       if (detailCountData) {
-        detailCountData.forEach((item) => {
+        detailCountData.forEach((item: any) => {
           countMap[item.code_group] = (countMap[item.code_group] || 0) + 1
         })
       }
 
       // 마스터 데이터에 상세 개수 추가
-      const masterWithCount = (masterData || []).map((m) => ({
+      const masterWithCount = (masterData || []).map((m: any) => ({
         ...m,
         detail_count: countMap[m.code_group] || 0,
       }))
@@ -451,7 +451,7 @@ export default function Header() {
     checkUser()
     
     // 인증 상태 변경 감지 (로그인/로그아웃 시 자동 업데이트)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: string, session: any) => {
       if (!isMounted) return
       
       if (session) {
@@ -677,9 +677,7 @@ export default function Header() {
           <div 
             className={styles.logo}
             onClick={() => {
-              console.log('[Header] 로고 클릭 - 홈으로 이동 및 검색 초기화')
               window.dispatchEvent(new CustomEvent('logo:click'))
-              // 페이지 새로고침이나 라우터 이동 없이 검색만 초기화
             }}
             style={{ cursor: 'pointer' }}
           >

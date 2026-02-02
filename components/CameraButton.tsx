@@ -99,7 +99,7 @@ export default function CameraButton() {
     checkSession()
     
     // 인증 상태 변경 감지
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
       if (isMounted) {
         setIsLoggedIn(!!session)
       }
@@ -124,11 +124,11 @@ export default function CameraButton() {
         return
       }
 
-      const activeData = (data || []).filter((item) => item.use_yn !== 'N')
-      setTransactionTagOptions(activeData.filter((item) => item.code_group === 'TRANSACTION_TYPE'))
-      setPraiseTagOptions(activeData.filter((item) => item.code_group === 'PRAISE_TAG'))
-      setRegretTagOptions(activeData.filter((item) => item.code_group === 'REGRET_TAG'))
-      setDetailEvaluations(activeData.filter((item) => item.code_group === 'DETAIL_EVALUATION'))
+      const activeData = (data || []).filter((item: any) => item.use_yn !== 'N')
+      setTransactionTagOptions(activeData.filter((item: any) => item.code_group === 'TRANSACTION_TYPE'))
+      setPraiseTagOptions(activeData.filter((item: any) => item.code_group === 'PRAISE_TAG'))
+      setRegretTagOptions(activeData.filter((item: any) => item.code_group === 'REGRET_TAG'))
+      setDetailEvaluations(activeData.filter((item: any) => item.code_group === 'DETAIL_EVALUATION'))
     } catch (error) {
       // 모든 오류 조용히 처리
     }
@@ -442,12 +442,8 @@ export default function CameraButton() {
   // 유사도 검색
   const fetchByNameAndNumber = async (agentName?: string, agentNumber?: string) => {
     if (!agentName && !agentNumber) {
-      console.log(`[클라이언트] ⚠️ 유사도 검색 건너뜀 (검색 조건 없음)`)
       return []
     }
-    
-    console.log(`[클라이언트] agent_master 테이블 유사도 검색 시작`)
-    console.log(`[클라이언트] 검색 조건: name="${agentName}", number="${agentNumber}"`)
 
     const filters: string[] = []
     
@@ -455,7 +451,6 @@ export default function CameraButton() {
       const cleanName = agentName.replace(/(공인중개사|부동산|사무소)$/g, '').trim()
       if (cleanName.length >= 2) {
         filters.push(`agent_name.ilike.%${cleanName}%`)
-        console.log(`[클라이언트] 이름 필터: %${cleanName}%`)
       }
     }
     
@@ -464,19 +459,14 @@ export default function CameraButton() {
       if (normalized.length >= 6) {
         const prefix = normalized.substring(0, 6)
         filters.push(`agent_number.ilike.%${prefix}%`)
-        console.log(`[클라이언트] 번호 필터 (앞 6자리): %${prefix}%`)
       } else if (normalized.length >= 3) {
         filters.push(`agent_number.ilike.%${normalized}%`)
-        console.log(`[클라이언트] 번호 필터 (전체): %${normalized}%`)
       }
     }
 
     if (filters.length === 0) {
-      console.log(`[클라이언트] ⚠️ 유효한 필터 없음`)
       return []
     }
-
-    console.log(`[클라이언트] 최종 필터:`, filters.join(' OR '))
 
     try {
       const { data, error } = await supabase
@@ -486,26 +476,10 @@ export default function CameraButton() {
         .limit(50)
 
       if (error) {
-        console.error('[클라이언트] ❌ 유사도 검색 오류:', error)
-        console.error('[클라이언트] 오류 상세:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        })
         return []
       }
 
-      console.log(`[클라이언트] ✅ 1차 DB 조회 성공: ${data?.length || 0}건`)
-
-      if (data && data.length > 0) {
-        console.log(`[클라이언트] 샘플 데이터:`, data.slice(0, 3).map(d => ({
-          number: d.agent_number,
-          name: d.agent_name
-        })))
-      }
-
-      const scoredCandidates = (data || []).map((candidate) => ({
+      const scoredCandidates = (data || []).map((candidate: any) => ({
         ...candidate,
         matchScore: getMatchScore(candidate, agentName, agentNumber),
         road_address: candidate.road_address || '',
@@ -513,20 +487,8 @@ export default function CameraButton() {
       }))
       
       const finalCandidates = scoredCandidates
-        .filter(c => (c.matchScore || 0) >= 0.3)
-        .sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0))
-      
-      console.log(`[클라이언트] 유사도 필터링 후 (≥0.3): ${finalCandidates.length}건`)
-      
-      if (finalCandidates.length > 0) {
-        console.log(`[클라이언트] ✅ 상위 2건:`, finalCandidates.slice(0, 2).map(c => ({
-          name: c.agent_name,
-          number: c.agent_number,
-          score: (c.matchScore || 0).toFixed(2)
-        })))
-      } else {
-        console.log(`[클라이언트] ⚠️ 유사도 0.3 이상인 데이터 없음`)
-      }
+        .filter((c: any) => (c.matchScore || 0) >= 0.3)
+        .sort((a: any, b: any) => (b.matchScore || 0) - (a.matchScore || 0))
 
       return finalCandidates
     } catch (error) {
@@ -830,8 +792,8 @@ export default function CameraButton() {
                     // 상위 2건만 유지
                     const topCandidates = combinedCandidates.slice(0, 2)
                     
-                    console.log(`[2단계] 후보 개수: ${topCandidates.length}`, 
-                      topCandidates.map(c => ({ name: c.agent_name, score: c.matchScore?.toFixed(2) }))
+                    console.log(`[2단계] 후보 개수: ${topCandidates.length}`,
+                      topCandidates.map((c: any) => ({ name: c.agent_name, score: c.matchScore?.toFixed(2) }))
                     )
                     
                     if (topCandidates.length > 0) {

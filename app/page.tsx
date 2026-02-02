@@ -15,18 +15,15 @@ export default function Home() {
     const handleReviewSaved = (event: Event) => {
       const detail = (event as CustomEvent).detail
       if (detail?.query) {
-        console.log(`[메인] 리뷰 저장 이벤트: "${detail.query}"`)
         setSearchQuery(detail.query)
       }
     }
 
     const handleLogoClick = () => {
-      console.log(`[메인] 로고 클릭 - 검색 초기화`)
       setSearchQuery('')
     }
 
     const handleLogout = () => {
-      console.log(`[메인] 로그아웃 - 화면 초기화`)
       setSearchQuery('')
     }
 
@@ -41,13 +38,7 @@ export default function Home() {
     }
   }, [])
 
-  // searchQuery 변경 로그
-  useEffect(() => {
-    console.log(`[메인] searchQuery 상태 변경: "${searchQuery}"`)
-  }, [searchQuery])
-
   const handleSearch = (query: string) => {
-    console.log(`[메인] 검색 실행: "${query}"`)
     setSearchQuery(query)
   }
 

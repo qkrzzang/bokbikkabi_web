@@ -59,7 +59,7 @@ function CallbackContent() {
         
         // 먼저 즉시 세션 확인 (코드 교환 완료 여부)
         const { data: { session: immediateSession } } = await supabase.auth.getSession()
-          .catch((err) => {
+          .catch((err: any) => {
             console.error('[콜백] getSession 오류:', err)
             return { data: { session: null } }
           })
@@ -91,7 +91,7 @@ function CallbackContent() {
         console.log('[콜백] 세션 없음 - onAuthStateChange 대기')
         
         // onAuthStateChange로 실시간 감지
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
           console.log('[콜백] 인증 이벤트:', event)
           console.log('[콜백] 세션:', session ? 'O' : 'X')
           

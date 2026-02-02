@@ -64,19 +64,35 @@ export default function PropertyDetailModal({
 }: PropertyDetailModalProps) {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [hasReviewAccess, setHasReviewAccess] = useState(false)
+  const [userReviewCount, setUserReviewCount] = useState(0)
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null)
   const [isLoadingMap, setIsLoadingMap] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
   const naverMapInstance = useRef<any>(null)
 
   useEffect(() => {
-    const checkSession = async () => {
+    const checkSessionAndReviews = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       setIsLoggedIn(!!session)
+      
+      if (session) {
+        // 사용자가 작성한 리뷰 개수 확인
+        const { data: reviewData, error } = await supabase
+          .from('agent_reviews')
+          .select('id', { count: 'exact', head: true })
+          .eq('supabase_user_id', session.user.id)
+        
+        if (!error && reviewData !== null) {
+          const count = (reviewData as any).count || 0
+          setUserReviewCount(count)
+          setHasReviewAccess(count >= 1) // 1건 이상이면 접근 가능
+        }
+      }
     }
     
     if (isOpen) {
-      checkSession()
+      checkSessionAndReviews()
     }
   }, [isOpen])
 
@@ -93,19 +109,15 @@ export default function PropertyDetailModal({
       try {
         // DB에 좌표가 있으면 바로 사용
         if (property.latitude && property.longitude) {
-          console.log('[네이버 지도] DB 좌표 사용:', { lat: property.latitude, lng: property.longitude })
           setCoordinates({ lat: property.latitude, lng: property.longitude })
           setIsLoadingMap(false)
           return
         }
 
         // DB에 좌표가 없으면 Geocoding API 호출
-        console.log('[네이버 지도] 주소 → 좌표 변환 시작:', property.address)
-        
         const response = await fetch(`/api/geocode?address=${encodeURIComponent(property.address)}`)
         
         if (!response.ok) {
-          console.error('[네이버 지도] Geocoding 실패:', response.status)
           setIsLoadingMap(false)
           return
         }
@@ -113,13 +125,10 @@ export default function PropertyDetailModal({
         const data = await response.json()
         
         if (data.lat && data.lng) {
-          console.log('[네이버 지도] 좌표 변환 성공:', { lat: data.lat, lng: data.lng })
           setCoordinates({ lat: data.lat, lng: data.lng })
-        } else {
-          console.error('[네이버 지도] 좌표 데이터 없음')
         }
       } catch (error) {
-        console.error('[네이버 지도] Geocoding 오류:', error)
+        // Geocoding 실패 시 조용히 무시
       } finally {
         setIsLoadingMap(false)
       }
@@ -136,17 +145,12 @@ export default function PropertyDetailModal({
 
     // 네이버 지도 API가 로드되었는지 확인
     if (typeof window === 'undefined' || !window.naver || !window.naver.maps) {
-      console.log('[네이버 지도] API가 로드되지 않았습니다.')
       return
     }
 
     // 네이버 지도 초기화
     const initMap = async () => {
       try {
-        console.log('[네이버 지도] 초기화 시작')
-        console.log('[네이버 지도] 주소:', property.address)
-        console.log('[네이버 지도] 좌표:', coordinates)
-
         // 지도 인스턴스가 이미 있으면 제거
         if (naverMapInstance.current) {
           naverMapInstance.current.destroy()
@@ -229,20 +233,16 @@ export default function PropertyDetailModal({
 
         // 초기에 정보 창 표시
         infoWindow.open(map, marker)
-
-        console.log('[네이버 지도] 초기화 완료 ✅')
       } catch (error) {
-        console.error('[네이버 지도] 초기화 오류:', error)
+        // 지도 초기화 실패 시 조용히 무시
       }
     }
 
     // 지도 초기화 (네이버 지도 SDK 로드 대기)
     const checkAndInit = () => {
       if (window.naver && window.naver.maps) {
-        console.log('[네이버 지도] SDK 로드 확인 ✅')
         initMap()
       } else {
-        console.log('[네이버 지도] SDK 로드 대기 중...')
         setTimeout(checkAndInit, 500)
       }
     }
@@ -490,21 +490,39 @@ export default function PropertyDetailModal({
             {isLoggedIn && (
               <>
                 <div className={styles.ratingSection}>
-                  <div
-                    className={styles.ratingMain}
-                    onClick={handleRatingClick}
-                    style={{ cursor: property.reviews && property.reviews.length > 0 ? 'pointer' : 'default' }}
-                  >
-                    <span className={styles.ratingStars}>
-                      {renderStars(property.rating)}
-                    </span>
-                    <span className={styles.reviewCountInline}>({property.reviewCount})</span>
-                    <span className={styles.viewAll}>전체보기 &gt;</span>
-                  </div>
+                  {hasReviewAccess ? (
+                    <div
+                      className={styles.ratingMain}
+                      onClick={handleRatingClick}
+                      style={{ cursor: property.reviews && property.reviews.length > 0 ? 'pointer' : 'default' }}
+                    >
+                      <span className={styles.ratingStars}>
+                        {renderStars(property.rating)}
+                      </span>
+                      <span className={styles.reviewCountInline}>({property.reviewCount})</span>
+                      <span className={styles.viewAll}>전체보기 &gt;</span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: '16px',
+                      backgroundColor: '#fef3c7',
+                      border: '2px solid #f59e0b',
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#92400e', marginBottom: '8px' }}>
+                        🔒 리뷰를 보려면 계약서를 등록하세요
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#78350f' }}>
+                        본인의 계약서를 1건 이상 등록하면<br />
+                        다른 사용자들의 리뷰를 확인할 수 있습니다.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* 키워드 뱃지 */}
-                {property.praiseTags.length > 0 && (
+                {/* 키워드 뱃지 - 리뷰 접근 권한이 있을 때만 표시 */}
+                {hasReviewAccess && property.praiseTags.length > 0 && (
                   <div className={styles.badgeSection}>
                     <div className={styles.badgeGroup}>
                       <span className={styles.badgeLabel}>칭찬 태그:</span>
@@ -519,7 +537,7 @@ export default function PropertyDetailModal({
                   </div>
                 )}
 
-                {property.regretTags.length > 0 && (
+                {hasReviewAccess && property.regretTags.length > 0 && (
                   <div className={styles.badgeSection}>
                     <div className={styles.badgeGroup}>
                       <span className={styles.badgeLabel}>아쉬움 태그:</span>
@@ -534,52 +552,56 @@ export default function PropertyDetailModal({
                   </div>
                 )}
 
-                {/* 상세 평가 */}
-                <div className={styles.evaluationSection}>
-                  <h3 className={styles.sectionTitle}>상세 평가</h3>
-                  <div className={styles.evaluationList}>
-                    {property.detailedEvaluation.map((item, index) => (
-                      <div key={index} className={styles.evaluationItem}>
-                        <div className={styles.evaluationHeader}>
-                          <span className={styles.evaluationCategory}>
-                            {item.category}
-                          </span>
-                          {item.comment && (
-                            <span className={styles.evaluationComment}>
-                              {item.comment}
+                {/* 상세 평가 - 리뷰 접근 권한이 있을 때만 표시 */}
+                {hasReviewAccess && (
+                  <div className={styles.evaluationSection}>
+                    <h3 className={styles.sectionTitle}>상세 평가</h3>
+                    <div className={styles.evaluationList}>
+                      {property.detailedEvaluation.map((item, index) => (
+                        <div key={index} className={styles.evaluationItem}>
+                          <div className={styles.evaluationHeader}>
+                            <span className={styles.evaluationCategory}>
+                              {item.category}
                             </span>
-                          )}
+                            {item.comment && (
+                              <span className={styles.evaluationComment}>
+                                {item.comment}
+                              </span>
+                            )}
+                          </div>
+                          {renderScoreBar(item.score)}
                         </div>
-                        {renderScoreBar(item.score)}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* 핵심 요약 */}
-                <div className={styles.summarySection}>
-                  <h3 className={styles.sectionTitle}>핵심 요약</h3>
-                  <div className={styles.summaryList}>
-                    <div className={styles.summaryItem}>
-                      <div className={`${styles.summaryIcon} ${styles.greenIcon}`} />
-                      <span className={styles.summaryText}>
-                        {property.keySummary.recommendRate}% 가 이 부동산을 추천해요
-                      </span>
-                    </div>
-                    <div className={styles.summaryItem}>
-                      <div className={`${styles.summaryIcon} ${styles.yellowIcon}`} />
-                      <span className={styles.summaryText}>
-                        {property.keySummary.discountRate}% 가 수수료 할인을 받았어요
-                      </span>
-                    </div>
-                    <div className={styles.summaryItem}>
-                      <div className={`${styles.summaryIcon} ${styles.blueIcon}`} />
-                      <span className={styles.summaryText}>
-                        {property.keySummary.explanationRate}% 가 계약 설명이 꼼꼼했다고 해요
-                      </span>
+                {/* 핵심 요약 - 리뷰 접근 권한이 있을 때만 표시 */}
+                {hasReviewAccess && (
+                  <div className={styles.summarySection}>
+                    <h3 className={styles.sectionTitle}>핵심 요약</h3>
+                    <div className={styles.summaryList}>
+                      <div className={styles.summaryItem}>
+                        <div className={`${styles.summaryIcon} ${styles.greenIcon}`} />
+                        <span className={styles.summaryText}>
+                          {property.keySummary.recommendRate}% 가 이 부동산을 추천해요
+                        </span>
+                      </div>
+                      <div className={styles.summaryItem}>
+                        <div className={`${styles.summaryIcon} ${styles.yellowIcon}`} />
+                        <span className={styles.summaryText}>
+                          {property.keySummary.discountRate}% 가 수수료 할인을 받았어요
+                        </span>
+                      </div>
+                      <div className={styles.summaryItem}>
+                        <div className={`${styles.summaryIcon} ${styles.blueIcon}`} />
+                        <span className={styles.summaryText}>
+                          {property.keySummary.explanationRate}% 가 계약 설명이 꼼꼼했다고 해요
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* 네이버 지도 */}
                 <div className={styles.mapSection}>

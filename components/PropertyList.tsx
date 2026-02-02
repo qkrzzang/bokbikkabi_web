@@ -247,70 +247,26 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
 
     const searchAgents = async () => {
       setLoading(true)
-      console.log(`[검색] 검색어: "${searchQuery}"`)
       
       try {
-        // agent_master 테이블에서 agent_name으로 검색
-        console.log(`[검색] agent_master 테이블 조회 시작: agent_name ILIKE '%${searchQuery}%'`)
-        const startTime = Date.now()
-        
         const { data, error } = await supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address, latitude, longitude')
           .ilike('agent_name', `%${searchQuery}%`)
           .limit(50)
 
-        const endTime = Date.now()
-        console.log(`[검색] 조회 완료 (소요 시간: ${endTime - startTime}ms)`)
-
         if (error) {
-          console.error('[검색] ❌ Supabase 조회 오류:', error)
-          console.error('[검색] 오류 상세:', {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            hint: error.hint
-          })
-          
-          // 타임아웃 오류
-          if (error.code === 'TIMEOUT') {
-            console.error('[검색] 🚨 원인: Supabase 서버 응답 없음 (15초 초과)')
-            console.error('[검색] 🔧 해결 방법:')
-            console.error('  1. Supabase Dashboard 접속 → 프로젝트 상태 확인')
-            console.error('  2. 프로젝트가 일시중지(Paused) 상태인지 확인')
-            console.error('  3. 무료 티어: 7일 미사용 시 자동 일시중지')
-            console.error('  4. Dashboard에서 "Resume" 버튼 클릭')
-            console.error('  5. Cold start 시 첫 요청은 10-20초 소요될 수 있음')
-          }
-          
-          // RLS 권한 오류인 경우 안내 메시지
-          if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('RLS')) {
-            console.error('[검색] 🚨 RLS 정책 미설정! Supabase Dashboard에서 아래 SQL 실행 필요:')
-            console.error('ALTER TABLE agent_master ENABLE ROW LEVEL SECURITY;')
-            console.error('CREATE POLICY "Enable read access for all users" ON agent_master FOR SELECT USING (true);')
-          }
+          console.error('[검색] DB 조회 오류:', error.message)
           
           // DB 검색이 실패해도 목업 검색 결과는 보여주기
           const q = searchQuery.trim().toLowerCase()
           const mockMatches = mockProperties.filter(
             (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
           )
-          console.log(`[검색] DB 조회 실패, 목업 데이터 사용: ${mockMatches.length}건`)
           setProperties(mockMatches)
           setHasSearched(true)
           setLoading(false)
           return
-        }
-
-        console.log(`[검색] ✅ DB 조회 성공: ${data?.length || 0}건`)
-        
-        if (data && data.length > 0) {
-          console.log(`[검색] 샘플 데이터:`, data.slice(0, 3).map((d: any) => ({
-            id: d.id,
-            name: d.agent_name,
-            lat: d.latitude,
-            lng: d.longitude
-          })))
         }
 
         // 각 중개사무소의 평균 별점 조회
@@ -328,14 +284,14 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
               // 각 중개사무소별 평균 별점 계산
               const agentReviews = new Map<number, number[]>()
               
-              reviewsData.forEach(review => {
+              reviewsData.forEach((review: any) => {
                 const ratings = [
                   review.fee_satisfaction,
                   review.expertise,
                   review.kindness,
                   review.property_reliability,
                   review.response_speed
-                ].filter(r => r !== null && r !== undefined) as number[]
+                ].filter((r: any) => r !== null && r !== undefined) as number[]
                 
                 if (ratings.length > 0) {
                   const avg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
@@ -352,10 +308,9 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
                 ratingsMap.set(agentId, Math.round(overallAvg * 10) / 10)
               })
               
-              console.log(`[검색] 평균 별점 조회 완료: ${ratingsMap.size}개 중개사무소`)
             }
           } catch (reviewsError) {
-            console.error('[검색] 리뷰 데이터 조회 오류:', reviewsError)
+            // 리뷰 조회 실패 시 조용히 무시
           }
         }
 
@@ -369,24 +324,16 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
           longitude: agent.longitude,
         }))
 
-        // 목업 데이터도 검색 결과에 포함 (예: "미금" 검색 시 미금퍼스트 노출)
-        const q = searchQuery.trim().toLowerCase()
-        const mockMatches = mockProperties.filter(
-          (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
-        )
-
-        console.log(`[검색] 목업 매칭: ${mockMatches.length}건`)
-
-        // 목업을 우선 노출하고, DB 결과와 합치되 중복 id는 제거
-        const mergedMap = new Map<string, Property>()
-        for (const p of [...mockMatches, ...propertiesData]) {
-          if (!mergedMap.has(p.id)) mergedMap.set(p.id, p)
+        // DB에 결과가 있으면 DB 결과만 사용, 없으면 목업 데이터 사용
+        if (propertiesData.length > 0) {
+          setProperties(propertiesData)
+        } else {
+          const q = searchQuery.trim().toLowerCase()
+          const mockMatches = mockProperties.filter(
+            (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
+          )
+          setProperties(mockMatches)
         }
-        
-        const finalResults = Array.from(mergedMap.values())
-        console.log(`[검색] 최종 결과: ${finalResults.length}건`)
-        
-        setProperties(finalResults)
         setHasSearched(true)
       } catch (error: any) {
         console.error('[검색] ❌ 예외 발생:', error)
@@ -457,7 +404,6 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
 
     // 실제 DB 데이터 조회
     try {
-      console.log(`[상세 조회] agent_id: ${property.id}`)
       const { data: reviewsData, error: reviewsError } = await supabase
         .from('agent_reviews')
         .select(`
@@ -467,24 +413,16 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         .eq('agent_id', parseInt(property.id))
         .order('created_at', { ascending: false })
 
-      if (reviewsError) {
-        console.error('[상세 조회] 리뷰 조회 오류:', reviewsError)
+      if (reviewsError || !reviewsData || reviewsData.length === 0) {
         return
       }
-
-      if (!reviewsData || reviewsData.length === 0) {
-        console.log('[상세 조회] 리뷰 없음')
-        return
-      }
-
-      console.log(`[상세 조회] 리뷰 ${reviewsData.length}건 조회 완료`)
 
       // 태그 집계
       const allTransactionTags = new Set<string>()
       const allPraiseTags = new Set<string>()
       const allRegretTags = new Set<string>()
       
-      reviewsData.forEach(review => {
+      reviewsData.forEach((review: any) => {
         if (review.transaction_tag) allTransactionTags.add(review.transaction_tag)
         if (review.praise_tags) review.praise_tags.forEach((tag: string) => allPraiseTags.add(tag))
         if (review.regret_tags) review.regret_tags.forEach((tag: string) => allRegretTags.add(tag))
@@ -602,19 +540,6 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
               <h3 className={styles.propertyName}>{property.name}</h3>
             </div>
             <p className={styles.propertyAddress}>{property.address}</p>
-            {property.rating > 0 ? (
-              <div className={styles.propertyRating}>
-                <span className={styles.ratingStars}>
-                  {'★'.repeat(Math.floor(property.rating))}
-                  {'☆'.repeat(5 - Math.floor(property.rating))}
-                </span>
-                <span className={styles.ratingValue}>{property.rating.toFixed(1)}</span>
-              </div>
-            ) : (
-              <div className={styles.propertyRating}>
-                <span className={styles.noRating}>아직 리뷰가 없어요</span>
-              </div>
-            )}
           </div>
         ))}
       </div>

@@ -11,19 +11,9 @@ interface SearchBarProps {
 export default function SearchBar({ onSearch, value }: SearchBarProps) {
   const [query, setQuery] = useState('')
 
-  // 컴포넌트 마운트 로그
-  useEffect(() => {
-    console.log(`[검색창] SearchBar 컴포넌트 마운트`)
-    console.log(`[검색창] 초기 value prop: "${value}"`)
-    return () => {
-      console.log(`[검색창] SearchBar 컴포넌트 언마운트`)
-    }
-  }, [])
-
   // value prop이 변경되었을 때만 내부 상태 업데이트
   useEffect(() => {
     if (typeof value === 'string') {
-      console.log(`[검색창] 외부에서 값 설정: "${value}"`)
       setQuery(value)
     }
   }, [value])
@@ -31,32 +21,16 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const trimmedQuery = query.trim()
-    console.log(`[검색창] 폼 제출: "${trimmedQuery}"`)
     if (trimmedQuery) {
       onSearch(trimmedQuery)
     }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value
-    console.log(`[검색창] onChange 이벤트 발생: "${newValue}"`)
-    setQuery(newValue)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    console.log(`[검색창] 키 입력: "${e.key}"`)
-  }
-
-  const handleFocus = () => {
-    console.log(`[검색창] 포커스 획득`)
-  }
-
-  const handleBlur = () => {
-    console.log(`[검색창] 포커스 해제`)
+    setQuery(e.target.value)
   }
 
   const handleClear = () => {
-    console.log(`[검색창] 검색어 초기화`)
     setQuery('')
     onSearch('')
   }
@@ -68,9 +42,6 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
           type="text"
           value={query}
           onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
           placeholder="공인중개사사무소명을 검색해보세요"
           className={styles.searchInput}
           autoComplete="off"
