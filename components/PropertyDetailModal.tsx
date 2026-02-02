@@ -504,16 +504,20 @@ export default function PropertyDetailModal({
                     </div>
                   ) : (
                     <div style={{
-                      padding: '16px',
+                      padding: '24px',
                       backgroundColor: '#fef3c7',
                       border: '2px solid #f59e0b',
                       borderRadius: '8px',
-                      textAlign: 'center'
+                      textAlign: 'center',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}>
-                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#92400e', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#92400e', marginBottom: '12px' }}>
                         🔒 리뷰를 보려면 계약서를 등록하세요
                       </div>
-                      <div style={{ fontSize: '14px', color: '#78350f' }}>
+                      <div style={{ fontSize: '14px', color: '#78350f', lineHeight: '1.6' }}>
                         본인의 계약서를 1건 이상 등록하면<br />
                         다른 사용자들의 리뷰를 확인할 수 있습니다.
                       </div>
