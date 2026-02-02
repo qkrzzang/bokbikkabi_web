@@ -389,11 +389,6 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
   }
 
   const handlePropertyClick = async (property: Property) => {
-    // 리뷰가 없으면 팝업을 표시하지 않음
-    if (property.rating === 0) {
-      return
-    }
-
     // 목업 데이터가 있으면 그대로 사용
     const mockDetail = getPropertyDetail(property.id)
     if (mockDetail) {
@@ -413,7 +408,33 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
         .eq('agent_id', parseInt(property.id))
         .order('created_at', { ascending: false })
 
-      if (reviewsError || !reviewsData || reviewsData.length === 0) {
+      // 리뷰가 없어도 팝업 표시 (빈 리뷰로)
+      const hasReviews = !reviewsError && reviewsData && reviewsData.length > 0
+
+      // 리뷰가 없는 경우 기본 PropertyDetail 생성
+      if (!hasReviews) {
+        const emptyPropertyDetail: PropertyDetail = {
+          id: property.id,
+          name: property.name,
+          address: property.address,
+          rating: 0,
+          reviewCount: 0,
+          transactionTags: [],
+          praiseTags: [],
+          regretTags: [],
+          detailedEvaluation: [],
+          keySummary: {
+            recommendRate: 0,
+            discountRate: 0,
+            explanationRate: 0,
+          },
+          reviews: [],
+          latitude: property.latitude,
+          longitude: property.longitude,
+        }
+        
+        setSelectedProperty(emptyPropertyDetail)
+        setIsModalOpen(true)
         return
       }
 
