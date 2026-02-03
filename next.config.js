@@ -8,8 +8,7 @@ const nextConfig = {
       // .env.local에서 필수 환경변수 확인
       const requiredEnvVars = [
         'NEXT_PUBLIC_SUPABASE_URL',
-        'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-        'NEXT_PUBLIC_ENCRYPTION_KEY'
+        'NEXT_PUBLIC_SUPABASE_ANON_KEY'
       ]
       
       const optionalEnvVars = [

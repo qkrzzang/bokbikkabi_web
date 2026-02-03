@@ -78,16 +78,19 @@ export default function PropertyDetailModal({
       
       if (session) {
         // 사용자가 작성한 리뷰 개수 확인
-        const { data: reviewData, error } = await supabase
+        const { data: reviewData, error, count } = await supabase
           .from('agent_reviews')
-          .select('id', { count: 'exact', head: true })
+          .select('*', { count: 'exact', head: true })
           .eq('supabase_user_id', session.user.id)
         
-        if (!error && reviewData !== null) {
-          const count = (reviewData as any).count || 0
-          setUserReviewCount(count)
-          setHasReviewAccess(count >= 1) // 1건 이상이면 접근 가능
+        if (error) {
+          console.error('[PropertyDetailModal] 리뷰 개수 조회 실패:', error)
         }
+        
+        const reviewCount = count || 0
+        console.log('[PropertyDetailModal] 사용자 리뷰 개수:', reviewCount)
+        setUserReviewCount(reviewCount)
+        setHasReviewAccess(reviewCount >= 1) // 1건 이상이면 접근 가능
       }
     }
     
@@ -491,17 +494,59 @@ export default function PropertyDetailModal({
               <>
                 <div className={styles.ratingSection}>
                   {hasReviewAccess ? (
-                    <div
-                      className={styles.ratingMain}
-                      onClick={handleRatingClick}
-                      style={{ cursor: property.reviews && property.reviews.length > 0 ? 'pointer' : 'default' }}
-                    >
-                      <span className={styles.ratingStars}>
-                        {renderStars(property.rating)}
-                      </span>
-                      <span className={styles.reviewCountInline}>({property.reviewCount})</span>
-                      <span className={styles.viewAll}>전체보기 &gt;</span>
-                    </div>
+                    property.reviewCount > 0 ? (
+                      <div
+                        className={styles.ratingMain}
+                        onClick={handleRatingClick}
+                        style={{ cursor: property.reviews && property.reviews.length > 0 ? 'pointer' : 'default' }}
+                      >
+                        <span className={styles.ratingStars}>
+                          {renderStars(property.rating)}
+                        </span>
+                        <span className={styles.reviewCountInline}>({property.reviewCount})</span>
+                        <span className={styles.viewAll}>전체보기 &gt;</span>
+                      </div>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        padding: '32px 24px',
+                        backgroundColor: '#f0f9ff',
+                        border: '2px solid #3b82f6',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        margin: '0 auto'
+                      }}>
+                        <div style={{ 
+                          fontSize: '48px',
+                          marginBottom: '8px'
+                        }}>
+                          📝
+                        </div>
+                        <div style={{ 
+                          fontSize: '16px', 
+                          fontWeight: 700, 
+                          color: '#1e40af', 
+                          textAlign: 'center',
+                          width: '100%'
+                        }}>
+                          아직 등록된 리뷰가 없습니다
+                        </div>
+                        <div style={{ 
+                          fontSize: '14px', 
+                          color: '#1e3a8a', 
+                          lineHeight: '1.6',
+                          textAlign: 'center',
+                          width: '100%'
+                        }}>
+                          이 공인중개사무소의 첫 번째 리뷰를<br />
+                          작성해보시겠어요?
+                        </div>
+                      </div>
+                    )
                   ) : (
                     <div style={{
                       width: '100%',

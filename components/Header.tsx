@@ -5,7 +5,6 @@ import styles from './Header.module.css'
 import { signInWithKakao, signInWithGoogle, getCurrentUser, signOut } from '@/lib/auth'
 import { logAccess } from '@/lib/accessLog'
 import { supabase } from '@/lib/supabase/client'
-import { decryptFile } from '@/lib/encryption'
 import Sidebar from './Sidebar'
 
 export default function Header() {
@@ -24,7 +23,7 @@ export default function Header() {
   const [isImageLoading, setIsImageLoading] = useState(false)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
   const [isAdminScreenOpen, setIsAdminScreenOpen] = useState(false)
-  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'analytics'>('common-code')
+  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'analytics' | 'partnership'>('common-code')
   const [selectedCodeGroup, setSelectedCodeGroup] = useState<string | null>(null)
   const [showSaveSuccessToast, setShowSaveSuccessToast] = useState(false)
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('')
@@ -111,6 +110,28 @@ export default function Header() {
     user_type: string | null
     user_grade: string | null
   } | null>(null)
+  
+  // 광고/제휴 문의 관리 상태
+  const [partnershipList, setPartnershipList] = useState<Array<{
+    id: number
+    supabase_user_id: string
+    user_email: string | null
+    user_name: string | null
+    company_name: string | null
+    contact_phone: string | null
+    inquiry_type: string
+    title: string
+    content: string
+    status: string
+    admin_reply: string | null
+    created_at: string
+    updated_at: string
+    replied_at: string | null
+  }>>([])
+  const [isPartnershipLoading, setIsPartnershipLoading] = useState(false)
+  const [partnershipStatusFilter, setPartnershipStatusFilter] = useState('')
+  const [selectedInquiry, setSelectedInquiry] = useState<any>(null)
+  const [replyText, setReplyText] = useState('')
   
   const [user, setUser] = useState<any>(null)
   const [userType, setUserType] = useState<string | null>(null)
@@ -418,6 +439,60 @@ export default function Header() {
     }
   }
 
+  // 광고/제휴 문의 목록 조회
+  const fetchPartnershipInquiries = async () => {
+    try {
+      setIsPartnershipLoading(true)
+      const { data, error } = await supabase
+        .from('partnership_inquiries')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        setIsPartnershipLoading(false)
+        return
+      }
+
+      setPartnershipList(data || [])
+    } catch (error) {
+      // 모든 오류 조용히 처리
+    } finally {
+      setIsPartnershipLoading(false)
+    }
+  }
+
+  // 문의 상태 업데이트
+  const updateInquiryStatus = async (id: number, status: string, reply?: string) => {
+    try {
+      const updateData: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      }
+      
+      if (reply) {
+        updateData.admin_reply = reply
+        updateData.replied_at = new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('partnership_inquiries')
+        .update(updateData)
+        .eq('id', id)
+
+      if (error) throw error
+
+      await fetchPartnershipInquiries()
+      setSelectedInquiry(null)
+      setReplyText('')
+      
+      setSaveSuccessMessage('저장되었습니다')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 2000)
+    } catch (error) {
+      alert('저장 중 오류가 발생했습니다.')
+    }
+  }
+
   useEffect(() => {
     let isMounted = true
     
@@ -516,6 +591,23 @@ export default function Header() {
     }
   }, [isAdminScreenOpen, adminMenu])
 
+  // 관리자 화면 열릴 때 광고/제휴 문의 데이터 로드
+  useEffect(() => {
+    let isMounted = true
+    
+    const loadData = async () => {
+      if (isAdminScreenOpen && adminMenu === 'partnership' && isMounted) {
+        await fetchPartnershipInquiries()
+      }
+    }
+    
+    loadData()
+    
+    return () => {
+      isMounted = false
+    }
+  }, [isAdminScreenOpen, adminMenu])
+
   const handleLogin = () => {
     setIsLoginModalOpen(true)
     logAccess({ action: 'login_modal_open' })
@@ -555,7 +647,6 @@ export default function Header() {
     try {
       await signOut()
       setUser(null)
-      setIsProfileModalOpen(false)
       logAccess({ action: 'logout' })
       
       // 로그아웃 시 화면 초기화 이벤트 발생
@@ -567,19 +658,6 @@ export default function Header() {
     }
   }
 
-  const handleNotificationClick = () => {
-    setIsNotificationModalOpen(true)
-    // 예시 알림 데이터
-    setNotifications([
-      '미금부동산에 최근 리뷰 3건이 등록되었습니다.',
-      '강남중개사무소에 새 리뷰 1건이 등록되었습니다.',
-      '서초부동산에 최근 리뷰 5건이 등록되었습니다.',
-    ])
-  }
-
-  const handleProfileClick = () => {
-    setIsProfileModalOpen(true)
-  }
 
   const closeProfileModal = () => {
     // 프로필 모달 제거됨 (사이드바로 대체)
@@ -673,46 +751,10 @@ export default function Header() {
         onClose={() => setIsSidebarOpen(false)}
         user={user}
         isAdmin={isAdmin}
-        onMyContractsClick={async () => {
-          const { data: { session } } = await supabase.auth.getSession()
-          if (!session) return
-
-          const { data, error } = await supabase
-            .from('agent_reviews')
-            .select(`
-              *,
-              agent:agent_master(agent_name, road_address, lot_address)
-            `)
-            .eq('supabase_user_id', session.user.id)
-            .order('created_at', { ascending: false })
-
-          if (!error && data) {
-            setMyContracts(data)
-            setIsMyContractsModalOpen(true)
-            setIsSidebarOpen(false)
-          }
-        }}
-        onFavoritesClick={() => {
-          setIsFavoritesModalOpen(true)
-          setIsSidebarOpen(false)
-        }}
-        onPartnershipClick={() => {
-          setIsPartnershipModalOpen(true)
-          setIsSidebarOpen(false)
-        }}
-        onPolicyClick={() => {
-          setIsPolicyModalOpen(true)
-          setIsSidebarOpen(false)
-        }}
         onGradeInfoClick={() => {
           setIsGradeInfoModalOpen(true)
-          setIsSidebarOpen(false)
         }}
-        onSettingsClick={() => {
-          setIsSettingsModalOpen(true)
-          setIsSidebarOpen(false)
-        }}
-        onAdminClick={() => {
+        onAdminScreenClick={() => {
           setIsAdminScreenOpen(true)
           setIsSidebarOpen(false)
         }}
@@ -742,15 +784,6 @@ export default function Header() {
           <div className={styles.rightSection}>
             {user ? (
               <div className={styles.userMenu}>
-                <button
-                  className={styles.reviewButton}
-                  onClick={() => {
-                    const event = new CustomEvent('review:start')
-                    window.dispatchEvent(event)
-                  }}
-                >
-                  리뷰 작성
-                </button>
                 <button
                   className={styles.iconButton}
                   onClick={() => setIsSidebarOpen(true)}
@@ -1426,6 +1459,13 @@ export default function Header() {
                 >
                   <span className={styles.adminSidebarIcon}>⚙️</span>
                   <span className={styles.adminSidebarLabel}>배치 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'partnership' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('partnership')}
+                >
+                  <span className={styles.adminSidebarIcon}>🤝</span>
+                  <span className={styles.adminSidebarLabel}>광고/제휴 문의</span>
                 </button>
                 <button
                   className={`${styles.adminSidebarItem} ${adminMenu === 'analytics' ? styles.adminSidebarItemActive : ''}`}
@@ -2179,6 +2219,184 @@ export default function Header() {
                 </div>
               )}
 
+              {/* 광고/제휴 문의 관리 */}
+              {adminMenu === 'partnership' && (
+                <div className={styles.adminSection}>
+                  <h2 className={styles.adminSectionTitle}>광고/제휴 문의 관리</h2>
+                  <p className={styles.adminSectionDesc}>
+                    사용자가 접수한 광고/제휴 문의를 관리합니다.
+                  </p>
+
+                  {/* 상태 필터 */}
+                  <div className={styles.adminFilters}>
+                    <select
+                      className={styles.adminSelect}
+                      value={partnershipStatusFilter}
+                      onChange={(e) => setPartnershipStatusFilter(e.target.value)}
+                    >
+                      <option value="">전체 상태</option>
+                      <option value="pending">대기중</option>
+                      <option value="in_progress">처리중</option>
+                      <option value="completed">완료</option>
+                      <option value="rejected">거절</option>
+                    </select>
+                  </div>
+
+                  {/* 문의 목록 */}
+                  <div className={styles.adminTableContainer}>
+                    {isPartnershipLoading ? (
+                      <div className={styles.adminLoadingOverlay}>로딩 중...</div>
+                    ) : (
+                      <table className={styles.adminTable}>
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>문의유형</th>
+                            <th>제목</th>
+                            <th>이름</th>
+                            <th>회사명</th>
+                            <th>연락처</th>
+                            <th>상태</th>
+                            <th>등록일</th>
+                            <th>관리</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {partnershipList
+                            .filter((item: any) => 
+                              partnershipStatusFilter === '' || item.status === partnershipStatusFilter
+                            )
+                            .map((inquiry: any) => (
+                            <tr key={inquiry.id}>
+                              <td>{inquiry.id}</td>
+                              <td>
+                                <span className={styles.typeBadge}>{inquiry.inquiry_type}</span>
+                              </td>
+                              <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {inquiry.title}
+                              </td>
+                              <td>{inquiry.user_name}</td>
+                              <td>{inquiry.company_name || '-'}</td>
+                              <td>{inquiry.contact_phone}</td>
+                              <td>
+                                <span className={`${styles.statusBadge} ${
+                                  inquiry.status === 'pending' ? styles.statusPending :
+                                  inquiry.status === 'in_progress' ? styles.statusInProgress :
+                                  inquiry.status === 'completed' ? styles.statusCompleted :
+                                  styles.statusRejected
+                                }`}>
+                                  {inquiry.status === 'pending' ? '대기중' :
+                                   inquiry.status === 'in_progress' ? '처리중' :
+                                   inquiry.status === 'completed' ? '완료' : '거절'}
+                                </span>
+                              </td>
+                              <td>{formatDate(inquiry.created_at)}</td>
+                              <td>
+                                <button
+                                  className={styles.adminTableBtn}
+                                  onClick={() => {
+                                    setSelectedInquiry(inquiry)
+                                    setReplyText(inquiry.admin_reply || '')
+                                  }}
+                                >
+                                  상세
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* 문의 상세 모달 */}
+                  {selectedInquiry && (
+                    <div className={styles.overlay} onClick={() => setSelectedInquiry(null)}>
+                      <div className={styles.adminModal} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.adminModalHeader}>
+                          <h3>문의 상세</h3>
+                          <button
+                            className={styles.modalCloseBtn}
+                            onClick={() => setSelectedInquiry(null)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className={styles.adminModalBody}>
+                          <div className={styles.inquiryDetail}>
+                            <div className={styles.inquiryField}>
+                              <label>문의 유형</label>
+                              <span>{selectedInquiry.inquiry_type}</span>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>제목</label>
+                              <span>{selectedInquiry.title}</span>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>이름</label>
+                              <span>{selectedInquiry.user_name}</span>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>이메일</label>
+                              <span>{selectedInquiry.user_email}</span>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>회사명</label>
+                              <span>{selectedInquiry.company_name || '-'}</span>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>연락처</label>
+                              <span>{selectedInquiry.contact_phone}</span>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>문의 내용</label>
+                              <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{selectedInquiry.content}</p>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>상태</label>
+                              <select
+                                className={styles.adminSelect}
+                                value={selectedInquiry.status}
+                                onChange={(e) => setSelectedInquiry({...selectedInquiry, status: e.target.value})}
+                              >
+                                <option value="pending">대기중</option>
+                                <option value="in_progress">처리중</option>
+                                <option value="completed">완료</option>
+                                <option value="rejected">거절</option>
+                              </select>
+                            </div>
+                            <div className={styles.inquiryField}>
+                              <label>관리자 답변</label>
+                              <textarea
+                                className={styles.adminTextarea}
+                                rows={4}
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                placeholder="답변을 입력하세요..."
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className={styles.adminModalFooter}>
+                          <button
+                            className={styles.adminBtnSecondary}
+                            onClick={() => setSelectedInquiry(null)}
+                          >
+                            취소
+                          </button>
+                          <button
+                            className={styles.adminBtnPrimary}
+                            onClick={() => updateInquiryStatus(selectedInquiry.id, selectedInquiry.status, replyText)}
+                          >
+                            저장
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 데이터 분석 */}
               {adminMenu === 'analytics' && (
                 <div className={styles.adminSectionWide}>
@@ -2572,12 +2790,12 @@ export default function Header() {
                           setDecryptedImageUrl(null)
                           setIsImageLoading(true)
 
-                          // 계약서 이미지가 있으면 복호화
+                          // 계약서 이미지가 있으면 로드
                           if (contract.contract_image_url) {
                             try {
-                              console.log('[계약서 조회] 암호화된 파일 다운로드 시작:', contract.contract_image_url)
+                              console.log('[계약서 조회] 파일 다운로드 시작:', contract.contract_image_url)
                               
-                              // Storage에서 암호화된 파일 다운로드
+                              // Storage에서 파일 다운로드
                               const { data: fileData, error: downloadError } = await supabase.storage
                                 .from('contracts')
                                 .download(contract.contract_image_url)
@@ -2588,16 +2806,16 @@ export default function Header() {
                                 return
                               }
 
-                              // Blob을 텍스트로 변환
-                              const encryptedText = await fileData.text()
-                              console.log('[계약서 조회] 파일 다운로드 완료, 복호화 시작')
-
-                              // 복호화
-                              const decryptedBase64 = decryptFile(encryptedText)
-                              setDecryptedImageUrl(decryptedBase64)
-                              console.log('[계약서 조회] 복호화 완료')
+                              // Blob을 base64로 변환
+                              const reader = new FileReader()
+                              reader.onloadend = () => {
+                                setDecryptedImageUrl(reader.result as string)
+                                console.log('[계약서 조회] 이미지 로드 완료')
+                              }
+                              reader.readAsDataURL(fileData)
                             } catch (error) {
-                              console.error('[계약서 조회] 복호화 실패:', error)
+                              console.error('[계약서 조회] 이미지 로드 실패:', error)
+                              setIsImageLoading(false)
                             } finally {
                               setIsImageLoading(false)
                             }
@@ -2704,7 +2922,7 @@ export default function Header() {
                             animation: 'spin 0.8s linear infinite',
                             margin: '0 auto 12px'
                           }} />
-                          <p style={{ color: '#64748b', fontSize: '14px' }}>복호화 중...</p>
+                          <p style={{ color: '#64748b', fontSize: '14px' }}>이미지 로딩 중...</p>
                           <style dangerouslySetInnerHTML={{__html: `
                             @keyframes spin {
                               to { transform: rotate(360deg); }

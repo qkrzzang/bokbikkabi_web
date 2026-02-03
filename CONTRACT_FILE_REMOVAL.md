@@ -50,19 +50,16 @@ ALTER TABLE public.agent_reviews DROP COLUMN IF EXISTS contract_image_url;
 ### 3. 환경 변수 정리
 
 #### `.env.local`
-- ❌ 제거: `NEXT_PUBLIC_ENCRYPTION_KEY` (계약서 암호화 키)
 - ✅ 수정: `DATABASE_URL` (Transaction Pooler 올바른 호스트)
 
 **변경 전:**
 ```bash
 DATABASE_URL=postgres://postgres:...@db.ijzxpnfiqwjlkhpbqjgk.supabase.co:6543/postgres
-NEXT_PUBLIC_ENCRYPTION_KEY=...
 ```
 
 **변경 후:**
 ```bash
 DATABASE_URL=postgres://postgres.ijzxpnfiqwjlkhpbqjgk:...@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres
-# NEXT_PUBLIC_ENCRYPTION_KEY 제거됨
 ```
 
 ### 4. 문서 업데이트
@@ -108,7 +105,6 @@ DATABASE_URL=postgres://postgres.ijzxpnfiqwjlkhpbqjgk:...@aws-0-ap-northeast-2.p
 - [x] 리뷰 저장 시 `contract_image_url` 필드 제거
 
 ### 환경 변수
-- [x] `.env.local`에서 `NEXT_PUBLIC_ENCRYPTION_KEY` 제거
 - [x] `DATABASE_URL` 올바른 Transaction Pooler 호스트로 수정
 
 ### 문서
@@ -116,7 +112,6 @@ DATABASE_URL=postgres://postgres.ijzxpnfiqwjlkhpbqjgk:...@aws-0-ap-northeast-2.p
 - [x] 계약서 저장 관련 설명 제거/수정
 
 ### 배포
-- [ ] 프로덕션 환경 변수에서 `NEXT_PUBLIC_ENCRYPTION_KEY` 제거
 - [ ] Vercel/호스팅에서 환경 변수 업데이트
 - [ ] 프로덕션 DB에서 migration 실행
 

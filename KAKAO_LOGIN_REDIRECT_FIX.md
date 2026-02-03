@@ -57,7 +57,6 @@ Vercel Dashboard에서 환경변수 추가:
 NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 NEXT_PUBLIC_SUPABASE_URL=https://ijzxpnfiqwjlkhpbqjgk.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ... (올바른 anon key)
-NEXT_PUBLIC_ENCRYPTION_KEY=5f9fb1a719c3337aac9a26a187dea0a92971bc7a43bc706adabb96d86b3214e5
 ```
 
 ---

@@ -2981,3 +2981,67 @@
   }
 }
 
+
+/* 광고/?�휴 문의 관???��???*/
+.typeBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  background-color: #E0E7FF;
+  color: #4338CA;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statusPending {
+  background-color: #FEF3C7;
+  color: #92400E;
+}
+
+.statusInProgress {
+  background-color: #DBEAFE;
+  color: #1E3A8A;
+}
+
+.statusCompleted {
+  background-color: #D1FAE5;
+  color: #065F46;
+}
+
+.statusRejected {
+  background-color: #FEE2E2;
+  color: #991B1B;
+}
+
+.inquiryDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.inquiryField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inquiryField label {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 14px;
+}
+
+.inquiryField span,
+.inquiryField p {
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+}
