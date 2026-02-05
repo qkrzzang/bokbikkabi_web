@@ -55,6 +55,8 @@ interface PropertyDetail {
 
 interface PropertyListProps {
   searchQuery: string
+  autoOpenAgentId?: number | null
+  onAutoOpenComplete?: () => void
 }
 
 // 목업 데이터
@@ -230,12 +232,214 @@ const getPropertyDetail = (id: string): PropertyDetail | null => {
   return details[id] || null
 }
 
-export default function PropertyList({ searchQuery }: PropertyListProps) {
+export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenComplete }: PropertyListProps) {
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false) // 검색 실행 여부 추적
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+
+  // 관심 부동산에서 클릭 시 상세 모달 열기
+  // ID로 부동산 상세 정보 로드 (관심 부동산에서 호출)
+  const loadPropertyDetailById = async (agentId: number) => {
+    try {
+      // agent_master에서 기본 정보 조회
+      const { data: agentData, error: agentError } = await supabase
+        .from('agent_master')
+        .select('id, agent_name, road_address, lot_address, latitude, longitude')
+        .eq('id', agentId)
+        .single()
+
+      if (agentError || !agentData) {
+        console.error('[관심 부동산] 부동산 정보 조회 오류:', agentError)
+        alert('부동산 정보를 불러올 수 없습니다.')
+        return
+      }
+
+      const property: Property = {
+        id: agentData.id.toString(),
+        name: agentData.agent_name,
+        address: agentData.road_address || agentData.lot_address || '',
+        rating: 0,
+        latitude: agentData.latitude,
+        longitude: agentData.longitude,
+      }
+
+      await handlePropertyClick(property)
+    } catch (error) {
+      console.error('[관심 부동산] 오류:', error)
+      alert('부동산 정보를 불러오는 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handlePropertyClick = async (property: Property) => {
+    // 목업 데이터가 있으면 그대로 사용
+    const mockDetail = getPropertyDetail(property.id)
+    if (mockDetail) {
+      setSelectedProperty(mockDetail)
+      setIsModalOpen(true)
+      return
+    }
+
+    // 실제 DB 데이터 조회
+    try {
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('agent_reviews')
+        .select(`
+          *,
+          user:users!supabase_user_id(email)
+        `)
+        .eq('agent_id', parseInt(property.id))
+        .order('created_at', { ascending: false })
+
+      // 리뷰가 없어도 팝업 표시 (빈 리뷰로)
+      const hasReviews = !reviewsError && reviewsData && reviewsData.length > 0
+
+      // 리뷰가 없는 경우 기본 PropertyDetail 생성
+      if (!hasReviews) {
+        const emptyPropertyDetail: PropertyDetail = {
+          id: property.id,
+          name: property.name,
+          address: property.address,
+          rating: 0,
+          reviewCount: 0,
+          transactionTags: [],
+          praiseTags: [],
+          regretTags: [],
+          detailedEvaluation: [],
+          keySummary: {
+            recommendRate: 0,
+            discountRate: 0,
+            explanationRate: 0,
+          },
+          reviews: [],
+          latitude: property.latitude,
+          longitude: property.longitude,
+        }
+        
+        setSelectedProperty(emptyPropertyDetail)
+        setIsModalOpen(true)
+        return
+      }
+
+      // 태그 집계
+      const allTransactionTags = new Set<string>()
+      const allPraiseTags = new Set<string>()
+      const allRegretTags = new Set<string>()
+      
+      reviewsData.forEach((review: any) => {
+        if (review.transaction_tag) allTransactionTags.add(review.transaction_tag)
+        if (review.praise_tags) review.praise_tags.forEach((tag: string) => allPraiseTags.add(tag))
+        if (review.regret_tags) review.regret_tags.forEach((tag: string) => allRegretTags.add(tag))
+      })
+
+      // 평가 항목별 평균 계산
+      const evaluationCategories = [
+        { key: 'fee_satisfaction', label: '수수료 만족도' },
+        { key: 'expertise', label: '전문성/지식' },
+        { key: 'kindness', label: '친절/태도' },
+        { key: 'property_reliability', label: '매물 신뢰도' },
+        { key: 'response_speed', label: '응답 속도' },
+      ]
+
+      const detailedEvaluation = evaluationCategories.map(cat => {
+        const scores = reviewsData
+          .map((r: any) => r[cat.key])
+          .filter((s: any) => s !== null && s !== undefined) as number[]
+        const avg = scores.length > 0 
+          ? scores.reduce((sum, s) => sum + s, 0) / scores.length 
+          : 0
+        return {
+          category: cat.label,
+          score: Number(avg.toFixed(1)),
+        }
+      })
+
+      // 전체 평균 별점
+      const allScores = detailedEvaluation.map(e => e.score).filter(s => s > 0)
+      const avgRating = allScores.length > 0
+        ? allScores.reduce((sum, s) => sum + s, 0) / allScores.length
+        : 0
+
+      // Review 타입으로 변환
+      const reviews: Review[] = reviewsData.map((r: any) => {
+        const userEmail = r.user?.email || 'anonymous@example.com'
+        const nickname = userEmail.split('@')[0]
+        
+        const reviewEval = evaluationCategories.map(cat => ({
+          category: cat.label,
+          score: r[cat.key] || 0,
+        }))
+
+        return {
+          id: r.id.toString(),
+          author: nickname,
+          rating: reviewEval.length > 0 
+            ? reviewEval.reduce((sum, e) => sum + e.score, 0) / reviewEval.length 
+            : 0,
+          date: new Date(r.created_at).toLocaleDateString('ko-KR'),
+          content: r.review_text || '',
+          helpfulCount: r.helpful_count || 0,
+          transactionTags: r.transaction_tag ? [r.transaction_tag] : [],
+          praiseTags: r.praise_tags || [],
+          regretTags: r.regret_tags || [],
+          detailedEvaluation: reviewEval,
+        }
+      })
+
+      const propertyDetail: PropertyDetail = {
+        id: property.id,
+        name: property.name,
+        address: property.address,
+        rating: Number(avgRating.toFixed(1)),
+        reviewCount: reviewsData.length,
+        transactionTags: Array.from(allTransactionTags),
+        praiseTags: Array.from(allPraiseTags),
+        regretTags: Array.from(allRegretTags),
+        detailedEvaluation,
+        keySummary: {
+          recommendRate: 0,
+          discountRate: 0,
+          explanationRate: 0,
+        },
+        reviews,
+        latitude: property.latitude,
+        longitude: property.longitude,
+      }
+
+      setSelectedProperty(propertyDetail)
+      setIsModalOpen(true)
+    } catch (error) {
+      console.error('[상세 정보] 조회 오류:', error)
+      alert('부동산 정보를 불러오는 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 검색 완료 후 자동으로 특정 부동산 상세 모달 열기
+  useEffect(() => {
+    if (autoOpenAgentId && properties.length > 0 && !loading) {
+      // 검색 결과에서 해당 부동산 찾기
+      const targetProperty = properties.find(p => parseInt(p.id) === autoOpenAgentId)
+      
+      if (targetProperty) {
+        // 약간의 딜레이 후 모달 열기 (검색 결과 렌더링 후)
+        setTimeout(async () => {
+          await handlePropertyClick(targetProperty)
+          if (onAutoOpenComplete) {
+            onAutoOpenComplete()
+          }
+        }, 100)
+      } else {
+        // ID로 직접 로드
+        setTimeout(async () => {
+          await loadPropertyDetailById(autoOpenAgentId)
+          if (onAutoOpenComplete) {
+            onAutoOpenComplete()
+          }
+        }, 100)
+      }
+    }
+  }, [properties, loading, autoOpenAgentId])
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -376,9 +580,9 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
   if (hasSearched && properties.length === 0) {
     return (
       <div className={styles.emptyState}>
-        <div className={styles.emptyIcon}>😢</div>
+        <div className={styles.emptyIcon}>🔍</div>
         <p className={styles.emptyText}>
-          아직 등록된 리뷰가 없어요. 😢 첫 번째 리뷰의 주인공이 되어주시겠어요?
+          '{searchQuery}'으로 검색 된 공인중개사사무소가 없어요.
         </p>
       </div>
     )
@@ -386,166 +590,6 @@ export default function PropertyList({ searchQuery }: PropertyListProps) {
 
   if (!hasSearched) {
     return null
-  }
-
-  const handlePropertyClick = async (property: Property) => {
-    // 목업 데이터가 있으면 그대로 사용
-    const mockDetail = getPropertyDetail(property.id)
-    if (mockDetail) {
-      setSelectedProperty(mockDetail)
-      setIsModalOpen(true)
-      return
-    }
-
-    // 실제 DB 데이터 조회
-    try {
-      const { data: reviewsData, error: reviewsError } = await supabase
-        .from('agent_reviews')
-        .select(`
-          *,
-          user:users!supabase_user_id(email)
-        `)
-        .eq('agent_id', parseInt(property.id))
-        .order('created_at', { ascending: false })
-
-      // 리뷰가 없어도 팝업 표시 (빈 리뷰로)
-      const hasReviews = !reviewsError && reviewsData && reviewsData.length > 0
-
-      // 리뷰가 없는 경우 기본 PropertyDetail 생성
-      if (!hasReviews) {
-        const emptyPropertyDetail: PropertyDetail = {
-          id: property.id,
-          name: property.name,
-          address: property.address,
-          rating: 0,
-          reviewCount: 0,
-          transactionTags: [],
-          praiseTags: [],
-          regretTags: [],
-          detailedEvaluation: [],
-          keySummary: {
-            recommendRate: 0,
-            discountRate: 0,
-            explanationRate: 0,
-          },
-          reviews: [],
-          latitude: property.latitude,
-          longitude: property.longitude,
-        }
-        
-        setSelectedProperty(emptyPropertyDetail)
-        setIsModalOpen(true)
-        return
-      }
-
-      // 태그 집계
-      const allTransactionTags = new Set<string>()
-      const allPraiseTags = new Set<string>()
-      const allRegretTags = new Set<string>()
-      
-      reviewsData.forEach((review: any) => {
-        if (review.transaction_tag) allTransactionTags.add(review.transaction_tag)
-        if (review.praise_tags) review.praise_tags.forEach((tag: string) => allPraiseTags.add(tag))
-        if (review.regret_tags) review.regret_tags.forEach((tag: string) => allRegretTags.add(tag))
-      })
-
-      // 평가 항목별 평균 계산
-      const evaluationCategories = [
-        { key: 'fee_satisfaction', label: '수수료 만족도' },
-        { key: 'expertise', label: '전문성/지식' },
-        { key: 'kindness', label: '친절/태도' },
-        { key: 'property_reliability', label: '매물 신뢰도' },
-        { key: 'response_speed', label: '응답 속도' },
-      ]
-
-      const detailedEvaluation = evaluationCategories.map(cat => {
-        const scores = reviewsData
-          .map((r: any) => r[cat.key])
-          .filter((s: any) => s !== null && s !== undefined) as number[]
-        const avg = scores.length > 0 
-          ? scores.reduce((sum, s) => sum + s, 0) / scores.length 
-          : 0
-        return {
-          category: cat.label,
-          score: Math.round(avg * 10) / 10,
-        }
-      })
-
-      // 전체 평균 별점
-      const allScores = reviewsData.flatMap((r: any) => 
-        [r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed]
-          .filter(s => s !== null && s !== undefined)
-      ) as number[]
-      const overallRating = allScores.length > 0
-        ? allScores.reduce((sum, s) => sum + s, 0) / allScores.length
-        : 0
-
-      // 리뷰 변환
-      const reviews = reviewsData.map((r: any) => {
-        // 작성자 email 마스킹: @도메인 제외, 앞 3자리만 보여주고 나머지는 * 처리
-        let maskedAuthor = '익명'
-        
-        if (r.user && r.user.email) {
-          const email = r.user.email
-          // @앞부분만 추출 (도메인 제외)
-          const localPart = email.split('@')[0]
-          
-          if (localPart.length >= 3) {
-            maskedAuthor = localPart.substring(0, 3) + '*****'
-          } else if (localPart.length > 0) {
-            maskedAuthor = localPart.substring(0, 1) + '*****'
-          }
-        }
-        
-        return {
-          id: r.id,
-          author: maskedAuthor,
-        rating: Math.round(
-          ([r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed]
-            .filter(s => s !== null && s !== undefined) as number[])
-            .reduce((sum, s) => sum + s, 0) / 5 * 10
-        ) / 10,
-        date: new Date(r.created_at).toLocaleDateString('ko-KR', { 
-          year: 'numeric', 
-          month: '2-digit', 
-          day: '2-digit' 
-        }).replace(/\. /g, '.'),
-        content: r.review_text || '',
-        transactionTags: r.transaction_tag ? [r.transaction_tag] : [],
-        praiseTags: r.praise_tags || [],
-        regretTags: r.regret_tags || [],
-        detailedEvaluation: evaluationCategories.map(cat => ({
-          category: cat.label,
-          score: (r as any)[cat.key] || 0,
-        })),
-        }
-      })
-
-      const propertyDetail: PropertyDetail = {
-        id: property.id,
-        name: property.name,
-        address: property.address,
-        rating: Math.round(overallRating * 10) / 10,
-        reviewCount: reviewsData.length,
-        transactionTags: Array.from(allTransactionTags),
-        praiseTags: Array.from(allPraiseTags),
-        regretTags: Array.from(allRegretTags),
-        detailedEvaluation,
-        keySummary: {
-          recommendRate: 85, // TODO: 실제 계산 로직 필요
-          discountRate: 40, // TODO: 실제 계산 로직 필요
-          explanationRate: 90, // TODO: 실제 계산 로직 필요
-        },
-        reviews,
-        latitude: property.latitude,
-        longitude: property.longitude,
-      }
-
-      setSelectedProperty(propertyDetail)
-      setIsModalOpen(true)
-    } catch (error) {
-      console.error('[상세 조회] 예외 발생:', error)
-    }
   }
 
   return (

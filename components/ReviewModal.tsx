@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styles from './ReviewModal.module.css'
+import { supabase } from '@/lib/supabase/client'
 
 interface Review {
   id: string
@@ -32,12 +33,47 @@ export default function ReviewModal({
   onClose,
   propertyName,
 }: ReviewModalProps) {
-  if (!isOpen) return null
-
   const [reportingReview, setReportingReview] = useState<Review | null>(null)
   const [reportReason, setReportReason] = useState<'fake' | 'privacy' | 'other' | ''>('')
   const [reportText, setReportText] = useState('')
   const [reportError, setReportError] = useState<string | null>(null)
+  const [userHelpfulReviews, setUserHelpfulReviews] = useState<Set<string>>(new Set())
+  const [reviewHelpfulCounts, setReviewHelpfulCounts] = useState<Record<string, number>>({})
+
+  // 사용자가 "도움돼요"를 누른 리뷰 목록 로드
+  useEffect(() => {
+    if (!isOpen) return
+
+    const loadUserHelpfulReviews = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const reviewIds = reviews.map(r => r.id)
+      if (reviewIds.length === 0) return
+
+      const { data, error } = await supabase
+        .from('review_helpful')
+        .select('review_id')
+        .eq('supabase_user_id', session.user.id)
+        .in('review_id', reviewIds.map(id => id.toString()))
+
+      if (!error && data) {
+        const helpfulSet = new Set<string>(data.map((item: any) => item.review_id.toString()))
+        setUserHelpfulReviews(helpfulSet)
+      }
+    }
+
+    loadUserHelpfulReviews()
+    
+    // 리뷰 카운트 초기화
+    const counts: Record<string, number> = {}
+    reviews.forEach(review => {
+      counts[review.id] = review.helpfulCount || 0
+    })
+    setReviewHelpfulCounts(counts)
+  }, [isOpen, reviews])
+
+  if (!isOpen) return null
 
   const renderStars = (rating: number) => {
     const fullStars = Math.floor(rating)
@@ -92,6 +128,72 @@ export default function ReviewModal({
 
     alert('신고가 접수되었습니다. (목)')
     closeReport()
+  }
+
+  const handleHelpfulClick = async (reviewId: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const isHelpful = userHelpfulReviews.has(reviewId)
+
+    try {
+      if (isHelpful) {
+        // 도움돼요 취소
+        const { error } = await supabase
+          .from('review_helpful')
+          .delete()
+          .eq('review_id', reviewId)
+          .eq('supabase_user_id', session.user.id)
+
+        if (error) {
+          console.error('[ReviewModal] 도움돼요 취소 오류:', error)
+          alert('도움돼요 취소에 실패했습니다.')
+          return
+        }
+
+        // 로컬 상태 업데이트
+        setUserHelpfulReviews(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(reviewId)
+          return newSet
+        })
+        setReviewHelpfulCounts(prev => ({
+          ...prev,
+          [reviewId]: Math.max((prev[reviewId] || 0) - 1, 0)
+        }))
+      } else {
+        // 도움돼요 추가
+        const { error } = await supabase
+          .from('review_helpful')
+          .insert({
+            review_id: reviewId,
+            supabase_user_id: session.user.id
+          })
+
+        if (error) {
+          console.error('[ReviewModal] 도움돼요 추가 오류:', error)
+          if (error.code === '23505') {
+            alert('이미 도움돼요를 눌렀습니다.')
+          } else {
+            alert('도움돼요 추가에 실패했습니다.')
+          }
+          return
+        }
+
+        // 로컬 상태 업데이트
+        setUserHelpfulReviews(prev => new Set(prev).add(reviewId))
+        setReviewHelpfulCounts(prev => ({
+          ...prev,
+          [reviewId]: (prev[reviewId] || 0) + 1
+        }))
+      }
+    } catch (error) {
+      console.error('[ReviewModal] 도움돼요 처리 오류:', error)
+      alert('오류가 발생했습니다. 다시 시도해주세요.')
+    }
   }
 
   return (
@@ -225,11 +327,13 @@ export default function ReviewModal({
                     <div className={styles.actionRow}>
                       <button
                         type="button"
-                        className={styles.helpfulButton}
-                        onClick={() => alert('도움돼요 (목)')}
+                        className={`${styles.helpfulButton} ${userHelpfulReviews.has(review.id) ? styles.helpfulActive : ''}`}
+                        onClick={() => handleHelpfulClick(review.id)}
                       >
-                        <span className={styles.helpfulIcon} aria-hidden="true">👍</span>
-                        도움돼요 {review.helpfulCount ?? 3}
+                        <span className={styles.helpfulIcon} aria-hidden="true">
+                          {userHelpfulReviews.has(review.id) ? '👍' : '👍'}
+                        </span>
+                        {userHelpfulReviews.has(review.id) ? '도움됐어요' : '도움돼요'} {reviewHelpfulCounts[review.id] || review.helpfulCount || 0}
                       </button>
                       <button
                         type="button"

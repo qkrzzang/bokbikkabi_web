@@ -27,15 +27,6 @@ export const supabase =
       headers: {
         'X-Client-Info': 'bokbikkabi-web',
       },
-      // fetch 옵션 최적화
-      fetch: (url, options = {}) => {
-        return fetch(url, {
-          ...options,
-          keepalive: true, // 연결 유지
-          // 타임아웃 30초 (기본값보다 길게 설정)
-          signal: options.signal || AbortSignal.timeout(30000), 
-        })
-      },
     },
     db: {
       schema: 'public',

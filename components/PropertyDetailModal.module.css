@@ -78,7 +78,7 @@
 
 .header {
   margin-bottom: 24px;
-  padding-bottom: 24px;
+  padding-bottom: 16px;
   border-bottom: 1px solid #e1e8f0;
 }
 
@@ -87,6 +87,55 @@
   font-weight: 700;
   color: #1e293b;
   margin: 0 0 12px 0;
+}
+
+.favoriteButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  margin-top: 16px;
+  border: 2px solid #e1e8f0;
+  background-color: #ffffff;
+  color: #64748b;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.favoriteButton:hover {
+  border-color: #f43f5e;
+  background-color: #fef2f2;
+  color: #f43f5e;
+}
+
+.favoriteButton:active {
+  transform: scale(0.98);
+}
+
+.favoriteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.favoriteActive {
+  background-color: #fef2f2;
+  border-color: #f43f5e;
+  color: #f43f5e;
+}
+
+.favoriteActive:hover {
+  background-color: #fee2e2;
+  border-color: #dc2626;
+}
+
+.favoriteButtonText {
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .addressSection {
@@ -425,6 +474,14 @@
 
   .ratingStars {
     font-size: 18px;
+  }
+
+  .ratingSection {
+    justify-content: flex-end;
+  }
+
+  .ratingMain {
+    justify-content: flex-end;
   }
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, FormEvent } from 'react'
+import { useEffect, useState, useRef, FormEvent } from 'react'
 import styles from './SearchBar.module.css'
 
 interface SearchBarProps {
@@ -10,6 +10,7 @@ interface SearchBarProps {
 
 export default function SearchBar({ onSearch, value }: SearchBarProps) {
   const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // value prop이 변경되었을 때만 내부 상태 업데이트
   useEffect(() => {
@@ -23,6 +24,18 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
     const trimmedQuery = query.trim()
     if (trimmedQuery) {
       onSearch(trimmedQuery)
+      // 검색 후 포커스 해제하여 모바일에서 확대된 화면을 원래대로 복구
+      if (inputRef.current) {
+        inputRef.current.blur()
+      }
+    } else {
+      // 공백 또는 빈 검색어인 경우 logo 클릭과 동일한 이벤트 발생
+      setQuery('')
+      onSearch('')
+      window.dispatchEvent(new Event('logo:click'))
+      if (inputRef.current) {
+        inputRef.current.blur()
+      }
     }
   }
 
@@ -39,6 +52,7 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
     <div className={styles.searchContainer}>
       <form onSubmit={handleSubmit} className={styles.searchForm}>
         <input
+          ref={inputRef}
           type="text"
           value={query}
           onChange={handleChange}

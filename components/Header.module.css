@@ -1140,6 +1140,137 @@
   font-size: 20px;
   font-weight: 700;
   margin: 0;
+  flex: 1;
+}
+
+/* 모바일 햄버거 버튼 (기본적으로 숨김) */
+.adminMobileMenuButton {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.adminMobileMenuButton:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* 모바일 메뉴 오버레이 */
+.mobileAdminMenuOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1003;
+  display: flex;
+  justify-content: flex-end;
+  animation: fadeIn 0.2s ease;
+}
+
+/* 모바일 메뉴 */
+.mobileAdminMenu {
+  width: 80%;
+  max-width: 320px;
+  background-color: #1e293b;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.mobileAdminMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  background-color: #0f172a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobileAdminMenuTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.mobileAdminMenuClose {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background-color: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.mobileAdminMenuClose:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.mobileAdminMenuNav {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 4px;
+}
+
+.mobileAdminMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: none;
+  background-color: transparent;
+  color: #94a3b8;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.mobileAdminMenuItem:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.mobileAdminMenuItemActive {
+  background-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+
+.mobileAdminMenuIcon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.mobileAdminMenuLabel {
+  flex: 1;
 }
 
 .adminScreenBody {
@@ -2132,6 +2263,198 @@
   flex-shrink: 0;
 }
 
+/* 콘텐츠 노출 관리 */
+.visibilityCards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.visibilityCard {
+  background-color: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.visibilityCard:hover {
+  border-color: #7C3AED;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.1);
+}
+
+.visibilityCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.visibilityCardIcon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.visibilityCardInfo {
+  flex: 1;
+}
+
+.visibilityCardTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+}
+
+.visibilityCardDesc {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.visibilityCardBody {
+  padding: 20px;
+}
+
+.visibilityToggleGroup {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.visibilityToggleLabel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.visibilityToggleLabel:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.visibilityRadio {
+  margin: 0;
+  cursor: pointer;
+}
+
+.visibilityRadio:checked + .visibilityToggleText {
+  font-weight: 700;
+  color: #7C3AED;
+}
+
+.visibilityToggleLabel:has(.visibilityRadio:checked) {
+  background-color: #f5f3ff;
+  border-color: #7C3AED;
+}
+
+.visibilityToggleText {
+  font-size: 15px;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.2s ease;
+}
+
+.visibilityCardMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+}
+
+.visibilityMetaItem {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visibilityCardFooter {
+  padding: 16px 20px;
+  background-color: #fafafa;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.visibilitySaveBtn {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.visibilitySaveBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.3);
+}
+
+.visibilitySaveBtn:active {
+  transform: translateY(0);
+}
+
+.visibilityNotice {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #fbbf24;
+  border-radius: 16px;
+}
+
+.visibilityNoticeIcon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.visibilityNoticeContent {
+  flex: 1;
+}
+
+.visibilityNoticeTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 12px 0;
+}
+
+.visibilityNoticeList {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.visibilityNoticeList li {
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+
+.visibilityNoticeList li:last-child {
+  margin-bottom: 0;
+}
+
 /* 계정 관리 - 통계 요약 */
 .adminStatsSummary {
   display: grid;
@@ -2580,10 +2903,14 @@
     flex-direction: column;
   }
 
+  /* 모바일에서 햄버거 버튼 표시 */
+  .adminMobileMenuButton {
+    display: flex !important;
+  }
+
+  /* 모바일에서 PC 사이드바 숨김 */
   .adminSidebar {
-    width: 100%;
-    flex-direction: row;
-    overflow-x: auto;
+    display: none;
   }
 
   .adminSidebarNav {
@@ -2618,6 +2945,53 @@
   .adminBatchActions {
     flex-direction: row;
     width: 100%;
+  }
+
+  /* 콘텐츠 노출 관리 모바일 */
+  .visibilityCards {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .visibilityCardHeader {
+    padding: 16px;
+  }
+
+  .visibilityCardIcon {
+    font-size: 28px;
+  }
+
+  .visibilityCardTitle {
+    font-size: 16px;
+  }
+
+  .visibilityCardDesc {
+    font-size: 12px;
+  }
+
+  .visibilityCardBody {
+    padding: 16px;
+  }
+
+  .visibilityToggleGroup {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .visibilityNotice {
+    padding: 16px;
+  }
+
+  .visibilityNoticeIcon {
+    font-size: 24px;
+  }
+
+  .visibilityNoticeTitle {
+    font-size: 14px;
+  }
+
+  .visibilityNoticeList li {
+    font-size: 12px;
   }
 
   .adminBatchRunBtn,
@@ -2982,7 +3356,7 @@
 }
 
 
-/* 광고/?�휴 문의 관???��???*/
+/* 광고/?�휴 문의 관???��???*/
 .typeBadge {
   display: inline-block;
   padding: 4px 10px;

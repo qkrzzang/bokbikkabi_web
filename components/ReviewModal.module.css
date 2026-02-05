@@ -339,6 +339,17 @@
   transform: translateY(-1px);
 }
 
+.helpfulButton.helpfulActive {
+  background-color: #f5f3ff;
+  border-color: #7C3AED;
+  color: #6D28D9;
+}
+
+.helpfulButton.helpfulActive:hover {
+  background-color: #ede9fe;
+  border-color: #6D28D9;
+}
+
 .helpfulIcon {
   font-size: 14px;
 }

@@ -87,7 +87,8 @@
   .searchInput {
     height: 48px;
     padding: 0 56px 0 20px;
-    font-size: 15px;
+    /* iOS 자동 줌 방지를 위해 16px 이상 유지 */
+    font-size: 16px;
   }
 
   .searchButton {

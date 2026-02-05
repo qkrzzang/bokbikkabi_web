@@ -23,7 +23,8 @@ export default function Header() {
   const [isImageLoading, setIsImageLoading] = useState(false)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
   const [isAdminScreenOpen, setIsAdminScreenOpen] = useState(false)
-  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'analytics' | 'partnership'>('common-code')
+  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'analytics' | 'partnership' | 'content-visibility'>('common-code')
+  const [isMobileAdminMenuOpen, setIsMobileAdminMenuOpen] = useState(false)
   const [selectedCodeGroup, setSelectedCodeGroup] = useState<string | null>(null)
   const [showSaveSuccessToast, setShowSaveSuccessToast] = useState(false)
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('')
@@ -132,6 +133,8 @@ export default function Header() {
   const [partnershipStatusFilter, setPartnershipStatusFilter] = useState('')
   const [selectedInquiry, setSelectedInquiry] = useState<any>(null)
   const [replyText, setReplyText] = useState('')
+  const [adVisibility, setAdVisibility] = useState('Y')
+  const [surveyVisibility, setSurveyVisibility] = useState('Y')
   
   const [user, setUser] = useState<any>(null)
   const [userType, setUserType] = useState<string | null>(null)
@@ -1433,10 +1436,126 @@ export default function Header() {
               </svg>
             </button>
             <h1 className={styles.adminScreenTitle}>관리자</h1>
+            {/* 모바일 햄버거 버튼 */}
+            <button
+              className={styles.adminMobileMenuButton}
+              onClick={() => setIsMobileAdminMenuOpen(true)}
+              aria-label="메뉴"
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M3 12H21M3 6H21M3 18H21"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
           </div>
 
           <div className={styles.adminScreenBody}>
-            {/* 좌측 사이드바 */}
+            {/* 모바일 메뉴 모달 */}
+            {isMobileAdminMenuOpen && (
+              <div className={styles.mobileAdminMenuOverlay} onClick={() => setIsMobileAdminMenuOpen(false)}>
+                <div className={styles.mobileAdminMenu} onClick={(e) => e.stopPropagation()}>
+                  <div className={styles.mobileAdminMenuHeader}>
+                    <h2 className={styles.mobileAdminMenuTitle}>관리자 메뉴</h2>
+                    <button
+                      className={styles.mobileAdminMenuClose}
+                      onClick={() => setIsMobileAdminMenuOpen(false)}
+                      aria-label="닫기"
+                    >
+                      <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M18 6L6 18M6 6L18 18"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <nav className={styles.mobileAdminMenuNav}>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'common-code' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('common-code')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>📋</span>
+                      <span className={styles.mobileAdminMenuLabel}>공통코드 관리</span>
+                    </button>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'account' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('account')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>👥</span>
+                      <span className={styles.mobileAdminMenuLabel}>계정 관리</span>
+                    </button>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'batch' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('batch')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>⚙️</span>
+                      <span className={styles.mobileAdminMenuLabel}>배치 관리</span>
+                    </button>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'partnership' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('partnership')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>🤝</span>
+                      <span className={styles.mobileAdminMenuLabel}>광고/제휴 문의</span>
+                    </button>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'analytics' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('analytics')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>📊</span>
+                      <span className={styles.mobileAdminMenuLabel}>데이터 분석</span>
+                    </button>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'content-visibility' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('content-visibility')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>👁️</span>
+                      <span className={styles.mobileAdminMenuLabel}>콘텐츠 노출 관리</span>
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            )}
+
+            {/* 좌측 사이드바 (PC 전용) */}
             <aside className={styles.adminSidebar}>
               <nav className={styles.adminSidebarNav}>
                 <button
@@ -1473,6 +1592,13 @@ export default function Header() {
                 >
                   <span className={styles.adminSidebarIcon}>📊</span>
                   <span className={styles.adminSidebarLabel}>데이터 분석</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'content-visibility' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('content-visibility')}
+                >
+                  <span className={styles.adminSidebarIcon}>👁️</span>
+                  <span className={styles.adminSidebarLabel}>콘텐츠 노출 관리</span>
                 </button>
               </nav>
             </aside>
@@ -2650,6 +2776,194 @@ export default function Header() {
                           <span className={styles.trendValue}>369</span>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 콘텐츠 노출 관리 */}
+              {adminMenu === 'content-visibility' && (
+                <div className={styles.adminSection}>
+                  <h2 className={styles.adminSectionTitle}>콘텐츠 노출 관리</h2>
+                  <p className={styles.adminSectionDesc}>
+                    사용자에게 표시되는 메뉴와 기능의 노출 여부를 관리합니다.
+                  </p>
+
+                  {/* 노출 설정 카드 */}
+                  <div className={styles.visibilityCards}>
+                    {/* 광고/제휴 메뉴 노출 */}
+                    <div className={styles.visibilityCard}>
+                      <div className={styles.visibilityCardHeader}>
+                        <div className={styles.visibilityCardIcon}>📺</div>
+                        <div className={styles.visibilityCardInfo}>
+                          <h3 className={styles.visibilityCardTitle}>광고 노출</h3>
+                          <p className={styles.visibilityCardDesc}>
+                            사이드바에 "광고보기" 버튼 표시 여부 (광고 시청 시 10P 적립)
+                          </p>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardBody}>
+                        <div className={styles.visibilityToggleGroup}>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="advertisement"
+                              value="Y"
+                              checked={adVisibility === 'Y'}
+                              onChange={(e) => setAdVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>노출</span>
+                          </label>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="advertisement"
+                              value="N"
+                              checked={adVisibility === 'N'}
+                              onChange={(e) => setAdVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>숨김</span>
+                          </label>
+                        </div>
+                        <div className={styles.visibilityCardMeta}>
+                          <span className={styles.visibilityMetaItem}>
+                            📍 위치: 사이드바 &gt; 광고보기
+                          </span>
+                          <span className={styles.visibilityMetaItem}>
+                            💰 보상: 광고 시청 완료 시 10P 적립
+                          </span>
+                          <span className={styles.visibilityMetaItem}>
+                            🔑 설정 키: ADVERTISEMENT_VISIBLE
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardFooter}>
+                        <button 
+                          className={styles.visibilitySaveBtn}
+                          onClick={async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('common_code_detail')
+                                .update({
+                                  description: adVisibility === 'Y' ? 'Y:노출,N:숨김' : 'N:노출,Y:숨김',
+                                  updated_at: new Date().toISOString()
+                                })
+                                .eq('code_group', 'SYSTEM_CONFIG')
+                                .eq('code_value', 'ADVERTISEMENT_VISIBLE')
+
+                              if (error) {
+                                alert('설정 저장에 실패했습니다: ' + error.message)
+                              } else {
+                                setSaveSuccessMessage('광고 노출 설정이 저장되었습니다.')
+                                setShowSaveSuccessToast(true)
+                                setTimeout(() => setShowSaveSuccessToast(false), 2000)
+                                
+                                // 실시간 반영을 위한 이벤트 발생
+                                window.dispatchEvent(new Event('visibility:changed'))
+                              }
+                            } catch (error) {
+                              alert('설정 저장 중 오류가 발생했습니다.')
+                            }
+                          }}
+                        >
+                          저장
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 서베이 메뉴 노출 */}
+                    <div className={styles.visibilityCard}>
+                      <div className={styles.visibilityCardHeader}>
+                        <div className={styles.visibilityCardIcon}>📋</div>
+                        <div className={styles.visibilityCardInfo}>
+                          <h3 className={styles.visibilityCardTitle}>서베이 메뉴</h3>
+                          <p className={styles.visibilityCardDesc}>
+                            사이드바에 "서베이" 메뉴 표시 여부
+                          </p>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardBody}>
+                        <div className={styles.visibilityToggleGroup}>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="survey"
+                              value="Y"
+                              checked={surveyVisibility === 'Y'}
+                              onChange={(e) => setSurveyVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>노출</span>
+                          </label>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="survey"
+                              value="N"
+                              checked={surveyVisibility === 'N'}
+                              onChange={(e) => setSurveyVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>숨김</span>
+                          </label>
+                        </div>
+                        <div className={styles.visibilityCardMeta}>
+                          <span className={styles.visibilityMetaItem}>
+                            📍 위치: 사이드바 &gt; 서베이
+                          </span>
+                          <span className={styles.visibilityMetaItem}>
+                            🔑 설정 키: SURVEY_VISIBLE
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardFooter}>
+                        <button 
+                          className={styles.visibilitySaveBtn}
+                          onClick={async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('common_code_detail')
+                                .update({
+                                  description: surveyVisibility === 'Y' ? 'Y:노출,N:숨김' : 'N:노출,Y:숨김',
+                                  updated_at: new Date().toISOString()
+                                })
+                                .eq('code_group', 'SYSTEM_CONFIG')
+                                .eq('code_value', 'SURVEY_VISIBLE')
+
+                              if (error) {
+                                alert('설정 저장에 실패했습니다: ' + error.message)
+                              } else {
+                                setSaveSuccessMessage('서베이 노출 설정이 저장되었습니다.')
+                                setShowSaveSuccessToast(true)
+                                setTimeout(() => setShowSaveSuccessToast(false), 2000)
+                                
+                                // 실시간 반영을 위한 이벤트 발생
+                                window.dispatchEvent(new Event('visibility:changed'))
+                              }
+                            } catch (error) {
+                              alert('설정 저장 중 오류가 발생했습니다.')
+                            }
+                          }}
+                        >
+                          저장
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 안내 메시지 */}
+                  <div className={styles.visibilityNotice}>
+                    <div className={styles.visibilityNoticeIcon}>💡</div>
+                    <div className={styles.visibilityNoticeContent}>
+                      <h4 className={styles.visibilityNoticeTitle}>노출 관리 안내</h4>
+                      <ul className={styles.visibilityNoticeList}>
+                        <li>설정 변경 시 즉시 모든 사용자에게 적용됩니다.</li>
+                        <li>"숨김"으로 설정하면 해당 메뉴가 사이드바에서 제거됩니다.</li>
+                        <li>관리자는 숨김 설정과 관계없이 모든 메뉴에 접근할 수 있습니다.</li>
+                        <li>설정은 common_code_detail 테이블의 SYSTEM_CONFIG 그룹에 저장됩니다.</li>
+                      </ul>
                     </div>
                   </div>
                 </div>

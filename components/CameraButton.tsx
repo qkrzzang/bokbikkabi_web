@@ -914,6 +914,26 @@ export default function CameraButton() {
         return
       }
 
+      // 한 달 내 리뷰 개수 체크 (최대 3건)
+      const oneMonthAgo = new Date()
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
+      
+      const { data: recentReviews, error: countError } = await supabase
+        .from('agent_reviews')
+        .select('id', { count: 'exact', head: true })
+        .eq('supabase_user_id', session.user.id)
+        .gte('created_at', oneMonthAgo.toISOString())
+      
+      if (countError) {
+        console.error('리뷰 개수 확인 오류:', countError)
+      } else {
+        const reviewCount = (recentReviews as any)?.count || 0
+        if (reviewCount >= 3) {
+          alert('한 달에 최대 3건의 리뷰만 등록할 수 있습니다.\n다음 달에 다시 시도해주세요.')
+          return
+        }
+      }
+
       const reviewLength = reviewText.trim().length
       if (reviewLength < 20) {
         alert('상세 리뷰는 20자 이상 작성해주세요.')

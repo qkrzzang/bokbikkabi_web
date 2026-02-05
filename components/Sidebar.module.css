@@ -7,6 +7,9 @@
   background-color: rgba(0, 0, 0, 0.5);
   z-index: 9998;
   animation: fadeIn 0.3s ease;
+  cursor: pointer;
+  touch-action: none;
+  pointer-events: auto;
 }
 
 @keyframes fadeIn {
@@ -30,6 +33,7 @@
   display: flex;
   flex-direction: column;
   animation: slideIn 0.3s ease;
+  pointer-events: auto;
 }
 
 @keyframes slideIn {
@@ -230,24 +234,87 @@
 }
 
 .reviewInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reviewSection {
   padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
 }
 
-.reviewInfo h4 {
+.reviewSectionTitle {
   margin: 0 0 12px 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.reviewInfo p {
+.reviewField {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.reviewField:last-child {
+  margin-bottom: 0;
+}
+
+.reviewLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.reviewValue {
+  font-size: 13px;
+  color: #1e293b;
+  flex: 1;
+  word-break: break-word;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.praiseTag {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #dcfce7;
+  color: #16a34a;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.regretTag {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #fef3c7;
+  color: #d97706;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reviewText {
   margin: 0;
   font-size: 14px;
   color: #334155;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .settingsList {
@@ -547,9 +614,487 @@
   transform: translateY(0);
 }
 
+/* 관심 부동산 목록 */
+.favoritesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.favoriteCard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  transition: all 0.2s ease;
+}
+
+.favoriteCard:hover {
+  border-color: #7C3AED;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.15);
+  transform: translateY(-2px);
+}
+
+.favoriteCardContent {
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.favoriteFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.favoriteName {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  white-space: normal;
+  line-height: 1.4;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.favoriteDate {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+  font-weight: 500;
+}
+
+.favoriteRemoveButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #ffffff;
+  border: 1.5px solid #f43f5e;
+  border-radius: 8px;
+  color: #f43f5e;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.favoriteRemoveButton:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+  color: #dc2626;
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.2);
+}
+
+.favoriteRemoveButton:active {
+  transform: scale(0.98);
+}
+
+.favoriteRemoveButton svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.emptyIcon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.emptyText {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+}
+
+.emptySubtext {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
 @media (max-width: 768px) {
   .sidebar {
     width: 280px;
+  }
+
+  .favoriteCard {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  .favoriteName {
+    font-size: 15px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: initial;
+    line-height: 1.4;
+  }
+
+  .favoriteDate {
+    font-size: 11px;
+  }
+
+  .favoriteRemoveButton {
+    padding: 6px 8px;
+    font-size: 11px;
+    gap: 3px;
+  }
+
+  .favoriteRemoveButton span {
+    display: inline;
+  }
+
+  .favoriteRemoveButton svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+/* ?�인??버튼 (?�로???�역) */
+.pointsButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border: none;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+}
+
+.pointsButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+}
+
+.pointsIcon {
+  font-size: 20px;
+}
+
+.pointsText {
+  flex: 1;
+  margin-left: 8px;
+  text-align: left;
+}
+
+/* ?�베???�면 */
+.surveyContainer {
+  padding: 16px;
+}
+
+.surveyDescription {
+  padding: 16px;
+  background-color: #f0f9ff;
+  border-left: 4px solid #0ea5e9;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-size: 14px;
+  color: #0c4a6e;
+  line-height: 1.6;
+}
+
+.surveyQuestion {
+  margin-bottom: 32px;
+}
+
+.questionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 12px;
+}
+
+.optionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.optionButton {
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  background-color: #ffffff;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.optionButton:hover {
+  border-color: #0ea5e9;
+  background-color: #f0f9ff;
+}
+
+.optionSelected {
+  border-color: #0ea5e9;
+  background-color: #0ea5e9;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.surveyComplete {
+  padding: 16px;
+  background-color: #dcfce7;
+  border-left: 4px solid #22c55e;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
+  color: #166534;
+  font-weight: 600;
+}
+
+/* ?�인???�세 ?�면 */
+.pointsContainer {
+  padding: 16px;
+}
+
+.pointsHeader {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  padding: 24px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+}
+
+.pointsBalance {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pointsLabel {
+  font-size: 14px;
+  color: #ffffff;
+  opacity: 0.9;
+  margin-bottom: 8px;
+}
+
+.pointsAmount {
+  font-size: 36px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.pointsSection {
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.sectionTitleButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+}
+
+.sectionTitleButton:hover {
+  color: #7C3AED;
+}
+
+.expandIcon {
+  font-size: 12px;
+  color: #64748b;
+  transition: all 0.2s ease;
+}
+
+.policyList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.policyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.policyDescription {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.policyName {
+  font-size: 14px;
+  color: #475569;
+}
+
+.policyPoints {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0ea5e9;
+}
+
+.transactionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transactionsScrollList {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.transactionsScrollList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.transactionsScrollList::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.transactionsScrollList::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.transactionsScrollList::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.loadMoreButton {
+  width: 100%;
+  padding: 12px;
+  margin-top: 12px;
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.loadMoreButton:hover {
+  background-color: #f1f5f9;
+  border-color: #7C3AED;
+  color: #7C3AED;
+}
+
+.transactionItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.transactionInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transactionDesc {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.transactionDate {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.transactionPoints {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pointsPlus {
+  color: #22c55e;
+}
+
+.pointsMinus {
+  color: #ef4444;
+}
+
+/* 모바??최적??*/
+@media (max-width: 768px) {
+  .surveyContainer,
+  .pointsContainer {
+    padding: 12px;
+  }
+
+  .pointsAmount {
+    font-size: 32px;
+  }
+
+  .questionTitle {
+    font-size: 15px;
+  }
+
+  .optionButton {
+    padding: 10px 14px;
+    font-size: 13px;
   }
 }
 

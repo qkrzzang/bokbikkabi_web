@@ -68,6 +68,8 @@ export default function PropertyDetailModal({
   const [userReviewCount, setUserReviewCount] = useState(0)
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null)
   const [isLoadingMap, setIsLoadingMap] = useState(false)
+  const [isFavorite, setIsFavorite] = useState(false)
+  const [isFavoriteLoading, setIsFavoriteLoading] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
   const naverMapInstance = useRef<any>(null)
 
@@ -91,13 +93,29 @@ export default function PropertyDetailModal({
         console.log('[PropertyDetailModal] 사용자 리뷰 개수:', reviewCount)
         setUserReviewCount(reviewCount)
         setHasReviewAccess(reviewCount >= 1) // 1건 이상이면 접근 가능
+
+        // 관심 등록 여부 확인
+        if (property) {
+          const { data: favoriteData, error: favoriteError } = await supabase
+            .from('favorite_agents')
+            .select('id')
+            .eq('supabase_user_id', session.user.id)
+            .eq('agent_id', parseInt(property.id))
+            .maybeSingle()
+          
+          if (favoriteError) {
+            console.error('[PropertyDetailModal] 관심 등록 확인 오류:', favoriteError)
+          }
+          
+          setIsFavorite(!!favoriteData)
+        }
       }
     }
     
     if (isOpen) {
       checkSessionAndReviews()
     }
-  }, [isOpen])
+  }, [isOpen, property])
 
   // 주소를 좌표로 변환 (DB에 좌표가 있으면 사용, 없으면 Geocoding API 호출)
   useEffect(() => {
@@ -304,6 +322,50 @@ export default function PropertyDetailModal({
     }
   }
 
+  const handleFavoriteToggle = async () => {
+    if (isFavoriteLoading) return
+    
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    if (!property) return
+
+    try {
+      setIsFavoriteLoading(true)
+
+      if (isFavorite) {
+        // 관심 해제
+        const { error } = await supabase
+          .from('favorite_agents')
+          .delete()
+          .eq('supabase_user_id', session.user.id)
+          .eq('agent_id', parseInt(property.id))
+
+        if (error) throw error
+        setIsFavorite(false)
+      } else {
+        // 관심 등록
+        const { error } = await supabase
+          .from('favorite_agents')
+          .insert({
+            supabase_user_id: session.user.id,
+            agent_id: parseInt(property.id)
+          })
+
+        if (error) throw error
+        setIsFavorite(true)
+      }
+    } catch (error: any) {
+      console.error('관심 등록/해제 오류:', error)
+      alert('오류가 발생했습니다. 다시 시도해주세요.')
+    } finally {
+      setIsFavoriteLoading(false)
+    }
+  }
+
   return (
     <>
       <div className={styles.overlay} onClick={onClose}>
@@ -333,6 +395,34 @@ export default function PropertyDetailModal({
               <div className={styles.addressSection}>
                 <span className={styles.address}>{property.address}</span>
               </div>
+              {/* 관심 등록 버튼 - 헤더 하단에 배치 */}
+              {isLoggedIn && (
+                <button
+                  className={`${styles.favoriteButton} ${isFavorite ? styles.favoriteActive : ''}`}
+                  onClick={handleFavoriteToggle}
+                  disabled={isFavoriteLoading}
+                  aria-label={isFavorite ? '관심 해제' : '관심 등록'}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill={isFavorite ? 'currentColor' : 'none'}
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className={styles.favoriteButtonText}>
+                    {isFavorite ? '관심 해제' : '관심 등록'}
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* 로그인하지 않은 사용자: 별점부터 지도까지 흐릿하게 처리 */}
@@ -397,30 +487,6 @@ export default function PropertyDetailModal({
                           {renderScoreBar(item.score)}
                         </div>
                       ))}
-                    </div>
-                  </div>
-
-                  <div className={styles.summarySection}>
-                    <h3 className={styles.sectionTitle}>핵심 요약</h3>
-                    <div className={styles.summaryList}>
-                      <div className={styles.summaryItem}>
-                        <div className={`${styles.summaryIcon} ${styles.greenIcon}`} />
-                        <span className={styles.summaryText}>
-                          {property.keySummary.recommendRate}% 가 이 부동산을 추천해요
-                        </span>
-                      </div>
-                      <div className={styles.summaryItem}>
-                        <div className={`${styles.summaryIcon} ${styles.yellowIcon}`} />
-                        <span className={styles.summaryText}>
-                          {property.keySummary.discountRate}% 가 수수료 할인을 받았어요
-                        </span>
-                      </div>
-                      <div className={styles.summaryItem}>
-                        <div className={`${styles.summaryIcon} ${styles.blueIcon}`} />
-                        <span className={styles.summaryText}>
-                          {property.keySummary.explanationRate}% 가 계약 설명이 꼼꼼했다고 해요
-                        </span>
-                      </div>
                     </div>
                   </div>
 
@@ -584,8 +650,8 @@ export default function PropertyDetailModal({
                   )}
                 </div>
 
-                {/* 키워드 뱃지 - 리뷰 접근 권한이 있을 때만 표시 */}
-                {hasReviewAccess && property.praiseTags.length > 0 && (
+                {/* 키워드 뱃지 - 리뷰 접근 권한이 있고 리뷰가 있을 때만 표시 */}
+                {hasReviewAccess && property.reviewCount > 0 && property.praiseTags.length > 0 && (
                   <div className={styles.badgeSection}>
                     <div className={styles.badgeGroup}>
                       <span className={styles.badgeLabel}>칭찬 태그:</span>
@@ -600,7 +666,7 @@ export default function PropertyDetailModal({
                   </div>
                 )}
 
-                {hasReviewAccess && property.regretTags.length > 0 && (
+                {hasReviewAccess && property.reviewCount > 0 && property.regretTags.length > 0 && (
                   <div className={styles.badgeSection}>
                     <div className={styles.badgeGroup}>
                       <span className={styles.badgeLabel}>아쉬움 태그:</span>
@@ -615,8 +681,8 @@ export default function PropertyDetailModal({
                   </div>
                 )}
 
-                {/* 상세 평가 - 리뷰 접근 권한이 있을 때만 표시 */}
-                {hasReviewAccess && (
+                {/* 상세 평가 - 리뷰 접근 권한이 있고 리뷰가 있을 때만 표시 */}
+                {hasReviewAccess && property.reviewCount > 0 && (
                   <div className={styles.evaluationSection}>
                     <h3 className={styles.sectionTitle}>상세 평가</h3>
                     <div className={styles.evaluationList}>
@@ -635,33 +701,6 @@ export default function PropertyDetailModal({
                           {renderScoreBar(item.score)}
                         </div>
                       ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 핵심 요약 - 리뷰 접근 권한이 있을 때만 표시 */}
-                {hasReviewAccess && (
-                  <div className={styles.summarySection}>
-                    <h3 className={styles.sectionTitle}>핵심 요약</h3>
-                    <div className={styles.summaryList}>
-                      <div className={styles.summaryItem}>
-                        <div className={`${styles.summaryIcon} ${styles.greenIcon}`} />
-                        <span className={styles.summaryText}>
-                          {property.keySummary.recommendRate}% 가 이 부동산을 추천해요
-                        </span>
-                      </div>
-                      <div className={styles.summaryItem}>
-                        <div className={`${styles.summaryIcon} ${styles.yellowIcon}`} />
-                        <span className={styles.summaryText}>
-                          {property.keySummary.discountRate}% 가 수수료 할인을 받았어요
-                        </span>
-                      </div>
-                      <div className={styles.summaryItem}>
-                        <div className={`${styles.summaryIcon} ${styles.blueIcon}`} />
-                        <span className={styles.summaryText}>
-                          {property.keySummary.explanationRate}% 가 계약 설명이 꼼꼼했다고 해요
-                        </span>
-                      </div>
                     </div>
                   </div>
                 )}

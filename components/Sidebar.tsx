@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import styles from './Sidebar.module.css'
 import { supabase } from '@/lib/supabase/client'
+import AdModal from './AdModal'
 
-type ScreenType = 'menu' | 'contracts' | 'favorites' | 'settings' | 'partnership' | 'policy' | 'admin'
+type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'partnership' | 'policy' | 'admin'
 
 interface SidebarProps {
   isOpen: boolean
@@ -32,6 +33,18 @@ export default function Sidebar({
   const [selectedContract, setSelectedContract] = useState<any>(null)
   const [decryptedImageUrl, setDecryptedImageUrl] = useState<string | null>(null)
   const [isImageLoading, setIsImageLoading] = useState(false)
+  const [favoriteAgents, setFavoriteAgents] = useState<any[]>([])
+  const [isFavoritesLoading, setIsFavoritesLoading] = useState(false)
+  const [userPoints, setUserPoints] = useState<number>(0)
+  const [surveyQuestions, setSurveyQuestions] = useState<any[]>([])
+  const [surveyResponses, setSurveyResponses] = useState<Record<string, string>>({})
+  const [pointTransactions, setPointTransactions] = useState<any[]>([])
+  const [pointPolicies, setPointPolicies] = useState<any[]>([]) // 공통 코드에서 로드
+  const [isAdVisible, setIsAdVisible] = useState(false) // 광고 노출 여부
+  const [isSurveyVisible, setIsSurveyVisible] = useState(true) // 서베이 메뉴 노출 여부
+  const [isAdModalOpen, setIsAdModalOpen] = useState(false) // 광고 모달 열림 여부
+  const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
+  const [transactionLimit, setTransactionLimit] = useState(10) // 포인트 내역 표시 개수
   
   // 사이드바가 닫힐 때 메뉴로 리셋
   useEffect(() => {
@@ -41,6 +54,62 @@ export default function Sidebar({
       setDecryptedImageUrl(null)
     }
   }, [isOpen])
+
+  // 사이드바가 열릴 때 포인트 로드 및 노출 설정 로드
+  useEffect(() => {
+    if (isOpen && user) {
+      loadUserPoints()
+      loadVisibilitySettings()
+    }
+  }, [isOpen, user])
+
+  // visibility:changed 이벤트 리스너 추가
+  useEffect(() => {
+    const handleVisibilityChanged = () => {
+      if (isOpen) {
+        loadVisibilitySettings()
+      }
+    }
+
+    window.addEventListener('visibility:changed', handleVisibilityChanged)
+    return () => window.removeEventListener('visibility:changed', handleVisibilityChanged)
+  }, [isOpen])
+
+  // 광고/서베이 노출 설정 로드
+  const loadVisibilitySettings = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+      const { data, error } = await supabase
+        .from('common_code_detail')
+        .select('code_value, description')
+        .eq('code_group', 'SYSTEM_CONFIG')
+        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE'])
+        .eq('use_yn', 'Y')
+        .lte('sta_ymd', today)
+        .gte('end_ymd', today)
+
+      if (!error && data) {
+        data.forEach((item: any) => {
+          const isVisible = item.description?.startsWith('Y') ?? false
+          if (item.code_value === 'ADVERTISEMENT_VISIBLE') {
+            setIsAdVisible(isVisible)
+          } else if (item.code_value === 'SURVEY_VISIBLE') {
+            setIsSurveyVisible(isVisible)
+          }
+        })
+      }
+    } catch (error) {
+      console.error('노출 설정 로드 오류:', error)
+      setIsAdVisible(false)
+      setIsSurveyVisible(true)
+    }
+  }
+
+  // 광고 모달 완료 핸들러
+  const handleAdComplete = () => {
+    // 포인트 새로고침
+    loadUserPoints()
+  }
   
   if (!isOpen || !user) return null
 
@@ -61,6 +130,227 @@ export default function Sidebar({
     if (!error && data) {
       setMyContracts(data)
     }
+  }
+
+  // 사용자 포인트 불러오기
+  const loadUserPoints = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+
+    const { data, error } = await supabase
+      .from('user_points')
+      .select('total_points')
+      .eq('supabase_user_id', session.user.id)
+      .maybeSingle()
+
+    if (!error && data) {
+      setUserPoints(data.total_points || 0)
+    } else {
+      setUserPoints(0)
+    }
+
+    // 포인트 거래 내역도 함께 로드 (최근 50개)
+    const { data: transactions, error: txError } = await supabase
+      .from('point_transactions')
+      .select('*')
+      .eq('supabase_user_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (!txError && transactions) {
+      setPointTransactions(transactions)
+    }
+
+    // 포인트 정책 로드 (공통 코드에서)
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '') // YYYYMMDD
+    
+    const { data: policies, error: policyError } = await supabase
+      .from('common_code_detail')
+      .select('*')
+      .eq('code_group', 'POINT_POLICY')
+      .eq('use_yn', 'Y')
+      .lte('sta_ymd', today)
+      .gte('end_ymd', today)
+      .order('sort_order', { ascending: true })
+
+    if (!policyError && policies) {
+      setPointPolicies(policies)
+    }
+  }
+
+  // 서베이 질문 불러오기
+  const loadSurveyQuestions = async () => {
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '') // YYYYMMDD
+    
+    const { data, error } = await supabase
+      .from('common_code_detail')
+      .select('*')
+      .eq('code_group', 'SURVEY')
+      .eq('use_yn', 'Y')
+      .lte('sta_ymd', today)
+      .gte('end_ymd', today)
+      .order('sort_order', { ascending: true })
+
+    if (!error && data) {
+      setSurveyQuestions(data)
+    }
+
+    // 기존 응답 불러오기
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+
+    const { data: responses, error: respError } = await supabase
+      .from('survey_responses')
+      .select('*')
+      .eq('supabase_user_id', session.user.id)
+
+    if (!respError && responses) {
+      const responsesMap: Record<string, string> = {}
+      responses.forEach((r: any) => {
+        responsesMap[r.question_code] = r.response_value
+      })
+      setSurveyResponses(responsesMap)
+    }
+  }
+
+  // 서베이 응답 저장
+  const saveSurveyResponse = async (questionCode: string, responseValue: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+
+    // 기존 응답 확인
+    const { data: existing } = await supabase
+      .from('survey_responses')
+      .select('id')
+      .eq('supabase_user_id', session.user.id)
+      .eq('question_code', questionCode)
+      .maybeSingle()
+
+    if (existing) {
+      // 업데이트
+      const { error } = await supabase
+        .from('survey_responses')
+        .update({ response_value: responseValue, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+
+      if (error) {
+        console.error('[서베이] 응답 업데이트 오류:', error)
+      }
+    } else {
+      // 신규 삽입 (포인트 지급)
+      const { error } = await supabase
+        .from('survey_responses')
+        .insert({
+          supabase_user_id: session.user.id,
+          question_code: questionCode,
+          response_value: responseValue
+        })
+
+      if (error) {
+        console.error('[서베이] 응답 저장 오류:', error)
+      } else {
+        // 포인트 지급 (첫 응답인 경우)
+        const isFirstResponse = Object.keys(surveyResponses).length === 0
+        if (isFirstResponse) {
+          await supabase.rpc('award_points', {
+            p_user_id: session.user.id,
+            p_action_type: 'SURVEY',
+            p_description: '서베이 완료'
+          })
+          
+          alert('🎉 서베이 완료! 포인트가 적립되었습니다.')
+          loadUserPoints() // 포인트 새로고침
+        }
+      }
+    }
+
+    // 응답 상태 업데이트
+    setSurveyResponses(prev => ({ ...prev, [questionCode]: responseValue }))
+  }
+
+  // 출석 체크
+  const checkInAttendance = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+
+    const { data, error } = await supabase.rpc('check_in_attendance', {
+      p_user_id: session.user.id
+    })
+
+    if (!error && data) {
+      alert(data.message)
+      if (data.success) {
+        loadUserPoints() // 포인트 새로고침
+      }
+    } else {
+      console.error('[출석] 체크 오류:', error)
+    }
+  }
+
+  // 내 관심 부동산 불러오기
+  const loadFavoriteAgents = async () => {
+    setIsFavoritesLoading(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      setIsFavoritesLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('favorite_agents')
+      .select(`
+        id,
+        agent_id,
+        created_at,
+        agent:agent_master(
+          id,
+          agent_name,
+          road_address,
+          lot_address
+        )
+      `)
+      .eq('supabase_user_id', session.user.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('[Sidebar] 관심 부동산 불러오기 오류:', error)
+    } else if (data) {
+      setFavoriteAgents(data)
+    }
+    
+    setIsFavoritesLoading(false)
+  }
+
+  // 관심 부동산 제거
+  const handleRemoveFavorite = async (favoriteId: number) => {
+    if (!confirm('관심 부동산을 삭제하시겠습니까?')) return
+
+    const { error } = await supabase
+      .from('favorite_agents')
+      .delete()
+      .eq('id', favoriteId)
+
+    if (error) {
+      console.error('[Sidebar] 관심 부동산 삭제 오류:', error)
+      alert('관심 부동산 삭제에 실패했습니다.')
+    } else {
+      // 목록 새로고침
+      loadFavoriteAgents()
+    }
+  }
+
+  // 관심 부동산 클릭 시 메인 화면에서 검색 및 상세 모달 열기
+  const handleFavoriteClick = (agentName: string, agentId: number) => {
+    // 1. 사이드바 닫기
+    onClose()
+    
+    // 2. 메인 화면에서 부동산명으로 검색하고 상세 모달 열기
+    window.dispatchEvent(new CustomEvent('search:and-open-detail', { 
+      detail: { 
+        searchQuery: agentName,
+        agentId: agentId 
+      } 
+    }))
   }
 
   // 계약서 상세 보기
@@ -133,7 +423,8 @@ export default function Sidebar({
              currentScreen === 'menu' ? '' :
              currentScreen === 'contracts' ? '내 리뷰' :
              currentScreen === 'favorites' ? '내 관심 부동산' :
-             currentScreen === 'settings' ? '설정' :
+             currentScreen === 'survey' ? '서베이' :
+             currentScreen === 'points' ? '내 포인트' :
              currentScreen === 'partnership' ? '광고/제휴 문의' :
              currentScreen === 'policy' ? '약관/정책' :
              currentScreen === 'admin' ? '관리자 메뉴' : ''}
@@ -203,6 +494,17 @@ export default function Sidebar({
             <p className={styles.profileEmail}>
               {user.email || user.user_metadata?.kakao_account?.email || ''}
             </p>
+            <button 
+              className={styles.pointsButton}
+              onClick={() => {
+                loadUserPoints()
+                setCurrentScreen('points')
+              }}
+            >
+              <span className={styles.pointsIcon}>💰</span>
+              <span className={styles.pointsText}>내 포인트: {userPoints.toLocaleString()}P</span>
+              <span className={styles.chevron}>›</span>
+            </button>
           </div>
         </div>
         )}
@@ -226,21 +528,42 @@ export default function Sidebar({
 
               <button 
                 className={styles.navItem} 
-                onClick={() => setCurrentScreen('favorites')}
+                onClick={() => {
+                  loadFavoriteAgents()
+                  setCurrentScreen('favorites')
+                }}
               >
                 <span className={styles.navIcon}>❤️</span>
                 <span className={styles.navLabel}>내 관심 부동산</span>
                 <span className={styles.chevron}>›</span>
               </button>
 
-              <button 
-                className={styles.navItem} 
-                onClick={() => setCurrentScreen('settings')}
-              >
-                <span className={styles.navIcon}>⚙️</span>
-                <span className={styles.navLabel}>설정</span>
-                <span className={styles.chevron}>›</span>
-              </button>
+              {/* 서베이 버튼 (설정에서 활성화된 경우에만 표시) */}
+              {isSurveyVisible && (
+                <button 
+                  className={styles.navItem} 
+                  onClick={() => {
+                    loadSurveyQuestions()
+                    setCurrentScreen('survey')
+                  }}
+                >
+                  <span className={styles.navIcon}>📋</span>
+                  <span className={styles.navLabel}>서베이</span>
+                  <span className={styles.chevron}>›</span>
+                </button>
+              )}
+
+              {/* 광고보기 버튼 (설정에서 활성화된 경우에만 표시) */}
+              {isAdVisible && (
+                <button 
+                  className={styles.navItem} 
+                  onClick={() => setIsAdModalOpen(true)}
+                >
+                  <span className={styles.navIcon}>📺</span>
+                  <span className={styles.navLabel}>광고보기 (10P 적립)</span>
+                  <span className={styles.chevron}>›</span>
+                </button>
+              )}
 
               <button 
                 className={styles.navItem} 
@@ -336,8 +659,110 @@ export default function Sidebar({
 
               {/* 리뷰 정보 */}
               <div className={styles.reviewInfo}>
-                <h4>리뷰</h4>
-                <p>{selectedContract.review_text || '리뷰 내용 없음'}</p>
+                {/* 기본 정보 */}
+                <div className={styles.reviewSection}>
+                  <h4 className={styles.reviewSectionTitle}>📍 기본 정보</h4>
+                  <div className={styles.reviewField}>
+                    <span className={styles.reviewLabel}>공인중개사:</span>
+                    <span className={styles.reviewValue}>{selectedContract.agent?.agent_name || '알 수 없음'}</span>
+                  </div>
+                  {selectedContract.agent?.road_address && (
+                    <div className={styles.reviewField}>
+                      <span className={styles.reviewLabel}>주소:</span>
+                      <span className={styles.reviewValue}>{selectedContract.agent.road_address}</span>
+                    </div>
+                  )}
+                  {selectedContract.contract_date && (
+                    <div className={styles.reviewField}>
+                      <span className={styles.reviewLabel}>계약일:</span>
+                      <span className={styles.reviewValue}>{selectedContract.contract_date}</span>
+                    </div>
+                  )}
+                  {selectedContract.transaction_tag && (
+                    <div className={styles.reviewField}>
+                      <span className={styles.reviewLabel}>거래 구분:</span>
+                      <span className={styles.reviewValue}>{selectedContract.transaction_tag}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 상세 평가 */}
+                {(selectedContract.fee_satisfaction || selectedContract.expertise || selectedContract.kindness || 
+                  selectedContract.property_reliability || selectedContract.response_speed) && (
+                  <div className={styles.reviewSection}>
+                    <h4 className={styles.reviewSectionTitle}>⭐ 상세 평가</h4>
+                    {selectedContract.fee_satisfaction && (
+                      <div className={styles.reviewField}>
+                        <span className={styles.reviewLabel}>수수료 만족도:</span>
+                        <span className={styles.reviewValue}>{'⭐'.repeat(selectedContract.fee_satisfaction)}</span>
+                      </div>
+                    )}
+                    {selectedContract.expertise && (
+                      <div className={styles.reviewField}>
+                        <span className={styles.reviewLabel}>전문성:</span>
+                        <span className={styles.reviewValue}>{'⭐'.repeat(selectedContract.expertise)}</span>
+                      </div>
+                    )}
+                    {selectedContract.kindness && (
+                      <div className={styles.reviewField}>
+                        <span className={styles.reviewLabel}>친절도:</span>
+                        <span className={styles.reviewValue}>{'⭐'.repeat(selectedContract.kindness)}</span>
+                      </div>
+                    )}
+                    {selectedContract.property_reliability && (
+                      <div className={styles.reviewField}>
+                        <span className={styles.reviewLabel}>매물 신뢰도:</span>
+                        <span className={styles.reviewValue}>{'⭐'.repeat(selectedContract.property_reliability)}</span>
+                      </div>
+                    )}
+                    {selectedContract.response_speed && (
+                      <div className={styles.reviewField}>
+                        <span className={styles.reviewLabel}>응답 속도:</span>
+                        <span className={styles.reviewValue}>{'⭐'.repeat(selectedContract.response_speed)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 칭찬 태그 */}
+                {selectedContract.praise_tags && selectedContract.praise_tags.length > 0 && (
+                  <div className={styles.reviewSection}>
+                    <h4 className={styles.reviewSectionTitle}>👍 칭찬 태그</h4>
+                    <div className={styles.tagList}>
+                      {selectedContract.praise_tags.map((tag: string, index: number) => (
+                        <span key={index} className={styles.praiseTag}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 아쉬움 태그 */}
+                {selectedContract.regret_tags && selectedContract.regret_tags.length > 0 && (
+                  <div className={styles.reviewSection}>
+                    <h4 className={styles.reviewSectionTitle}>💭 아쉬움 태그</h4>
+                    <div className={styles.tagList}>
+                      {selectedContract.regret_tags.map((tag: string, index: number) => (
+                        <span key={index} className={styles.regretTag}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 상세 리뷰 */}
+                {selectedContract.review_text && (
+                  <div className={styles.reviewSection}>
+                    <h4 className={styles.reviewSectionTitle}>✍️ 상세 리뷰</h4>
+                    <p className={styles.reviewText}>{selectedContract.review_text}</p>
+                  </div>
+                )}
+
+                {/* 등록일 */}
+                <div className={styles.reviewSection}>
+                  <div className={styles.reviewField}>
+                    <span className={styles.reviewLabel}>등록일:</span>
+                    <span className={styles.reviewValue}>{new Date(selectedContract.created_at).toLocaleString('ko-KR')}</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -345,16 +770,172 @@ export default function Sidebar({
           {/* 내 관심 부동산 화면 */}
           {currentScreen === 'favorites' && (
             <div className={styles.screenContent}>
-              <div className={styles.emptyState}>준비 중입니다.</div>
+              {isFavoritesLoading ? (
+                <div className={styles.emptyState}>관심 부동산을 불러오는 중...</div>
+              ) : favoriteAgents.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>❤️</div>
+                  <p className={styles.emptyText}>아직 관심 등록한 부동산이 없습니다.</p>
+                  <p className={styles.emptySubtext}>부동산 상세 화면에서 관심 등록을 해보세요!</p>
+                </div>
+              ) : (
+                <div className={styles.favoritesList}>
+                  {favoriteAgents.map((fav: any) => (
+                    <div key={fav.id} className={styles.favoriteCard}>
+                      <div 
+                        className={styles.favoriteCardContent}
+                        onClick={() => handleFavoriteClick(fav.agent?.agent_name || '알 수 없음', fav.agent?.id)}
+                      >
+                        <h4 className={styles.favoriteName}>{fav.agent?.agent_name || '알 수 없음'}</h4>
+                        <div className={styles.favoriteFooter}>
+                          <span className={styles.favoriteDate}>
+                            등록일: {new Date(fav.created_at).toLocaleDateString('ko-KR')}
+                          </span>
+                          <button
+                            className={styles.favoriteRemoveButton}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRemoveFavorite(fav.id)
+                            }}
+                            aria-label="관심 해제"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                              />
+                            </svg>
+                            <span>관심 해제</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* 설정 화면 */}
-          {currentScreen === 'settings' && (
+          {/* 서베이 화면 */}
+          {currentScreen === 'survey' && (
             <div className={styles.screenContent}>
-              <div className={styles.settingsList}>
-                <button className={styles.settingItem}>알림 설정</button>
-                <button className={styles.settingItem}>서비스 설정</button>
+              {surveyQuestions.length === 0 ? (
+                <div className={styles.emptyState}>서베이 질문을 불러오는 중...</div>
+              ) : (
+                <div className={styles.surveyContainer}>
+                  <p className={styles.surveyDescription}>
+                    서비스 개선을 위한 간단한 질문에 답변해주세요! 
+                    {Object.keys(surveyResponses).length === 0 && ' 완료 시 포인트가 적립됩니다. 🎁'}
+                  </p>
+                  
+                  {surveyQuestions.map((question) => (
+                    <div key={question.code_value} className={styles.surveyQuestion}>
+                      <h4 className={styles.questionTitle}>{question.code_name}</h4>
+                      <div className={styles.optionsList}>
+                        {question.description.split(',').map((option: string) => (
+                          <button
+                            key={option}
+                            className={`${styles.optionButton} ${
+                              surveyResponses[question.code_value] === option.trim() 
+                                ? styles.optionSelected 
+                                : ''
+                            }`}
+                            onClick={() => saveSurveyResponse(question.code_value, option.trim())}
+                          >
+                            {option.trim()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  {Object.keys(surveyResponses).length > 0 && (
+                    <div className={styles.surveyComplete}>
+                      ✅ 서베이 응답이 저장되었습니다. 감사합니다!
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 포인트 화면 */}
+          {currentScreen === 'points' && (
+            <div className={styles.screenContent}>
+              <div className={styles.pointsContainer}>
+                {/* 보유 포인트 */}
+                <div className={styles.pointsHeader}>
+                  <div className={styles.pointsBalance}>
+                    <span className={styles.pointsLabel}>보유 포인트</span>
+                    <span className={styles.pointsAmount}>{userPoints.toLocaleString()}P</span>
+                  </div>
+                </div>
+
+                {/* 포인트 획득 방법 (접기/펼치기) */}
+                <div className={styles.pointsSection}>
+                  <button 
+                    className={styles.sectionTitleButton}
+                    onClick={() => setIsPolicyExpanded(!isPolicyExpanded)}
+                  >
+                    <span>💡 포인트 받는 방법</span>
+                    <span className={styles.expandIcon}>{isPolicyExpanded ? '▼' : '▶'}</span>
+                  </button>
+                  {isPolicyExpanded && (
+                    <div className={styles.policyList}>
+                      {pointPolicies.map((policy) => (
+                        <div key={policy.code_value} className={styles.policyItem}>
+                          <div className={styles.policyDescription}>{policy.description}</div>
+                          <div className={styles.policyPoints}>+{policy.code_name} {policy.extra_value1}P</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 포인트 내역 (스크롤 + 더 보기) */}
+                <div className={styles.pointsSection}>
+                  <h4 className={styles.sectionTitle}>📝 포인트 내역</h4>
+                  {pointTransactions.length === 0 ? (
+                    <div className={styles.emptyState}>아직 포인트 내역이 없습니다.</div>
+                  ) : (
+                    <>
+                      <div className={styles.transactionsScrollList}>
+                        {pointTransactions.slice(0, transactionLimit).map((tx) => {
+                          // transaction_type에 해당하는 extra_value2 찾기
+                          const policy = pointPolicies.find(p => p.code_value === tx.transaction_type)
+                          const displayText = policy?.extra_value2 || tx.description
+                          
+                          return (
+                            <div key={tx.id} className={styles.transactionItem}>
+                              <div className={styles.transactionInfo}>
+                                <span className={styles.transactionDesc}>{displayText}</span>
+                                <span className={styles.transactionDate}>
+                                  {new Date(tx.created_at).toLocaleDateString('ko-KR')}
+                                </span>
+                              </div>
+                              <span className={`${styles.transactionPoints} ${tx.points > 0 ? styles.pointsPlus : styles.pointsMinus}`}>
+                                {tx.points > 0 ? '+' : ''}{tx.points}P
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {pointTransactions.length > transactionLimit && (
+                        <button 
+                          className={styles.loadMoreButton}
+                          onClick={() => setTransactionLimit(prev => prev + 10)}
+                        >
+                          더 보기 ({pointTransactions.length - transactionLimit}개 남음)
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -456,6 +1037,13 @@ export default function Sidebar({
           </div>
         )}
       </div>
+
+      {/* 광고 모달 */}
+      <AdModal 
+        isOpen={isAdModalOpen}
+        onClose={() => setIsAdModalOpen(false)}
+        onComplete={handleAdComplete}
+      />
     </>
   )
 }
