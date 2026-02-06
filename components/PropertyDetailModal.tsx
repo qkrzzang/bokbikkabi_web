@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import ReviewModal from './ReviewModal'
 import styles from './PropertyDetailModal.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
+import { useAuthCheck } from '@/components/AuthGuard'
+import { apiRequest } from '@/lib/api/interceptor'
 
 // 네이버 지도 타입 선언
 declare global {
@@ -62,6 +65,8 @@ export default function PropertyDetailModal({
   isOpen,
   onClose,
 }: PropertyDetailModalProps) {
+  const { user: authUser } = useAuth()
+  const checkAuth = useAuthCheck({ showAlert: true })
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [hasReviewAccess, setHasReviewAccess] = useState(false)
@@ -75,19 +80,14 @@ export default function PropertyDetailModal({
 
   useEffect(() => {
     const checkSessionAndReviews = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setIsLoggedIn(!!session)
+      setIsLoggedIn(!!authUser)
       
-      if (session) {
-        // 사용자가 작성한 리뷰 개수 확인
+      if (authUser) {
+        // 사용자가 작성한 리뷰 개수 확인 (count는 직접 호출)
         const { data: reviewData, error, count } = await supabase
           .from('agent_reviews')
           .select('*', { count: 'exact', head: true })
-          .eq('supabase_user_id', session.user.id)
-        
-        if (error) {
-          console.error('[PropertyDetailModal] 리뷰 개수 조회 실패:', error)
-        }
+          .eq('supabase_user_id', authUser.id)
         
         const reviewCount = count || 0
         console.log('[PropertyDetailModal] 사용자 리뷰 개수:', reviewCount)
@@ -96,16 +96,15 @@ export default function PropertyDetailModal({
 
         // 관심 등록 여부 확인
         if (property) {
-          const { data: favoriteData, error: favoriteError } = await supabase
-            .from('favorite_agents')
-            .select('id')
-            .eq('supabase_user_id', session.user.id)
-            .eq('agent_id', parseInt(property.id))
-            .maybeSingle()
-          
-          if (favoriteError) {
-            console.error('[PropertyDetailModal] 관심 등록 확인 오류:', favoriteError)
-          }
+          const { data: favoriteData } = await apiRequest(
+            () => supabase
+              .from('favorite_agents')
+              .select('id')
+              .eq('supabase_user_id', authUser.id)
+              .eq('agent_id', parseInt(property.id))
+              .maybeSingle(),
+            { requireAuth: true }
+          )
           
           setIsFavorite(!!favoriteData)
         }
@@ -115,7 +114,7 @@ export default function PropertyDetailModal({
     if (isOpen) {
       checkSessionAndReviews()
     }
-  }, [isOpen, property])
+  }, [isOpen, property, authUser])
 
   // 주소를 좌표로 변환 (DB에 좌표가 있으면 사용, 없으면 Geocoding API 호출)
   useEffect(() => {
@@ -321,9 +320,6 @@ export default function PropertyDetailModal({
       setIsReviewModalOpen(true)
     }
   }
-
-  const { user: authUser } = useAuth()
-  const checkAuth = useAuthCheck({ showAlert: true })
 
   const handleFavoriteToggle = async () => {
     if (isFavoriteLoading) return

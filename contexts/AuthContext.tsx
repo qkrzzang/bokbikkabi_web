@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 인증 상태 변경 감지
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      async (event: string, newSession: Session | null) => {
         if (!mounted) return
 
         console.log('[AuthContext] 인증 이벤트:', event)

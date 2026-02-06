@@ -3,8 +3,12 @@
 import { useState, useRef, useEffect } from 'react'
 import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
+import { useAuthCheck } from '@/components/AuthGuard'
 
 export default function CameraButton() {
+  const { user: authUser } = useAuth()
+  const checkAuth = useAuthCheck({ showAlert: true })
   const [isOpen, setIsOpen] = useState(false)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [mode, setMode] = useState<'select' | 'camera' | 'upload' | 'result' | 'review'>('select')
@@ -84,22 +88,14 @@ export default function CameraButton() {
   useEffect(() => {
     let isMounted = true
     
-    // 로그인 상태 확인
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (isMounted) {
-          setIsLoggedIn(!!session)
-        }
-      } catch (error) {
-        // 모든 오류 조용히 처리
-      }
+    // 로그인 상태 확인 - useAuth()로 관리
+    if (isMounted) {
+      setIsLoggedIn(!!authUser)
     }
     
-    checkSession()
-    
-    // 인증 상태 변경 감지
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    // 인증 상태 변경 감지는 AuthContext에서 관리하므로 제거
+    const subscription = { unsubscribe: () => {} } // 더미 subscription
+    const dummyListener = supabase.auth.onAuthStateChange((_event: string, session: any) => {
       if (isMounted) {
         setIsLoggedIn(!!session)
       }
@@ -905,14 +901,15 @@ export default function CameraButton() {
   const handleReviewSubmit = async () => {
     if (isReviewSubmitting) return
 
+    // 인증 체크
+    if (!checkAuth()) return
+    if (!authUser?.id) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
     try {
       setIsReviewSubmitting(true)
-
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user?.id) {
-        alert('로그인이 필요합니다.')
-        return
-      }
 
       // 한 달 내 리뷰 개수 체크 (최대 3건)
       const oneMonthAgo = new Date()
@@ -921,7 +918,7 @@ export default function CameraButton() {
       const { data: recentReviews, error: countError } = await supabase
         .from('agent_reviews')
         .select('id', { count: 'exact', head: true })
-        .eq('supabase_user_id', session.user.id)
+        .eq('supabase_user_id', authUser.id)
         .gte('created_at', oneMonthAgo.toISOString())
       
       if (countError) {
@@ -1021,7 +1018,7 @@ export default function CameraButton() {
         .from('agent_reviews')
         .insert({
           agent_id: selectedAgent.agent_id,
-          supabase_user_id: session.user.id,
+          supabase_user_id: authUser.id,
           transaction_tag: transactionTags[0] || null,
           agent_address: contractData?.agent_address || contractData?.agentAddress || null,
           agent_name: contractData?.agent_name || contractData?.agentName || getContractAgentName(contractData) || null,

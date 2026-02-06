@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import styles from './AdModal.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
+import { apiRequest } from '@/lib/api/interceptor'
 
 interface AdModalProps {
   isOpen: boolean
@@ -11,6 +13,7 @@ interface AdModalProps {
 }
 
 export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
+  const { user: authUser } = useAuth()
   const [countdown, setCountdown] = useState(30) // 30초 광고
   const [canClose, setCanClose] = useState(false)
   const [isWatched, setIsWatched] = useState(false)
@@ -55,28 +58,25 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
   }
 
   const awardAdPoints = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        console.log('로그인이 필요합니다.')
-        return
-      }
+    if (!authUser) {
+      console.log('로그인이 필요합니다.')
+      return
+    }
 
+    try {
       // 오늘 이미 광고 시청 포인트를 받았는지 확인
       const today = new Date().toISOString().split('T')[0]
-      const { data: existingTransactions, error: checkError } = await supabase
-        .from('point_transactions')
-        .select('id')
-        .eq('supabase_user_id', session.user.id)
-        .eq('transaction_type', 'AD_VIEW')
-        .gte('created_at', `${today}T00:00:00`)
-        .lte('created_at', `${today}T23:59:59`)
-        .limit(1)
-
-      if (checkError) {
-        console.error('광고 포인트 확인 오류:', checkError)
-        return
-      }
+      const { data: existingTransactions } = await apiRequest<any[]>(
+        () => supabase
+          .from('point_transactions')
+          .select('id')
+          .eq('supabase_user_id', authUser.id)
+          .eq('transaction_type', 'AD_VIEW')
+          .gte('created_at', `${today}T00:00:00`)
+          .lte('created_at', `${today}T23:59:59`)
+          .limit(1),
+        { requireAuth: true }
+      )
 
       if (existingTransactions && existingTransactions.length > 0) {
         alert('오늘은 이미 광고 시청 포인트를 받았습니다!')
@@ -85,24 +85,30 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
 
       // 포인트 정책 조회
       const todayYmd = today.replace(/-/g, '')
-      const { data: policyData } = await supabase
-        .from('common_code_detail')
-        .select('code_name')
-        .eq('code_group', 'POINT_POLICY')
-        .eq('code_value', 'AD_VIEW')
-        .eq('use_yn', 'Y')
-        .lte('sta_ymd', todayYmd)
-        .gte('end_ymd', todayYmd)
-        .maybeSingle()
+      const { data: policyData } = await apiRequest<{ code_name: string }>(
+        () => supabase
+          .from('common_code_detail')
+          .select('code_name')
+          .eq('code_group', 'POINT_POLICY')
+          .eq('code_value', 'AD_VIEW')
+          .eq('use_yn', 'Y')
+          .lte('sta_ymd', todayYmd)
+          .gte('end_ymd', todayYmd)
+          .maybeSingle(),
+        { requireAuth: false }
+      )
 
       const points = policyData ? parseInt(policyData.code_name) : 10
 
       // 포인트 적립 함수 호출
-      const { data, error } = await supabase.rpc('award_points', {
-        p_user_id: session.user.id,
-        p_transaction_type: 'AD_VIEW',
-        p_description: '광고 시청 완료'
-      })
+      const { data, error } = await apiRequest<any>(
+        () => supabase.rpc('award_points', {
+          p_user_id: authUser.id,
+          p_transaction_type: 'AD_VIEW',
+          p_description: '광고 시청 완료'
+        }),
+        { requireAuth: true }
+      )
 
       if (error) {
         console.error('광고 포인트 적립 오류:', error)

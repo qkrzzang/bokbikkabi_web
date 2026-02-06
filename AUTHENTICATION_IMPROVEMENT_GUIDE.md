@@ -212,19 +212,22 @@ const loadUserPoints = async () => {
 
 ### 1. 코드 중복 제거
 - **개선 전**: 18개 파일에서 `getSession()` 중복 호출
-- **개선 후**: 1개의 AuthContext에서 중앙 관리
+- **개선 후**: 1개의 AuthContext에서 중앙 관리 ✅
 
 ### 2. 보안 강화
 - **개선 전**: alert()만 표시하고 페이지 접근 허용
-- **개선 후**: 자동 리다이렉트 및 페이지 보호
+- **개선 후**: 자동 리다이렉트 및 페이지 보호 ✅
 
 ### 3. 사용자 경험 개선
 - **개선 전**: 각 컴포넌트에서 독립적으로 로딩 상태 표시
-- **개선 후**: 전역 로딩 상태로 일관된 UX
+- **개선 후**: 전역 로딩 상태로 일관된 UX ✅
 
 ### 4. 유지보수성 향상
 - **개선 전**: 인증 로직 변경 시 18개 파일 수정 필요
-- **개선 후**: AuthContext만 수정하면 전체 적용
+- **개선 후**: AuthContext만 수정하면 전체 적용 ✅
+
+### 5. 타입 안정성 향상
+- **개선 후**: apiRequest()를 통해 타입 안전한 API 호출 ✅
 
 ---
 
@@ -233,17 +236,18 @@ const loadUserPoints = async () => {
 ### 높음 (즉시 적용 권장)
 1. ✅ AuthContext 추가 완료
 2. ✅ Layout에 AuthProvider 적용 완료
-3. ⚠️ **Header.tsx**: 기존 인증 로직 제거하고 `useAuth()` 사용
-4. ⚠️ **Sidebar.tsx**: `getSession()` 호출을 `useAuth()` + `apiRequest()`로 변경
+3. ✅ **Header.tsx**: 기존 인증 로직 제거하고 `useAuth()` 사용 완료
+4. ✅ **Sidebar.tsx**: `getSession()` 호출을 `useAuth()` + `apiRequest()`로 변경 완료
 
 ### 중간 (점진적 적용)
-5. ⚠️ **PropertyDetailModal.tsx**: 관심 등록 기능에 `useAuthCheck()` 적용
-6. ⚠️ **ReviewModal.tsx**: 도움됨 기능에 `useAuthCheck()` 적용
-7. ⚠️ **CameraButton.tsx**: 리뷰 작성 버튼에 `useAuthCheck()` 적용
+5. ✅ **PropertyDetailModal.tsx**: 관심 등록 기능에 `useAuthCheck()` 적용 완료
+6. ✅ **ReviewModal.tsx**: 도움됨 기능에 `useAuthCheck()` 적용 완료
+7. ✅ **CameraButton.tsx**: 리뷰 작성 버튼에 `useAuthCheck()` 적용 완료
+8. ✅ **AdModal.tsx**: 광고 포인트 기능에 `useAuth()` + `apiRequest()` 적용 완료
 
 ### 낮음 (선택 사항)
-8. ⚠️ 관리자 페이지가 생기면 `<AuthGuard requireAdmin>` 적용
-9. ⚠️ API 에러 로깅 시스템 구축 (Sentry 등)
+9. ⚠️ 관리자 페이지가 생기면 `<AuthGuard requireAdmin>` 적용
+10. ⚠️ API 에러 로깅 시스템 구축 (Sentry 등)
 
 ---
 
@@ -269,13 +273,13 @@ const loadUserPoints = async () => {
 - [x] AuthProvider를 layout.tsx에 추가
 - [x] API 인터셉터 생성
 - [x] AuthGuard 컴포넌트 생성
-- [ ] Header.tsx 마이그레이션
-- [ ] Sidebar.tsx 마이그레이션
-- [ ] PropertyDetailModal.tsx 마이그레이션
-- [ ] ReviewModal.tsx 마이그레이션
-- [ ] CameraButton.tsx 마이그레이션
-- [ ] AdModal.tsx 마이그레이션
-- [ ] 기타 컴포넌트 마이그레이션
+- [x] **Header.tsx 마이그레이션** ✅ 완료
+- [x] **Sidebar.tsx 마이그레이션** ✅ 완료
+- [x] **PropertyDetailModal.tsx 마이그레이션** ✅ 완료
+- [x] **ReviewModal.tsx 마이그레이션** ✅ 완료
+- [x] **CameraButton.tsx 마이그레이션** ✅ 완료
+- [x] **AdModal.tsx 마이그레이션** ✅ 완료
+- [x] Linter 오류 수정 완료
 
 ---
 

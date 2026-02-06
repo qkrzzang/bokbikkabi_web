@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import styles from './ReviewModal.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
+import { useAuthCheck } from '@/components/AuthGuard'
+import { apiRequest } from '@/lib/api/interceptor'
 
 interface Review {
   id: string
@@ -33,6 +36,8 @@ export default function ReviewModal({
   onClose,
   propertyName,
 }: ReviewModalProps) {
+  const { user: authUser } = useAuth()
+  const checkAuth = useAuthCheck({ showAlert: true })
   const [reportingReview, setReportingReview] = useState<Review | null>(null)
   const [reportReason, setReportReason] = useState<'fake' | 'privacy' | 'other' | ''>('')
   const [reportText, setReportText] = useState('')
@@ -45,19 +50,21 @@ export default function ReviewModal({
     if (!isOpen) return
 
     const loadUserHelpfulReviews = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!authUser) return
 
       const reviewIds = reviews.map(r => r.id)
       if (reviewIds.length === 0) return
 
-      const { data, error } = await supabase
-        .from('review_helpful')
-        .select('review_id')
-        .eq('supabase_user_id', session.user.id)
-        .in('review_id', reviewIds.map(id => id.toString()))
+      const { data } = await apiRequest<any[]>(
+        () => supabase
+          .from('review_helpful')
+          .select('review_id')
+          .eq('supabase_user_id', authUser.id)
+          .in('review_id', reviewIds.map(id => id.toString())),
+        { requireAuth: true }
+      )
 
-      if (!error && data) {
+      if (data) {
         const helpfulSet = new Set<string>(data.map((item: any) => item.review_id.toString()))
         setUserHelpfulReviews(helpfulSet)
       }
@@ -131,22 +138,22 @@ export default function ReviewModal({
   }
 
   const handleHelpfulClick = async (reviewId: string) => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      alert('로그인이 필요합니다.')
-      return
-    }
+    // 인증 체크 - 실패 시 자동으로 alert 및 리다이렉트
+    if (!checkAuth()) return
 
     const isHelpful = userHelpfulReviews.has(reviewId)
 
     try {
       if (isHelpful) {
         // 도움돼요 취소
-        const { error } = await supabase
-          .from('review_helpful')
-          .delete()
-          .eq('review_id', reviewId)
-          .eq('supabase_user_id', session.user.id)
+        const { error } = await apiRequest(
+          () => supabase
+            .from('review_helpful')
+            .delete()
+            .eq('review_id', reviewId)
+            .eq('supabase_user_id', authUser!.id),
+          { requireAuth: true }
+        )
 
         if (error) {
           console.error('[ReviewModal] 도움돼요 취소 오류:', error)
@@ -166,12 +173,15 @@ export default function ReviewModal({
         }))
       } else {
         // 도움돼요 추가
-        const { error } = await supabase
-          .from('review_helpful')
-          .insert({
-            review_id: reviewId,
-            supabase_user_id: session.user.id
-          })
+        const { error } = await apiRequest(
+          () => supabase
+            .from('review_helpful')
+            .insert({
+              review_id: reviewId,
+              supabase_user_id: authUser!.id
+            }),
+          { requireAuth: true }
+        )
 
         if (error) {
           console.error('[ReviewModal] 도움돼요 추가 오류:', error)

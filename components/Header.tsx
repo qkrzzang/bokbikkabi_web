@@ -137,9 +137,8 @@ export default function Header() {
   const [adVisibility, setAdVisibility] = useState('Y')
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
   
-  const [user, setUser] = useState<any>(null)
-  const [userType, setUserType] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  // useAuth Hook으로 중앙화된 인증 상태 관리
+  const { user, userType, isLoading, signOut } = useAuth()
 
   // TODO: Supabase 연동 전까지 목 데이터 사용
   const mockFavoriteAgents: Array<{
@@ -169,29 +168,7 @@ export default function Header() {
   ]
   const mockFavoriteCommentsTotal = mockFavoriteAgents.reduce((sum, a) => sum + a.commentCount, 0)
 
-  // users 테이블에서 user_type 조회
-  const fetchUserType = async (supabaseUserId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('user_type')
-        .eq('supabase_user_id', supabaseUserId)
-        .maybeSingle()
-
-      if (error && error.code !== 'PGRST116') {
-        // 조용히 처리
-      }
-
-      if (data) {
-        setUserType(data.user_type || null)
-      } else {
-        setUserType(null)
-      }
-    } catch (error) {
-      // 모든 오류 조용히 처리
-      setUserType(null)
-    }
-  }
+  // users 테이블에서 user_type 조회 - AuthContext에서 관리하므로 제거됨
 
   // 공통코드 마스터 조회
   const fetchCodeMaster = async () => {
@@ -497,69 +474,7 @@ export default function Header() {
     }
   }
 
-  useEffect(() => {
-    let isMounted = true
-    
-    // 세션이 있을 때만 사용자 정보 확인
-    const checkUser = async () => {
-      try {
-        // 먼저 세션 확인
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!isMounted) return
-        
-        if (session) {
-          // 세션이 있으면 사용자 정보 설정
-          setUser(session.user)
-          // user_type 조회
-          await fetchUserType(session.user.id)
-        } else {
-          // 세션이 없으면 사용자 정보 초기화
-          setUser(null)
-          setUserType(null)
-        }
-      } catch (error) {
-        if (!isMounted) return
-        // 모든 오류 조용히 처리
-        setUser(null)
-        setUserType(null)
-      }
-    }
-    
-    // 초기 사용자 확인 (세션이 있을 때만)
-    checkUser()
-    
-    // 인증 상태 변경 감지 (로그인/로그아웃 시 자동 업데이트)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: string, session: any) => {
-      if (!isMounted) return
-      
-      if (session) {
-        // 로그인 시 사용자 정보 설정
-        setUser(session.user)
-        
-        // users 테이블에 Upsert (로그인 시 자동 동기화)
-        try {
-          const { upsertUserToUsersTable } = await import('@/lib/auth-check')
-          await upsertUserToUsersTable(session.user)
-        } catch (error) {
-          // 모든 오류 조용히 처리
-        }
-
-        // user_type 조회
-        if (isMounted) {
-          await fetchUserType(session.user.id)
-        }
-      } else {
-        // 로그아웃 시 사용자 정보 초기화
-        setUser(null)
-        setUserType(null)
-      }
-    })
-
-    return () => {
-      isMounted = false
-      subscription.unsubscribe()
-    }
-  }, [])
+  // 사용자 정보 가져오기 - AuthContext에서 관리하므로 제거됨
 
   // 관리자 화면 열릴 때 공통코드 데이터 로드
   useEffect(() => {
@@ -623,34 +538,29 @@ export default function Header() {
 
   const handleKakaoLogin = async () => {
     try {
-      setIsLoading(true)
       await signInWithKakao()
       logAccess({ action: 'kakao_login_initiated' })
       // OAuth 리다이렉트가 발생하므로 모달은 자동으로 닫힘
     } catch (error) {
       console.error('카카오 로그인 오류:', error)
       alert('카카오 로그인 중 오류가 발생했습니다.')
-      setIsLoading(false)
     }
   }
 
   const handleGoogleLogin = async () => {
     try {
-      setIsLoading(true)
       await signInWithGoogle()
       logAccess({ action: 'google_login_initiated' })
       // OAuth 리다이렉트가 발생하므로 모달은 자동으로 닫힘
     } catch (error) {
       console.error('구글 로그인 오류:', error)
       alert('구글 로그인 중 오류가 발생했습니다.')
-      setIsLoading(false)
     }
   }
 
   const handleLogout = async () => {
     try {
       await signOut()
-      setUser(null)
       logAccess({ action: 'logout' })
       
       // 로그아웃 시 화면 초기화 이벤트 발생
@@ -765,7 +675,6 @@ export default function Header() {
         onLogout={async () => {
           try {
             await signOut()
-            setUser(null)
             setIsSidebarOpen(false)
             logAccess({ action: 'logout' })
           } catch (error) {
@@ -959,10 +868,10 @@ export default function Header() {
                   <div className={styles.profileNameRow}>
                     <div className={styles.profileNameWithBadge}>
                       <h4 className={styles.profileName}>
-                        {user.user_metadata?.name ||
-                          user.user_metadata?.kakao_account?.profile?.nickname ||
-                          user.user_metadata?.properties?.nickname ||
-                          user.user_metadata?.nickname ||
+                        {user?.user_metadata?.name ||
+                          user?.user_metadata?.kakao_account?.profile?.nickname ||
+                          user?.user_metadata?.properties?.nickname ||
+                          user?.user_metadata?.nickname ||
                           '사용자'}
                       </h4>
                       <div className={styles.gradeBadgeGroup}>
@@ -1021,7 +930,7 @@ export default function Header() {
                     </button>
                   </div>
 
-                  <p className={styles.profileEmail}>{user.email || user.user_metadata?.kakao_account?.email || ''}</p>
+                  <p className={styles.profileEmail}>{user?.email || user?.user_metadata?.kakao_account?.email || ''}</p>
 
                   <div className={styles.profileStats}>작성 리뷰 12 · 도움 58</div>
                 </div>
@@ -1032,8 +941,7 @@ export default function Header() {
                     className={styles.navItem} 
                     type="button"
                     onClick={async () => {
-                      const { data: { session } } = await supabase.auth.getSession()
-                      if (!session) return
+                      if (!user) return
 
                       // 내 계약서 리스트 가져오기
                       const { data, error } = await supabase
@@ -1042,7 +950,7 @@ export default function Header() {
                           *,
                           agent:agent_master(agent_name, road_address, lot_address)
                         `)
-                        .eq('supabase_user_id', session.user.id)
+                        .eq('supabase_user_id', user.id)
                         .order('created_at', { ascending: false })
 
                       if (!error && data) {

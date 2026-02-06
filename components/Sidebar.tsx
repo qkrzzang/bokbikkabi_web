@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import styles from './Sidebar.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
+import { apiRequest } from '@/lib/api/interceptor'
 import AdModal from './AdModal'
 
 type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'partnership' | 'policy' | 'admin'
@@ -28,6 +30,7 @@ export default function Sidebar({
   onLogout,
 }: SidebarProps) {
   const router = useRouter()
+  const { user: authUser } = useAuth()
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('menu')
   const [myContracts, setMyContracts] = useState<any[]>([])
   const [selectedContract, setSelectedContract] = useState<any>(null)
@@ -113,14 +116,11 @@ export default function Sidebar({
   
   if (!isOpen || !user) return null
 
-  // useAuth Hook 사용
-  const { user: authUser } = useAuth()
-
   // 내 리뷰 불러오기
   const loadMyContracts = async () => {
     if (!authUser) return
 
-    const { data, error } = await apiRequest(
+    const { data } = await apiRequest<any[]>(
       () => supabase
         .from('agent_reviews')
         .select(`
@@ -141,7 +141,7 @@ export default function Sidebar({
   const loadUserPoints = async () => {
     if (!authUser) return
 
-    const { data, error } = await apiRequest(
+    const { data } = await apiRequest<{ total_points: number }>(
       () => supabase
         .from('user_points')
         .select('total_points')
@@ -157,30 +157,36 @@ export default function Sidebar({
     }
 
     // 포인트 거래 내역도 함께 로드 (최근 50개)
-    const { data: transactions, error: txError } = await supabase
-      .from('point_transactions')
-      .select('*')
-      .eq('supabase_user_id', session.user.id)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    const { data: transactions } = await apiRequest<any[]>(
+      () => supabase
+        .from('point_transactions')
+        .select('*')
+        .eq('supabase_user_id', authUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      { requireAuth: true }
+    )
 
-    if (!txError && transactions) {
+    if (transactions) {
       setPointTransactions(transactions)
     }
 
     // 포인트 정책 로드 (공통 코드에서)
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '') // YYYYMMDD
     
-    const { data: policies, error: policyError } = await supabase
-      .from('common_code_detail')
-      .select('*')
-      .eq('code_group', 'POINT_POLICY')
-      .eq('use_yn', 'Y')
-      .lte('sta_ymd', today)
-      .gte('end_ymd', today)
-      .order('sort_order', { ascending: true })
+    const { data: policies } = await apiRequest<any[]>(
+      () => supabase
+        .from('common_code_detail')
+        .select('*')
+        .eq('code_group', 'POINT_POLICY')
+        .eq('use_yn', 'Y')
+        .lte('sta_ymd', today)
+        .gte('end_ymd', today)
+        .order('sort_order', { ascending: true }),
+      { requireAuth: false }
+    )
 
-    if (!policyError && policies) {
+    if (policies) {
       setPointPolicies(policies)
     }
   }
@@ -189,23 +195,26 @@ export default function Sidebar({
   const loadSurveyQuestions = async () => {
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '') // YYYYMMDD
     
-    const { data, error } = await supabase
-      .from('common_code_detail')
-      .select('*')
-      .eq('code_group', 'SURVEY')
-      .eq('use_yn', 'Y')
-      .lte('sta_ymd', today)
-      .gte('end_ymd', today)
-      .order('sort_order', { ascending: true })
+    const { data } = await apiRequest<any[]>(
+      () => supabase
+        .from('common_code_detail')
+        .select('*')
+        .eq('code_group', 'SURVEY')
+        .eq('use_yn', 'Y')
+        .lte('sta_ymd', today)
+        .gte('end_ymd', today)
+        .order('sort_order', { ascending: true }),
+      { requireAuth: false }
+    )
 
-    if (!error && data) {
+    if (data) {
       setSurveyQuestions(data)
     }
 
     // 기존 응답 불러오기
     if (!authUser) return
 
-    const { data: responses, error: respError } = await apiRequest(
+    const { data: responses } = await apiRequest<any[]>(
       () => supabase
         .from('survey_responses')
         .select('*')
@@ -227,7 +236,7 @@ export default function Sidebar({
     if (!authUser) return
 
     // 기존 응답 확인
-    const { data: existing } = await apiRequest(
+    const { data: existing } = await apiRequest<{ id: number }>(
       () => supabase
         .from('survey_responses')
         .select('id')
@@ -239,7 +248,7 @@ export default function Sidebar({
 
     if (existing) {
       // 업데이트
-      const { error } = await apiRequest(
+      const { error } = await apiRequest<any>(
         () => supabase
           .from('survey_responses')
           .update({ response_value: responseValue, updated_at: new Date().toISOString() })
@@ -252,7 +261,7 @@ export default function Sidebar({
       }
     } else {
       // 신규 삽입 (포인트 지급)
-      const { error } = await apiRequest(
+      const { error } = await apiRequest<any>(
         () => supabase
           .from('survey_responses')
           .insert({
@@ -292,7 +301,7 @@ export default function Sidebar({
       return
     }
 
-    const { data, error } = await apiRequest(
+    const { data } = await apiRequest<{ success: boolean; message: string }>(
       () => supabase.rpc('check_in_attendance', {
         p_user_id: authUser.id
       }),
@@ -313,7 +322,7 @@ export default function Sidebar({
 
     setIsFavoritesLoading(true)
 
-    const { data, error } = await apiRequest(
+    const { data } = await apiRequest<any[]>(
       () => supabase
         .from('favorite_agents')
         .select(`
@@ -965,31 +974,35 @@ export default function Sidebar({
                 e.preventDefault()
                 const formData = new FormData(e.currentTarget)
                 
+                if (!authUser) {
+                  alert('로그인이 필요합니다.')
+                  return
+                }
+
                 try {
-                  const { data: { session } } = await supabase.auth.getSession()
-                  if (!session) {
-                    alert('로그인이 필요합니다.')
-                    return
+                  const { error } = await apiRequest(
+                    () => supabase
+                      .from('partnership_inquiries')
+                      .insert({
+                        supabase_user_id: authUser.id,
+                        user_email: formData.get('email'),
+                        user_name: formData.get('name'),
+                        company_name: formData.get('company'),
+                        contact_phone: formData.get('phone'),
+                        inquiry_type: formData.get('type'),
+                        title: formData.get('title'),
+                        content: formData.get('content'),
+                      }),
+                    { requireAuth: true }
+                  )
+
+                  if (!error) {
+                    alert('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
+                    e.currentTarget.reset()
+                    setCurrentScreen('menu')
+                  } else {
+                    alert('문의 접수 중 오류가 발생했습니다.')
                   }
-
-                  const { error } = await supabase
-                    .from('partnership_inquiries')
-                    .insert({
-                      supabase_user_id: session.user.id,
-                      user_email: formData.get('email'),
-                      user_name: formData.get('name'),
-                      company_name: formData.get('company'),
-                      contact_phone: formData.get('phone'),
-                      inquiry_type: formData.get('type'),
-                      title: formData.get('title'),
-                      content: formData.get('content'),
-                    })
-
-                  if (error) throw error
-
-                  alert('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
-                  e.currentTarget.reset()
-                  setCurrentScreen('menu')
                 } catch (error: any) {
                   alert('문의 접수 중 오류가 발생했습니다.')
                 }
