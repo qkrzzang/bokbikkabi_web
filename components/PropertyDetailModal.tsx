@@ -322,14 +322,14 @@ export default function PropertyDetailModal({
     }
   }
 
+  const { user: authUser } = useAuth()
+  const checkAuth = useAuthCheck({ showAlert: true })
+
   const handleFavoriteToggle = async () => {
     if (isFavoriteLoading) return
     
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      alert('로그인이 필요합니다.')
-      return
-    }
+    // 인증 체크 - 실패 시 자동으로 alert 및 리다이렉트
+    if (!checkAuth()) return
 
     if (!property) return
 
@@ -338,25 +338,33 @@ export default function PropertyDetailModal({
 
       if (isFavorite) {
         // 관심 해제
-        const { error } = await supabase
-          .from('favorite_agents')
-          .delete()
-          .eq('supabase_user_id', session.user.id)
-          .eq('agent_id', parseInt(property.id))
+        const { error } = await apiRequest(
+          () => supabase
+            .from('favorite_agents')
+            .delete()
+            .eq('supabase_user_id', authUser!.id)
+            .eq('agent_id', parseInt(property.id)),
+          { requireAuth: true }
+        )
 
-        if (error) throw error
-        setIsFavorite(false)
+        if (!error) {
+          setIsFavorite(false)
+        }
       } else {
         // 관심 등록
-        const { error } = await supabase
-          .from('favorite_agents')
-          .insert({
-            supabase_user_id: session.user.id,
-            agent_id: parseInt(property.id)
-          })
+        const { error } = await apiRequest(
+          () => supabase
+            .from('favorite_agents')
+            .insert({
+              supabase_user_id: authUser!.id,
+              agent_id: parseInt(property.id)
+            }),
+          { requireAuth: true, showErrorAlert: true }
+        )
 
-        if (error) throw error
-        setIsFavorite(true)
+        if (!error) {
+          setIsFavorite(true)
+        }
       }
     } catch (error: any) {
       console.error('관심 등록/해제 오류:', error)

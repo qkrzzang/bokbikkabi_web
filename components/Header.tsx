@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import styles from './Header.module.css'
-import { signInWithKakao, signInWithGoogle, getCurrentUser, signOut } from '@/lib/auth'
+import { signInWithKakao, signInWithGoogle, getCurrentUser } from '@/lib/auth'
 import { logAccess } from '@/lib/accessLog'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from './Sidebar'
 
 export default function Header() {

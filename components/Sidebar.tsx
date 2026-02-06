@@ -113,37 +113,44 @@ export default function Sidebar({
   
   if (!isOpen || !user) return null
 
+  // useAuth Hook 사용
+  const { user: authUser } = useAuth()
+
   // 내 리뷰 불러오기
   const loadMyContracts = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    if (!authUser) return
 
-    const { data, error } = await supabase
-      .from('agent_reviews')
-      .select(`
-        *,
-        agent:agent_master(agent_name, road_address, lot_address)
-      `)
-      .eq('supabase_user_id', session.user.id)
-      .order('created_at', { ascending: false })
+    const { data, error } = await apiRequest(
+      () => supabase
+        .from('agent_reviews')
+        .select(`
+          *,
+          agent:agent_master(agent_name, road_address, lot_address)
+        `)
+        .eq('supabase_user_id', authUser.id)
+        .order('created_at', { ascending: false }),
+      { requireAuth: true }
+    )
 
-    if (!error && data) {
+    if (data) {
       setMyContracts(data)
     }
   }
 
   // 사용자 포인트 불러오기
   const loadUserPoints = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    if (!authUser) return
 
-    const { data, error } = await supabase
-      .from('user_points')
-      .select('total_points')
-      .eq('supabase_user_id', session.user.id)
-      .maybeSingle()
+    const { data, error } = await apiRequest(
+      () => supabase
+        .from('user_points')
+        .select('total_points')
+        .eq('supabase_user_id', authUser.id)
+        .maybeSingle(),
+      { requireAuth: true }
+    )
 
-    if (!error && data) {
+    if (data) {
       setUserPoints(data.total_points || 0)
     } else {
       setUserPoints(0)
@@ -196,15 +203,17 @@ export default function Sidebar({
     }
 
     // 기존 응답 불러오기
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    if (!authUser) return
 
-    const { data: responses, error: respError } = await supabase
-      .from('survey_responses')
-      .select('*')
-      .eq('supabase_user_id', session.user.id)
+    const { data: responses, error: respError } = await apiRequest(
+      () => supabase
+        .from('survey_responses')
+        .select('*')
+        .eq('supabase_user_id', authUser.id),
+      { requireAuth: true }
+    )
 
-    if (!respError && responses) {
+    if (responses) {
       const responsesMap: Record<string, string> = {}
       responses.forEach((r: any) => {
         responsesMap[r.question_code] = r.response_value
@@ -215,45 +224,51 @@ export default function Sidebar({
 
   // 서베이 응답 저장
   const saveSurveyResponse = async (questionCode: string, responseValue: string) => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    if (!authUser) return
 
     // 기존 응답 확인
-    const { data: existing } = await supabase
-      .from('survey_responses')
-      .select('id')
-      .eq('supabase_user_id', session.user.id)
-      .eq('question_code', questionCode)
-      .maybeSingle()
+    const { data: existing } = await apiRequest(
+      () => supabase
+        .from('survey_responses')
+        .select('id')
+        .eq('supabase_user_id', authUser.id)
+        .eq('question_code', questionCode)
+        .maybeSingle(),
+      { requireAuth: true }
+    )
 
     if (existing) {
       // 업데이트
-      const { error } = await supabase
-        .from('survey_responses')
-        .update({ response_value: responseValue, updated_at: new Date().toISOString() })
-        .eq('id', existing.id)
+      const { error } = await apiRequest(
+        () => supabase
+          .from('survey_responses')
+          .update({ response_value: responseValue, updated_at: new Date().toISOString() })
+          .eq('id', existing.id),
+        { requireAuth: true }
+      )
 
       if (error) {
         console.error('[서베이] 응답 업데이트 오류:', error)
       }
     } else {
       // 신규 삽입 (포인트 지급)
-      const { error } = await supabase
-        .from('survey_responses')
-        .insert({
-          supabase_user_id: session.user.id,
-          question_code: questionCode,
-          response_value: responseValue
-        })
+      const { error } = await apiRequest(
+        () => supabase
+          .from('survey_responses')
+          .insert({
+            supabase_user_id: authUser.id,
+            question_code: questionCode,
+            response_value: responseValue
+          }),
+        { requireAuth: true }
+      )
 
-      if (error) {
-        console.error('[서베이] 응답 저장 오류:', error)
-      } else {
+      if (!error) {
         // 포인트 지급 (첫 응답인 경우)
         const isFirstResponse = Object.keys(surveyResponses).length === 0
         if (isFirstResponse) {
           await supabase.rpc('award_points', {
-            p_user_id: session.user.id,
+            p_user_id: authUser.id,
             p_action_type: 'SURVEY',
             p_description: '서베이 완료'
           })
@@ -261,6 +276,8 @@ export default function Sidebar({
           alert('🎉 서베이 완료! 포인트가 적립되었습니다.')
           loadUserPoints() // 포인트 새로고침
         }
+      } else {
+        console.error('[서베이] 응답 저장 오류:', error)
       }
     }
 
@@ -270,51 +287,52 @@ export default function Sidebar({
 
   // 출석 체크
   const checkInAttendance = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    if (!authUser) {
+      alert('로그인이 필요합니다.')
+      return
+    }
 
-    const { data, error } = await supabase.rpc('check_in_attendance', {
-      p_user_id: session.user.id
-    })
+    const { data, error } = await apiRequest(
+      () => supabase.rpc('check_in_attendance', {
+        p_user_id: authUser.id
+      }),
+      { requireAuth: true, showErrorAlert: true }
+    )
 
-    if (!error && data) {
+    if (data) {
       alert(data.message)
       if (data.success) {
         loadUserPoints() // 포인트 새로고침
       }
-    } else {
-      console.error('[출석] 체크 오류:', error)
     }
   }
 
   // 내 관심 부동산 불러오기
   const loadFavoriteAgents = async () => {
+    if (!authUser) return
+
     setIsFavoritesLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      setIsFavoritesLoading(false)
-      return
-    }
 
-    const { data, error } = await supabase
-      .from('favorite_agents')
-      .select(`
-        id,
-        agent_id,
-        created_at,
-        agent:agent_master(
+    const { data, error } = await apiRequest(
+      () => supabase
+        .from('favorite_agents')
+        .select(`
           id,
-          agent_name,
-          road_address,
-          lot_address
-        )
-      `)
-      .eq('supabase_user_id', session.user.id)
-      .order('created_at', { ascending: false })
+          agent_id,
+          created_at,
+          agent:agent_master(
+            id,
+            agent_name,
+            road_address,
+            lot_address
+          )
+        `)
+        .eq('supabase_user_id', authUser.id)
+        .order('created_at', { ascending: false }),
+      { requireAuth: true }
+    )
 
-    if (error) {
-      console.error('[Sidebar] 관심 부동산 불러오기 오류:', error)
-    } else if (data) {
+    if (data) {
       setFavoriteAgents(data)
     }
     
