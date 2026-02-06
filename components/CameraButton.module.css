@@ -1,6 +1,6 @@
 .buttonWrapper {
   position: fixed;
-  bottom: 24px;
+  bottom: 90px;
   right: 24px;
   z-index: 1000;
 }
@@ -1007,7 +1007,7 @@
 
 @media (max-width: 768px) {
   .buttonWrapper {
-    bottom: 20px;
+    bottom: 90px;
     right: 20px;
   }
 
@@ -1060,13 +1060,13 @@
   }
 
   .confirmSelectionButtons {
-    flex-direction: column;
+    flex-direction: row;
     width: 100%;
   }
 
   .confirmCancelButton,
   .confirmButton {
-    width: 100%;
+    flex: 1;
     min-width: auto;
   }
 
@@ -1079,14 +1079,41 @@
   }
 
   .resultControls {
-    flex-direction: column;
+    flex-direction: row;
     width: 100%;
   }
 
   .cancelButton,
   .contactAdminButton,
   .submitButton {
+    flex: 1;
+  }
+
+  .ratingItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .ratingLabel {
+    min-width: auto;
     width: 100%;
+  }
+
+  .starRating {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    width: 100%;
+    gap: 2px;
+  }
+
+  .starRatingText {
+    margin-left: 0;
+    margin-top: 8px;
+    width: 100%;
+    flex-basis: 100%;
+    flex: none;
   }
 }
 

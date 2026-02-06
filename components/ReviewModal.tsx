@@ -14,6 +14,7 @@ interface Review {
   date: string
   content: string
   helpfulCount?: number
+  userLevel?: string
   transactionTags?: string[]
   praiseTags?: string[]
   regretTags?: string[]
@@ -44,6 +45,16 @@ export default function ReviewModal({
   const [reportError, setReportError] = useState<string | null>(null)
   const [userHelpfulReviews, setUserHelpfulReviews] = useState<Set<string>>(new Set())
   const [reviewHelpfulCounts, setReviewHelpfulCounts] = useState<Record<string, number>>({})
+  const [userLevels, setUserLevels] = useState<Record<string, string>>({})
+
+  // 사용자 이름 마스킹 함수 (앞 3자리만 노출)
+  const maskUserName = (name: string): string => {
+    if (!name) return '익명'
+    if (name.length <= 3) return name
+    const visiblePart = name.substring(0, 3)
+    const maskedPart = '*'.repeat(name.length - 3)
+    return visiblePart + maskedPart
+  }
 
   // 사용자가 "도움돼요"를 누른 리뷰 목록 로드
   useEffect(() => {
@@ -242,38 +253,14 @@ export default function ReviewModal({
                   <div className={styles.reviewHeader}>
                     <div className={styles.reviewAuthorInfo}>
                       <div className={styles.authorRow}>
-                        <span className={styles.reviewAuthor}>{review.author}</span>
-                        <span className={styles.userLevelBadge} aria-label="작성자 등급: 인주까비">
-                          인주까비
-                        </span>
-                      </div>
-                      <div className={styles.reviewRating}>
-                        <span className={styles.reviewStars}>
-                          {renderStars(review.rating)}
+                        <span className={styles.reviewAuthor}>{maskUserName(review.author)}</span>
+                        <span className={styles.userLevelBadge} aria-label={`작성자 등급: ${review.userLevel || '인주까비'}`}>
+                          {review.userLevel || '인주까비'}
                         </span>
                       </div>
                     </div>
                     <div className={styles.reviewMetaRight}>
                       <span className={styles.reviewDate}>{review.date}</span>
-                      <span className={styles.verified} aria-label="계약 인증">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                          className={styles.verifiedIcon}
-                        >
-                          <path
-                            d="M20 6L9 17L4 12"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        계약 인증
-                      </span>
                     </div>
                   </div>
                   {/* 거래 상황 태그 */}

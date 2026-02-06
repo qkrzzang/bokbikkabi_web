@@ -162,7 +162,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshSession,
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '100vh' }}>
+        {children}
+      </div>
+    </AuthContext.Provider>
+  )
 }
 
 // Custom Hook

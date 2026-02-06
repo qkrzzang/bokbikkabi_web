@@ -154,12 +154,17 @@
 .reviewRating {
   display: flex;
   align-items: center;
+  gap: 12px;
 }
 
 .reviewStars {
   color: #fbbf24;
   font-size: 16px;
   letter-spacing: 2px;
+}
+
+.reviewMetaMobile {
+  display: none;
 }
 
 .reviewDate {
@@ -549,16 +554,25 @@
   }
 
   .reviewHeader {
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
-  }
-
-  .reviewDate {
-    align-self: flex-start;
+    align-items: center;
   }
 
   .reviewMetaRight {
-    justify-content: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .reviewDate {
+    font-size: 13px;
+  }
+
+  .verified {
+    font-size: 11px;
   }
 
   .reviewActions {

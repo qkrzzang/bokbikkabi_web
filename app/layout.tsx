@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import { AuthProvider } from '@/contexts/AuthContext'
+import Header from '@/components/Header'
+import Footer from '@/components/Footer'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -29,7 +31,34 @@ export default function RootLayout({
         )}
       </head>
       <body suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <Header />
+          {children}
+          <Footer />
+        </AuthProvider>
+        {/* Chrome 확장 프로그램 오류 무시 */}
+        <Script
+          id="suppress-extension-errors"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('error', function(e) {
+                if (e.message && e.message.includes('message channel closed')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return true;
+                }
+              }, true);
+              
+              window.addEventListener('unhandledrejection', function(e) {
+                if (e.reason && e.reason.message && e.reason.message.includes('message channel closed')) {
+                  e.preventDefault();
+e.stopPropagation();
+                }
+              });
+            `
+          }}
+        />
       </body>
     </html>
   )

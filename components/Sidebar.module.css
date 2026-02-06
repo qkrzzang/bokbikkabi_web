@@ -1098,3 +1098,123 @@
   }
 }
 
+
+/* ?깃툒 ?댄똻 ?ㅽ???*/
+.gradeTooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  min-width: 280px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  animation: tooltipFadeIn 0.2s ease;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.gradeTooltipArrow {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  border-radius: 2px;
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.gradeTooltipContent {
+  position: relative;
+  padding: 16px;
+}
+
+.gradeTooltipTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+  text-align: center;
+}
+
+.gradeTooltipList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.gradeTooltipItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.gradeTooltipBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.1);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  color: #7C3AED;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.gradeTooltipDesc {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.gradeTooltipClose {
+  width: 100%;
+  padding: 10px;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gradeTooltipClose:hover {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+@media (max-width: 768px) {
+  .gradeTooltip {
+    min-width: 260px;
+    left: auto;
+    right: 0;
+    transform: none;
+  }
+
+  .gradeTooltipArrow {
+    left: auto;
+    right: 20px;
+    transform: rotate(45deg);
+  }
+}

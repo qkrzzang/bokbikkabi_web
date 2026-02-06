@@ -20,13 +20,14 @@ interface Review {
   rating: number
   date: string
   content: string
+  userLevel?: string
   transactionTags?: string[]
   praiseTags?: string[]
   regretTags?: string[]
   detailedEvaluation?: {
     category: string
     score: number
-  }[]
+    }[]
 }
 
 interface PropertyDetail {
@@ -283,11 +284,24 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
 
     // 실제 DB 데이터 조회
     try {
+      // 사용자 등급 코드 매핑 정보 조회
+      const { data: userGradeCodes } = await supabase
+        .from('common_code_detail')
+        .select('code_value, code_name')
+        .eq('code_group', 'USER_GRADE')
+        .eq('use_yn', 'Y')
+
+      // 코드 매핑 객체 생성
+      const gradeMap: Record<string, string> = {}
+      userGradeCodes?.forEach((code: any) => {
+        gradeMap[code.code_value] = code.code_name
+      })
+
       const { data: reviewsData, error: reviewsError } = await supabase
         .from('agent_reviews')
         .select(`
           *,
-          user:users!supabase_user_id(email)
+          user:users!supabase_user_id(email, user_grade)
         `)
         .eq('agent_id', parseInt(property.id))
         .order('created_at', { ascending: false })
@@ -365,6 +379,8 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
       const reviews: Review[] = reviewsData.map((r: any) => {
         const userEmail = r.user?.email || 'anonymous@example.com'
         const nickname = userEmail.split('@')[0]
+        const userGradeCode = r.user?.user_grade || 'INJOO'
+        const userGrade = gradeMap[userGradeCode] || '인주까비'
         
         const reviewEval = evaluationCategories.map(cat => ({
           category: cat.label,
@@ -380,6 +396,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
           date: new Date(r.created_at).toLocaleDateString('ko-KR'),
           content: r.review_text || '',
           helpfulCount: r.helpful_count || 0,
+          userLevel: userGrade,
           transactionTags: r.transaction_tag ? [r.transaction_tag] : [],
           praiseTags: r.praise_tags || [],
           regretTags: r.regret_tags || [],

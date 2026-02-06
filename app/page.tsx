@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Header from '@/components/Header'
 import SearchBar from '@/components/SearchBar'
 import PropertyList from '@/components/PropertyList'
 import CopyBanner from '@/components/CopyBanner'
@@ -83,26 +82,62 @@ export default function Home() {
     awardDailyLoginPoints()
   }, [])
 
+  // Chrome 확장 프로그램 오류 무시
+  useEffect(() => {
+    const handleError = (e: ErrorEvent) => {
+      // Chrome 확장 프로그램 관련 오류 무시
+      if (e.message && (
+        e.message.includes('message channel closed') ||
+        e.message.includes('asynchronous response') ||
+        e.message.includes('listener indicated')
+      )) {
+        e.preventDefault()
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+        console.log('[무시됨] Chrome 확장 프로그램 오류:', e.message)
+        return true
+      }
+    }
+    
+    const handleUnhandledRejection = (e: PromiseRejectionEvent) => {
+      const message = e.reason?.message || String(e.reason)
+      if (message && (
+        message.includes('message channel closed') ||
+        message.includes('asynchronous response') ||
+        message.includes('listener indicated')
+      )) {
+        e.preventDefault()
+        e.stopPropagation()
+        console.log('[무시됨] Chrome 확장 프로그램 Promise 오류:', message)
+      }
+    }
+    
+    window.addEventListener('error', handleError, true)
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    
+    return () => {
+      window.removeEventListener('error', handleError, true)
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+    }
+  }, [])
+
   const handleSearch = (query: string) => {
     setSearchQuery(query)
   }
 
   return (
-    <>
-      <Header />
-      <main className={styles.main}>
-        <div className={styles.container}>
-          <SearchBar onSearch={handleSearch} value={searchQuery} />
-          {!searchQuery.trim() && <CopyBanner />}
-          <PropertyList 
-            searchQuery={searchQuery} 
-            autoOpenAgentId={autoOpenAgentId}
-            onAutoOpenComplete={() => setAutoOpenAgentId(null)}
-          />
-        </div>
-        <CameraButton />
-      </main>
-    </>
+    <main className={styles.main}>
+      <div className={styles.container}>
+        <SearchBar onSearch={handleSearch} value={searchQuery} />
+        {!searchQuery.trim() && <CopyBanner />}
+        <PropertyList 
+          searchQuery={searchQuery} 
+          autoOpenAgentId={autoOpenAgentId}
+          onAutoOpenComplete={() => setAutoOpenAgentId(null)}
+        />
+      </div>
+      <CameraButton />
+    </main>
   )
 }
 

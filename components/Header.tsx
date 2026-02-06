@@ -6,6 +6,7 @@ import { signInWithKakao, signInWithGoogle, getCurrentUser } from '@/lib/auth'
 import { logAccess } from '@/lib/accessLog'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { apiRequest } from '@/lib/api/interceptor'
 import Sidebar from './Sidebar'
 
 export default function Header() {
@@ -1250,12 +1251,84 @@ export default function Header() {
                 </button>
               </div>
               <div className={styles.infoModalBody}>
-                <p className={styles.infoText}>
-                  광고/제휴는 아래 이메일로 문의해 주세요.
-                </p>
-                <a className={styles.infoLink} href="mailto:partnership@bokbikkabi.com">
-                  partnership@bokbikkabi.com
-                </a>
+                <form className={styles.partnershipForm} onSubmit={async (e) => {
+                  e.preventDefault()
+                  const formData = new FormData(e.currentTarget)
+                  
+                  if (!user) {
+                    alert('로그인이 필요합니다.')
+                    return
+                  }
+
+                  try {
+                    const { error } = await apiRequest(
+                      () => supabase
+                        .from('partnership_inquiries')
+                        .insert({
+                          supabase_user_id: user.id,
+                          user_email: formData.get('email'),
+                          user_name: formData.get('name'),
+                          company_name: formData.get('company'),
+                          contact_phone: formData.get('phone'),
+                          inquiry_type: formData.get('type'),
+                          title: formData.get('title'),
+                          content: formData.get('content'),
+                        }),
+                      { requireAuth: true }
+                    )
+
+                    if (!error) {
+                      alert('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
+                      e.currentTarget.reset()
+                      closePartnershipModal()
+                    } else {
+                      alert('문의 접수 중 오류가 발생했습니다.')
+                    }
+                  } catch (error: any) {
+                    alert('문의 접수 중 오류가 발생했습니다.')
+                  }
+                }}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>문의 유형 *</label>
+                    <select name="type" required className={styles.formSelect}>
+                      <option value="광고">광고</option>
+                      <option value="제휴">제휴</option>
+                      <option value="기타">기타</option>
+                    </select>
+                  </div>
+                  
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>이름 *</label>
+                    <input type="text" name="name" required className={styles.formInput} placeholder="홍길동" />
+                  </div>
+                  
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>이메일 *</label>
+                    <input type="email" name="email" required className={styles.formInput} placeholder="example@email.com" defaultValue={user.email || ''} />
+                  </div>
+                  
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>회사명</label>
+                    <input type="text" name="company" className={styles.formInput} placeholder="회사명 (선택)" />
+                  </div>
+                  
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>연락처 *</label>
+                    <input type="tel" name="phone" required className={styles.formInput} placeholder="010-0000-0000" />
+                  </div>
+                  
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>제목 *</label>
+                    <input type="text" name="title" required className={styles.formInput} placeholder="문의 제목" />
+                  </div>
+                  
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>문의 내용 *</label>
+                    <textarea name="content" required className={styles.formTextarea} rows={6} placeholder="문의하실 내용을 상세히 작성해주세요." />
+                  </div>
+                  
+                  <button type="submit" className={styles.submitButton}>문의하기</button>
+                </form>
               </div>
             </div>
           </div>

@@ -51,6 +51,7 @@ export default function Sidebar({
   const [isAdModalOpen, setIsAdModalOpen] = useState(false) // 광고 모달 열림 여부
   const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
   const [transactionLimit, setTransactionLimit] = useState(10) // 포인트 내역 표시 개수
+  const [isGradeTooltipVisible, setIsGradeTooltipVisible] = useState(false) // 등급 툴팁 표시 여부
   
   // 사이드바가 닫힐 때 메뉴로 리셋
   useEffect(() => {
@@ -526,13 +527,13 @@ export default function Sidebar({
                   user.user_metadata?.nickname ||
                   '사용자'}
               </h4>
-              <div className={styles.gradeBadge} style={{ margin: 0 }}>
+              <div className={styles.gradeBadge} style={{ margin: 0, position: 'relative' }}>
                 <span>갓까비</span>
                 <button
                   className={styles.gradeInfoButton}
                   onClick={(e) => {
                     e.stopPropagation()
-                    onGradeInfoClick()
+                    setIsGradeTooltipVisible(!isGradeTooltipVisible)
                   }}
                   aria-label="등급 안내"
                 >
@@ -542,6 +543,41 @@ export default function Sidebar({
                     <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 </button>
+                {isGradeTooltipVisible && (
+                  <div className={styles.gradeTooltip}>
+                    <div className={styles.gradeTooltipArrow}></div>
+                    <div className={styles.gradeTooltipContent}>
+                      <h4 className={styles.gradeTooltipTitle}>등급 안내</h4>
+                      <div className={styles.gradeTooltipList}>
+                        <div className={styles.gradeTooltipItem}>
+                          <span className={styles.gradeTooltipBadge}>임장까비</span>
+                          <span className={styles.gradeTooltipDesc}>신규 가입자</span>
+                        </div>
+                        <div className={styles.gradeTooltipItem}>
+                          <span className={styles.gradeTooltipBadge}>인주까비</span>
+                          <span className={styles.gradeTooltipDesc}>리뷰 1개 작성</span>
+                        </div>
+                        <div className={styles.gradeTooltipItem}>
+                          <span className={styles.gradeTooltipBadge}>동네까비</span>
+                          <span className={styles.gradeTooltipDesc}>리뷰 3개 이상</span>
+                        </div>
+                        <div className={styles.gradeTooltipItem}>
+                          <span className={styles.gradeTooltipBadge}>갓까비</span>
+                          <span className={styles.gradeTooltipDesc}>리뷰 10개 이상</span>
+                        </div>
+                      </div>
+                      <button 
+                        className={styles.gradeTooltipClose}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setIsGradeTooltipVisible(false)
+                        }}
+                      >
+                        닫기
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <p className={styles.profileEmail}>
@@ -625,18 +661,6 @@ export default function Sidebar({
               >
                 <span className={styles.navIcon}>🤝</span>
                 <span className={styles.navLabel}>광고/제휴 문의</span>
-                <span className={styles.chevron}>›</span>
-              </button>
-
-              <button 
-                className={styles.navItem} 
-                onClick={() => {
-                  router.push('/terms')
-                  onClose()
-                }}
-              >
-                <span className={styles.navIcon}>📋</span>
-                <span className={styles.navLabel}>약관/정책</span>
                 <span className={styles.chevron}>›</span>
               </button>
 
