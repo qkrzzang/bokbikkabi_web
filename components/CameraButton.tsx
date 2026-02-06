@@ -911,24 +911,62 @@ export default function CameraButton() {
     try {
       setIsReviewSubmitting(true)
 
-      // 한 달 내 리뷰 개수 체크 (최대 3건)
-      const oneMonthAgo = new Date()
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
+      // 리뷰 제한 정책 확인 (공통 코드 기반)
+      const { data: policies, error: policyError } = await supabase
+        .from('common_code_detail')
+        .select('code_value, extra_value1')
+        .eq('code_group', 'REVIEW_POLICY')
+        .eq('use_yn', 'Y')
       
-      const { data: recentReviews, error: countError } = await supabase
+      let dailyLimit = 3
+      let monthlyLimit = 10
+      let userLimit = 50
+
+      if (!policyError && policies) {
+        policies.forEach((p: any) => {
+          if (p.code_value === 'DAILY_LIMIT') dailyLimit = Number(p.extra_value1) || 3
+          if (p.code_value === 'MONTHLY_LIMIT') monthlyLimit = Number(p.extra_value1) || 10
+          if (p.code_value === 'USER_LIMIT') userLimit = Number(p.extra_value1) || 50
+        })
+      }
+
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
+
+      // 1. 일일 작성 수 조회
+      const { count: dailyCount, error: dailyError } = await supabase
         .from('agent_reviews')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('supabase_user_id', authUser.id)
-        .gte('created_at', oneMonthAgo.toISOString())
+        .gte('created_at', startOfDay)
       
-      if (countError) {
-        console.error('리뷰 개수 확인 오류:', countError)
-      } else {
-        const reviewCount = (recentReviews as any)?.count || 0
-        if (reviewCount >= 3) {
-          alert('한 달에 최대 3건의 리뷰만 등록할 수 있습니다.\n다음 달에 다시 시도해주세요.')
-          return
-        }
+      if (!dailyError && (dailyCount || 0) >= dailyLimit) {
+        alert(`하루에 최대 ${dailyLimit}건의 리뷰만 등록할 수 있습니다.\n내일 다시 시도해주세요.`)
+        return
+      }
+
+      // 2. 월간 작성 수 조회
+      const { count: monthlyCount, error: monthlyError } = await supabase
+        .from('agent_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('supabase_user_id', authUser.id)
+        .gte('created_at', startOfMonth)
+
+      if (!monthlyError && (monthlyCount || 0) >= monthlyLimit) {
+        alert(`한 달에 최대 ${monthlyLimit}건의 리뷰만 등록할 수 있습니다.\n다음 달에 다시 시도해주세요.`)
+        return
+      }
+
+      // 3. 유저 전체 작성 수 조회
+      const { count: totalCount, error: totalError } = await supabase
+        .from('agent_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('supabase_user_id', authUser.id)
+
+      if (!totalError && (totalCount || 0) >= userLimit) {
+        alert(`계정당 최대 ${userLimit}건의 리뷰만 등록할 수 있습니다.`)
+        return
       }
 
       const reviewLength = reviewText.trim().length
@@ -1041,6 +1079,27 @@ export default function CameraButton() {
         console.error('리뷰 저장 실패:', error)
         alert(`리뷰 저장에 실패했습니다: ${error.message}`)
         return
+      }
+
+      console.log('[리뷰 저장] 성공, 포인트 지급 시작')
+
+      // 리뷰 저장 성공 시 포인트 지급
+      try {
+        const { data: pointResult, error: pointError } = await supabase.rpc('award_points', {
+          p_user_id: authUser.id,
+          p_transaction_type: 'REVIEW',
+          p_description: '리뷰 작성 완료'
+        })
+
+        if (pointError) {
+          console.error('[포인트 지급] 실패:', pointError)
+          // 포인트 지급 실패해도 리뷰는 저장되었으므로 계속 진행
+        } else {
+          console.log('[포인트 지급] 성공:', pointResult)
+        }
+      } catch (pointErr) {
+        console.error('[포인트 지급] 오류:', pointErr)
+        // 포인트 지급 오류가 발생해도 리뷰는 저장되었으므로 계속 진행
       }
 
       if (reviewAgentName && reviewAgentName !== '-') {
@@ -1754,12 +1813,6 @@ export default function CameraButton() {
                     >
                       뒤로
                     </button>
-                    {isReviewSubmitting && (
-                      <div className={styles.reviewSaving}>
-                        <span className={styles.loadingSpinner}></span>
-                        저장 중...
-                      </div>
-                    )}
                     <button
                       className={styles.submitButton}
                       onClick={handleReviewSubmit}

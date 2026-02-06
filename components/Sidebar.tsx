@@ -41,6 +41,9 @@ export default function Sidebar({
   const [userPoints, setUserPoints] = useState<number>(0)
   const [surveyQuestions, setSurveyQuestions] = useState<any[]>([])
   const [surveyResponses, setSurveyResponses] = useState<Record<string, string>>({})
+  const [tempSurveyResponses, setTempSurveyResponses] = useState<Record<string, string>>({}) // 제출 전 임시 응답
+  const [isSurveySubmitted, setIsSurveySubmitted] = useState(false) // 서베이 제출 여부
+  const [isSurveySubmitting, setIsSurveySubmitting] = useState(false) // 서베이 제출 중
   const [pointTransactions, setPointTransactions] = useState<any[]>([])
   const [pointPolicies, setPointPolicies] = useState<any[]>([]) // 공통 코드에서 로드
   const [isAdVisible, setIsAdVisible] = useState(false) // 광고 노출 여부
@@ -210,8 +213,10 @@ export default function Sidebar({
     if (data) {
       setSurveyQuestions(data)
     }
+  }
 
-    // 기존 응답 불러오기
+  // 서베이 응답 불러오기
+  const loadSurveyResponses = async () => {
     if (!authUser) return
 
     const { data: responses } = await apiRequest<any[]>(
@@ -222,76 +227,97 @@ export default function Sidebar({
       { requireAuth: true }
     )
 
-    if (responses) {
+    if (responses && responses.length > 0) {
       const responsesMap: Record<string, string> = {}
       responses.forEach((r: any) => {
         responsesMap[r.question_code] = r.response_value
       })
       setSurveyResponses(responsesMap)
+      // 이미 제출된 서베이가 있으면 제출 완료로 처리
+      setIsSurveySubmitted(true)
+      setTempSurveyResponses(responsesMap) // 임시 응답도 동기화
+    } else {
+      // 응답이 없으면 초기화
+      setSurveyResponses({})
+      setIsSurveySubmitted(false)
+      setTempSurveyResponses({})
     }
   }
 
-  // 서베이 응답 저장
-  const saveSurveyResponse = async (questionCode: string, responseValue: string) => {
-    if (!authUser) return
+  // 서베이 임시 응답 선택 (제출 전)
+  const handleSurveyOptionSelect = (questionCode: string, responseValue: string) => {
+    if (isSurveySubmitted) return // 이미 제출된 경우 수정 불가
+    
+    setTempSurveyResponses(prev => ({
+      ...prev,
+      [questionCode]: responseValue
+    }))
+  }
 
-    // 기존 응답 확인
-    const { data: existing } = await apiRequest<{ id: number }>(
-      () => supabase
-        .from('survey_responses')
-        .select('id')
-        .eq('supabase_user_id', authUser.id)
-        .eq('question_code', questionCode)
-        .maybeSingle(),
-      { requireAuth: true }
-    )
-
-    if (existing) {
-      // 업데이트
-      const { error } = await apiRequest<any>(
-        () => supabase
-          .from('survey_responses')
-          .update({ response_value: responseValue, updated_at: new Date().toISOString() })
-          .eq('id', existing.id),
-        { requireAuth: true }
-      )
-
-      if (error) {
-        console.error('[서베이] 응답 업데이트 오류:', error)
-      }
-    } else {
-      // 신규 삽입 (포인트 지급)
-      const { error } = await apiRequest<any>(
-        () => supabase
-          .from('survey_responses')
-          .insert({
-            supabase_user_id: authUser.id,
-            question_code: questionCode,
-            response_value: responseValue
-          }),
-        { requireAuth: true }
-      )
-
-      if (!error) {
-        // 포인트 지급 (첫 응답인 경우)
-        const isFirstResponse = Object.keys(surveyResponses).length === 0
-        if (isFirstResponse) {
-          await supabase.rpc('award_points', {
-            p_user_id: authUser.id,
-            p_action_type: 'SURVEY',
-            p_description: '서베이 완료'
-          })
-          
-          alert('🎉 서베이 완료! 포인트가 적립되었습니다.')
-          loadUserPoints() // 포인트 새로고침
-        }
-      } else {
-        console.error('[서베이] 응답 저장 오류:', error)
-      }
+  // 서베이 최종 제출
+  const submitSurvey = async () => {
+    if (!authUser) {
+      alert('로그인이 필요합니다.')
+      return
     }
 
-    // 응답 상태 업데이트
-    setSurveyResponses(prev => ({ ...prev, [questionCode]: responseValue }))
+    // 모든 질문에 응답했는지 확인
+    const allQuestionsAnswered = surveyQuestions.every(q => tempSurveyResponses[q.code_value])
+    if (!allQuestionsAnswered) {
+      alert('모든 질문에 답변해주세요.')
+      return
+    }
+
+    setIsSurveySubmitting(true)
+
+    try {
+      // 모든 응답을 DB에 저장
+      const insertData = surveyQuestions.map(q => ({
+        supabase_user_id: authUser.id,
+        question_code: q.code_value,
+        response_value: tempSurveyResponses[q.code_value]
+      }))
+
+      const { error: insertError } = await apiRequest<any>(
+        () => supabase
+          .from('survey_responses')
+          .insert(insertData),
+        { requireAuth: true }
+      )
+
+      if (insertError) {
+        console.error('[서베이] 제출 오류:', insertError)
+        alert('서베이 제출 중 오류가 발생했습니다.')
+        return
+      }
+
+      // 포인트 지급
+      const { data: pointResult, error: pointError } = await supabase.rpc('award_points', {
+        p_user_id: authUser.id,
+        p_transaction_type: 'SURVEY',
+        p_description: '서베이 완료'
+      })
+
+      if (pointError) {
+        console.error('[포인트] 지급 오류:', pointError)
+      } else {
+        console.log('[포인트] 지급 완료:', pointResult)
+      }
+
+      // 상태 업데이트
+      setSurveyResponses({ ...tempSurveyResponses })
+      setIsSurveySubmitted(true)
+      
+      // 포인트 새로고침
+      await loadUserPoints()
+      
+      alert('🎉 서베이가 제출되었습니다! 포인트가 적립되었습니다.')
+    } catch (error) {
+      console.error('[서베이] 제출 예외:', error)
+      alert('서베이 제출 중 오류가 발생했습니다.')
+    } finally {
+      setIsSurveySubmitting(false)
+    }
   }
 
   // 출석 체크
@@ -571,6 +597,7 @@ export default function Sidebar({
                   className={styles.navItem} 
                   onClick={() => {
                     loadSurveyQuestions()
+                    loadSurveyResponses()
                     setCurrentScreen('survey')
                   }}
                 >
@@ -857,34 +884,75 @@ export default function Sidebar({
                 <div className={styles.surveyContainer}>
                   <p className={styles.surveyDescription}>
                     서비스 개선을 위한 간단한 질문에 답변해주세요! 
-                    {Object.keys(surveyResponses).length === 0 && ' 완료 시 포인트가 적립됩니다. 🎁'}
+                    {!isSurveySubmitted && ' 완료 시 포인트가 적립됩니다. 🎁'}
                   </p>
                   
-                  {surveyQuestions.map((question) => (
-                    <div key={question.code_value} className={styles.surveyQuestion}>
-                      <h4 className={styles.questionTitle}>{question.code_name}</h4>
-                      <div className={styles.optionsList}>
-                        {question.description.split(',').map((option: string) => (
-                          <button
-                            key={option}
-                            className={`${styles.optionButton} ${
-                              surveyResponses[question.code_value] === option.trim() 
-                                ? styles.optionSelected 
-                                : ''
-                            }`}
-                            onClick={() => saveSurveyResponse(question.code_value, option.trim())}
-                          >
-                            {option.trim()}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                  {surveyQuestions.map((question) => {
+                    // extra_value1 ~ extra_value5에서 옵션 가져오기
+                    const options = [
+                      question.extra_value1,
+                      question.extra_value2,
+                      question.extra_value3,
+                      question.extra_value4,
+                      question.extra_value5
+                    ].filter(Boolean) // null/undefined 제거
 
-                  {Object.keys(surveyResponses).length > 0 && (
+                    // 제출 여부에 따라 다른 응답 사용
+                    const selectedValue = isSurveySubmitted 
+                      ? surveyResponses[question.code_value] 
+                      : tempSurveyResponses[question.code_value]
+
+                    return (
+                      <div key={question.code_value} className={styles.surveyQuestion}>
+                        <h4 className={styles.questionTitle}>{question.code_name}</h4>
+                        <div className={styles.optionsList}>
+                          {options.map((option: string) => (
+                            <button
+                              key={option}
+                              className={`${styles.optionButton} ${
+                                selectedValue === option 
+                                  ? styles.optionSelected 
+                                  : ''
+                              }`}
+                              onClick={() => handleSurveyOptionSelect(question.code_value, option)}
+                              disabled={isSurveySubmitted}
+                              style={{ 
+                                cursor: isSurveySubmitted ? 'not-allowed' : 'pointer',
+                                opacity: isSurveySubmitted ? 0.6 : 1
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {isSurveySubmitted ? (
                     <div className={styles.surveyComplete}>
-                      ✅ 서베이 응답이 저장되었습니다. 감사합니다!
+                      ✅ 서베이 응답이 제출되었습니다. 감사합니다!
                     </div>
+                  ) : (
+                    <button
+                      className={styles.surveySubmitButton}
+                      onClick={submitSurvey}
+                      disabled={isSurveySubmitting || surveyQuestions.length !== Object.keys(tempSurveyResponses).length}
+                      style={{
+                        marginTop: '20px',
+                        padding: '12px 24px',
+                        backgroundColor: surveyQuestions.length === Object.keys(tempSurveyResponses).length ? '#4CAF50' : '#ccc',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        cursor: surveyQuestions.length === Object.keys(tempSurveyResponses).length ? 'pointer' : 'not-allowed',
+                        width: '100%'
+                      }}
+                    >
+                      {isSurveySubmitting ? '제출 중...' : '제출하기'}
+                    </button>
                   )}
                 </div>
               )}

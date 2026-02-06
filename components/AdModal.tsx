@@ -64,16 +64,24 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
     }
 
     try {
-      // 오늘 이미 광고 시청 포인트를 받았는지 확인
-      const today = new Date().toISOString().split('T')[0]
+      // 오늘 이미 광고 시청 포인트를 받았는지 확인 (한국 시간대 기준)
+      const now = new Date()
+      const koreaOffset = 9 * 60 // 한국은 UTC+9
+      const koreaTime = new Date(now.getTime() + koreaOffset * 60 * 1000)
+      const todayKorea = koreaTime.toISOString().split('T')[0]
+      
+      // 한국 시간 기준 오늘 00:00:00 ~ 23:59:59 (UTC로 변환)
+      const startOfDayKorea = new Date(`${todayKorea}T00:00:00+09:00`).toISOString()
+      const endOfDayKorea = new Date(`${todayKorea}T23:59:59+09:00`).toISOString()
+      
       const { data: existingTransactions } = await apiRequest<any[]>(
         () => supabase
           .from('point_transactions')
           .select('id')
           .eq('supabase_user_id', authUser.id)
           .eq('transaction_type', 'AD_VIEW')
-          .gte('created_at', `${today}T00:00:00`)
-          .lte('created_at', `${today}T23:59:59`)
+          .gte('created_at', startOfDayKorea)
+          .lte('created_at', endOfDayKorea)
           .limit(1),
         { requireAuth: true }
       )
@@ -84,7 +92,7 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
       }
 
       // 포인트 정책 조회
-      const todayYmd = today.replace(/-/g, '')
+      const todayYmd = todayKorea.replace(/-/g, '')
       const { data: policyData } = await apiRequest<{ code_name: string }>(
         () => supabase
           .from('common_code_detail')

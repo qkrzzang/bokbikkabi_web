@@ -25,11 +25,8 @@ INSERT INTO public.common_code_detail (
   use_yn
 ) VALUES
 ('POINT_POLICY', 'DAILY_LOGIN', '일일 로그인', '매일 로그인 시 포인트 지급', '5', '일일 로그인 보상', '2026-01-01', '9999-12-31', 1, 'Y'),
-('POINT_POLICY', 'ATTENDANCE', '출석 체크', '출석 체크 시 포인트 지급', '10', '출석 체크 보상', '2026-01-01', '9999-12-31', 2, 'Y'),
-('POINT_POLICY', 'FAVORITE', '관심 등록', '중개사 관심 등록 시 포인트 지급', '5', '관심 등록 보상', '2026-01-01', '9999-12-31', 3, 'Y'),
 ('POINT_POLICY', 'SURVEY', '설문 완료', '설문 조사 완료 시 포인트 지급', '50', '설문 완료 보상', '2026-01-01', '9999-12-31', 4, 'Y'),
 ('POINT_POLICY', 'REVIEW', '리뷰 작성', '리뷰 작성 시 포인트 지급', '200', '리뷰 작성 보상', '2026-01-01', '9999-12-31', 5, 'Y'),
-('POINT_POLICY', 'CONTRACT', '계약 완료', '계약 완료 시 포인트 지급', '100', '계약 완료 보상', '2026-01-01', '9999-12-31', 6, 'Y'),
 ('POINT_POLICY', 'AD_VIEW', '광고 시청', '광고 시청 시 포인트 지급', '10', '광고 시청 보상', '2026-01-01', '9999-12-31', 7, 'Y')
 ON CONFLICT (code_group, code_value) DO UPDATE SET
   code_name = EXCLUDED.code_name,

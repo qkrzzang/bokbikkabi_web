@@ -59,38 +59,20 @@ export default function Home() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        // 오늘 이미 로그인 포인트를 받았는지 확인
-        const today = new Date().toISOString().split('T')[0]
-        const { data: existingTransactions, error: checkError } = await supabase
-          .from('point_transactions')
-          .select('id')
-          .eq('supabase_user_id', session.user.id)
-          .eq('transaction_type', 'DAILY_LOGIN')
-          .gte('created_at', `${today}T00:00:00`)
-          .lte('created_at', `${today}T23:59:59`)
-          .limit(1)
-
-        if (checkError) {
-          console.error('로그인 포인트 확인 오류:', checkError)
-          return
-        }
-
-        if (existingTransactions && existingTransactions.length > 0) {
-          console.log('오늘 이미 로그인 포인트를 받았습니다.')
-          return
-        }
-
-        // 포인트 적립 함수 호출
-        const { data, error } = await supabase.rpc('award_points', {
-          p_user_id: session.user.id,
-          p_transaction_type: 'DAILY_LOGIN',
-          p_description: '일일 로그인 보상'
+        // DB 함수를 통해 안전하게 일일 로그인 포인트 지급 확인 및 처리
+        const { data, error } = await supabase.rpc('check_and_award_daily_login', {
+          p_user_id: session.user.id
         })
 
         if (error) {
-          console.error('로그인 포인트 적립 오류:', error)
+          console.error('로그인 포인트 처리 오류:', error)
+          return
+        }
+
+        if (data && data.success) {
+          console.log(`일일 로그인 포인트 ${data.points}P가 적립되었습니다!`)
         } else {
-          console.log('일일 로그인 포인트 5P가 적립되었습니다!')
+          console.log(data?.message || '오늘 이미 로그인 포인트를 받았습니다.')
         }
       } catch (error) {
         console.error('로그인 포인트 적립 예외:', error)
