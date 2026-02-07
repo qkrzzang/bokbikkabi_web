@@ -275,7 +275,7 @@
   font-size: 13px;
   font-weight: 600;
   color: #64748b;
-  min-width: 100px;
+  min-width: 90px;
   flex-shrink: 0;
 }
 
@@ -283,7 +283,24 @@
   font-size: 13px;
   color: #1e293b;
   flex: 1;
-  word-break: break-word;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+.reviewValue:has(> *) {
+  white-space: nowrap;
+  overflow: visible;
+}
+.transactionBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+  color: #ffffff;
+  white-space: nowrap;
 }
 
 .tagList {

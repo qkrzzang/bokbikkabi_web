@@ -67,7 +67,6 @@ export default function CameraButton() {
   }>>([])
   const [reviewText, setReviewText] = useState('')
   const [showThankYouModal, setShowThankYouModal] = useState(false)
-  const [alertModal, setAlertModal] = useState<{ show: boolean; message: string }>({ show: false, message: '' })
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false)
   const [hoverRatings, setHoverRatings] = useState<Record<string, number>>({})
   const [isAgreementChecked, setIsAgreementChecked] = useState(false)
@@ -164,37 +163,17 @@ export default function CameraButton() {
   const handleConfirm = async () => {
     if (!isAgreementChecked) {
       return
+    }
 
-    // Authentication check
+    // Check authentication
     if (!checkAuth()) return
     if (!authUser?.id) {
-      setAlertModal({ show: true, message: 'Login required.' })
+      alert('Please log in to write a review.')
       return
     }
 
-    // Review limit check
-    const canProceed = await checkReviewLimits()
-    if (!canProceed) {
-      return
-    }
-
-    }
-    setIsConfirmModalOpen(false)
-    setIsAgreementChecked(false)
-    setIsOpen(true)
-    setMode('select')
-    setCapturedImage(null)
-    // TODO: 리뷰 작성 페이지로 이동하거나 다음 프로세스 진행
-    console.log('리뷰 작성 프로세스 시작')
-  }
-
-  const handleCancelConfirm = () => {
-    setIsConfirmModalOpen(false)
-    setIsAgreementChecked(false)
-  }
-
-  const checkReviewLimits = async (): Promise<boolean> => {
     try {
+      // Check review limits from REVIEW_POLICY
       const { data: policies, error: policyError } = await supabase
         .from('common_code_detail')
         .select('code_value, extra_value1')
@@ -217,45 +196,58 @@ export default function CameraButton() {
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
 
+      // 1. Daily limit check
       const { count: dailyCount, error: dailyError } = await supabase
         .from('agent_reviews')
         .select('*', { count: 'exact', head: true })
-        .eq('supabase_user_id', authUser!.id)
+        .eq('supabase_user_id', authUser.id)
         .gte('created_at', startOfDay)
       
       if (!dailyError && (dailyCount || 0) >= dailyLimit) {
-        setAlertModal({ show: true, message: `You can submit up to ${dailyLimit} reviews per day.\nPlease try again tomorrow.` })
-        return false
+        alert(`You can submit up to ${dailyLimit} review(s) per day.\nPlease try again tomorrow.`)
+        return
       }
 
+      // 2. Monthly limit check
       const { count: monthlyCount, error: monthlyError } = await supabase
         .from('agent_reviews')
         .select('*', { count: 'exact', head: true })
-        .eq('supabase_user_id', authUser!.id)
+        .eq('supabase_user_id', authUser.id)
         .gte('created_at', startOfMonth)
 
       if (!monthlyError && (monthlyCount || 0) >= monthlyLimit) {
-        setAlertModal({ show: true, message: `You can submit up to ${monthlyLimit} reviews per month.\nPlease try again next month.` })
-        return false
+        alert(`You can submit up to ${monthlyLimit} review(s) per month.\nPlease try again next month.`)
+        return
       }
 
+      // 3. Total user limit check
       const { count: totalCount, error: totalError } = await supabase
         .from('agent_reviews')
         .select('*', { count: 'exact', head: true })
-        .eq('supabase_user_id', authUser!.id)
+        .eq('supabase_user_id', authUser.id)
 
       if (!totalError && (totalCount || 0) >= userLimit) {
-        setAlertModal({ show: true, message: `You can submit up to ${userLimit} reviews per account.` })
-        return false
+        alert(`You can submit up to ${userLimit} review(s) in total.`)
+        return
       }
 
-      return true
+      // All checks passed - open review modal
+      setIsConfirmModalOpen(false)
+      setIsAgreementChecked(false)
+      setIsOpen(true)
+      setMode('select')
+      setCapturedImage(null)
+      console.log('Review process started - all limits checked')
     } catch (error) {
-      console.error('Review limit check error:', error)
-      return true
+      console.error('Error checking review limits:', error)
+      alert('Failed to check review limits. Please try again.')
     }
   }
 
+  const handleCancelConfirm = () => {
+    setIsConfirmModalOpen(false)
+    setIsAgreementChecked(false)
+  }
 
   const getRatingText = (codeValue: string, rating: number): string => {
     if (rating === 0) return ''
@@ -482,17 +474,20 @@ export default function CameraButton() {
 
   // 정확 일치 조회
   const fetchExactAgent = async (agentNumber: string) => {
-    console.log(`[클라이언트] agent_master 테이블 정확 조회: "${agentNumber}"`)
+    const trimmedNumber = agentNumber.trim()
+    console.log(`[클라이언트] agent_master 테이블 정확 조회: "${trimmedNumber}"`)
+    console.log(`[클라이언트] 원본 값: "${agentNumber}", 길이: ${agentNumber.length}`)
+    console.log(`[클라이언트] trim 후: "${trimmedNumber}", 길이: ${trimmedNumber.length}`)
     console.log(`[클라이언트] 조회 쿼리:`, {
       table: 'agent_master',
-      condition: `agent_number = '${agentNumber}'`
+      condition: `agent_number = '${trimmedNumber}'`
     })
     
     try {
       const { data, error } = await supabase
         .from('agent_master')
         .select('id, agent_number, agent_name, road_address, lot_address, representative_name')
-        .eq('agent_number', agentNumber)
+        .eq('agent_number', trimmedNumber)
         .maybeSingle()
       
       if (error) {
@@ -606,57 +601,17 @@ export default function CameraButton() {
     resetFileInput()
   }
 
-    const processFile = (file: File) => {
-    // iOS Safari compatibility: Check file type and size
-    const isImageType = file.type.startsWith('image/') || 
-                        file.name.toLowerCase().endsWith('.heic') || 
-                        file.name.toLowerCase().endsWith('.heif')
-
-    if (!isImageType) {
-      alert('`1')
-      return
-    }
-
-    // iOS Safari: Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024
-    if (file.size > maxSize) {
-      alert('`1')
-      return
-    }
-
-    setOriginalFile(file)
-    const reader = new FileReader()
-
-    reader.onerror = () => {
-      console.error('FileReader error:', reader.error)
-      alert('`1')
-    }
-
-    reader.onloadend = () => {
-      try {
-        const result = reader.result as string
-        
-        if (!result || !result.startsWith('data:image/')) {
-          console.error('Invalid Data URL format')
-          alert('`1')
-          return
-        }
-
-        const cleanedResult = result.replace(/s/g, '')
-        
-        setCapturedImage(cleanedResult)
+  const processFile = (file: File) => {
+    if (file.type.startsWith('image/')) {
+      setOriginalFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setCapturedImage(reader.result as string)
         setMode('upload')
-      } catch (error) {
-        console.error('Error processing image:', error)
-        alert('`1')
       }
-    }
-
-    try {
       reader.readAsDataURL(file)
-    } catch (error) {
-      console.error('Error reading file:', error)
-      alert('`1')
+    } else {
+      alert('이미지 파일만 업로드 가능합니다.')
     }
   }
 
@@ -1138,6 +1093,35 @@ export default function CameraButton() {
 
       const contractData = primaryContract
 
+      // Check duplicate contract_date (only LEASE can have multiple reviews on same date)
+      const contractType = transactionTags[0]
+      const contractDate = contractData?.contract_date
+
+      // SELL, RENT, JEONSE can only have 1 review per contract_date
+      // Only LEASE can have multiple reviews on same contract_date
+      if (contractDate && contractType && contractType !== 'LEASE') {
+        console.log('[Duplicate Check] Checking for date:', contractDate, 'Type:', contractType)
+        
+        const { data: existingReviews, error: duplicateError } = await supabase
+          .from('agent_reviews')
+          .select('id, contract_date, transaction_tag')
+          .eq('supabase_user_id', authUser.id)
+          .eq('contract_date', contractDate)
+
+        if (!duplicateError && existingReviews && existingReviews.length > 0) {
+          const leaseTagName = transactionTagOptions.find(tag => tag.code_value === 'LEASE')?.code_name || 'LEASE'
+          console.log('[Duplicate Check] BLOCKED - Found existing reviews:', existingReviews)
+          alert(`A review already exists for contract date ${contractDate}.\nOnly ${leaseTagName} transactions can have multiple reviews on the same date.`)
+          return
+        }
+        
+        console.log('[Duplicate Check] PASSED - No duplicates found')
+      } else if (contractDate && contractType === 'LEASE') {
+        console.log('[Duplicate Check] SKIPPED - LEASE can have multiple reviews')
+      }
+
+
+
       // code_value 또는 code_name으로 평가 점수 찾기
       const getRatingByKeywords = (keywords: string[]) => {
         // 먼저 code_value로 검색
@@ -1371,7 +1355,7 @@ export default function CameraButton() {
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <div>
-                <h3>{mode === 'review' ? '리뷰 작성' : '부동산 계약서 업로드.'}</h3>
+                <h3>{mode === 'review' ? '리뷰 작성' : '부동산 계약서 업로드'}</h3>
               </div>
               <button
                 className={styles.closeButton}
@@ -1414,36 +1398,6 @@ export default function CameraButton() {
 
                   {isMobile ? (
                     <div className={styles.selectMode}>
-                      <button
-                        className={styles.optionButton}
-                        onClick={startCamera}
-                      >
-                        <svg
-                          width="32"
-                          height="32"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M23 19C23 19.5304 22.7893 20.0391 22.4142 20.4142C22.0391 20.7893 21.5304 21 21 21H3C2.46957 21 1.96086 20.7893 1.58579 20.4142C1.21071 20.0391 1 19.5304 1 19V8C1 7.46957 1.21071 6.96086 1.58579 6.58579C1.96086 6.21071 2.46957 6 3 6H7L9 4H15L17 6H21C21.5304 6 22.0391 6.21071 22.4142 6.58579C22.7893 6.96086 23 7.46957 23 8V19Z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <circle
-                            cx="12"
-                            cy="13"
-                            r="4"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        <span>카메라로 촬영</span>
-                      </button>
                       <button
                         className={styles.optionButton}
                         onClick={handleFileSelect}
@@ -2106,22 +2060,7 @@ export default function CameraButton() {
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
-    
-
-      {/* Alert Modal */}
-      {alertModal.show && (
-        <div className={styles.alertModalOverlay}>
-          <div className={styles.alertModal}>
-            <div className={styles.alertModalContent}>
-              <p className={styles.alertModalMessage}>{alertModal.message}</p>
-              <button className={styles.alertModalButton} onClick={() => setAlertModal({ show: false, message: "" })}>
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-</>
+    </>
   )
 }
 

@@ -52,6 +52,10 @@ export default function Sidebar({
   const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
   const [transactionLimit, setTransactionLimit] = useState(10) // 포인트 내역 표시 개수
   const [isGradeTooltipVisible, setIsGradeTooltipVisible] = useState(false) // 등급 툴팁 표시 여부
+  const [transactionTagOptions, setTransactionTagOptions] = useState<Array<{
+    code_value: string
+    code_name: string
+  }>>([]) // Transaction tag options from common_code_detail
   
   // 사이드바가 닫힐 때 메뉴로 리셋
   useEffect(() => {
@@ -61,6 +65,37 @@ export default function Sidebar({
       setDecryptedImageUrl(null)
     }
   }, [isOpen])
+
+  // Load transaction tag options from common_code_detail
+  useEffect(() => {
+    const fetchTransactionTags = async () => {
+      console.log('[Sidebar] Loading transaction tags...')
+      const { data, error } = await supabase
+        .from('common_code_detail')
+        .select('code_value, code_name')
+        .eq('code_group', 'TRANSACTION_TYPE')
+        .eq('use_yn', 'Y')
+        .order('sort_order', { ascending: true })
+
+      if (error) {
+        console.error('[Sidebar] Error loading transaction tags:', error)
+      } else if (data) {
+        console.log('[Sidebar] Loaded transaction tags:', data)
+        setTransactionTagOptions(data)
+      } else {
+        console.warn('[Sidebar] No transaction tags found')
+      }
+    }
+
+    if (isOpen) fetchTransactionTags()
+  }, [isOpen])
+
+  // Debug: Log transaction tag options
+  useEffect(() => {
+    console.log('[Sidebar] transactionTagOptions updated:', transactionTagOptions)
+  }, [transactionTagOptions])
+
+
 
   // 사이드바가 열릴 때 포인트 로드 및 노출 설정 로드
   useEffect(() => {
@@ -759,7 +794,17 @@ export default function Sidebar({
                   {selectedContract.transaction_tag && (
                     <div className={styles.reviewField}>
                       <span className={styles.reviewLabel}>거래 구분:</span>
-                      <span className={styles.reviewValue}>{selectedContract.transaction_tag}</span>
+                      <span className={`${styles.reviewValue} ${styles.transactionBadge}`}>
+                        {(() => {
+                          const tagName = transactionTagOptions.find(tag => tag.code_value === selectedContract.transaction_tag)?.code_name || selectedContract.transaction_tag
+                          console.log('[Sidebar] Transaction tag display:', { 
+                            code_value: selectedContract.transaction_tag, 
+                            code_name: tagName,
+                            availableOptions: transactionTagOptions
+                          })
+                          return tagName
+                        })()}
+                      </span>
                     </div>
                   )}
                 </div>
