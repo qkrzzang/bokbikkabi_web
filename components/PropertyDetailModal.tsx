@@ -75,6 +75,7 @@ export default function PropertyDetailModal({
   const [isLoadingMap, setIsLoadingMap] = useState(false)
   const [isFavorite, setIsFavorite] = useState(false)
   const [isFavoriteLoading, setIsFavoriteLoading] = useState(false)
+  const [showPointsGuideModal, setShowPointsGuideModal] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
   const naverMapInstance = useRef<any>(null)
 
@@ -315,8 +316,70 @@ export default function PropertyDetailModal({
     window.open(`https://map.naver.com/v5/search/${query}`, '_blank')
   }
 
-  const handleRatingClick = () => {
-    if (property.reviews && property.reviews.length > 0) {
+  const handleRatingClick = async () => {
+    if (!property.reviews || property.reviews.length === 0) return
+    
+    // 인증 체크
+    if (!checkAuth()) return
+    if (!authUser?.id) return
+
+    try {
+      // 1. 사용자 등급 확인
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('user_grade')
+        .eq('supabase_user_id', authUser.id)
+        .single()
+
+      if (userError) {
+        console.error('사용자 등급 조회 실패:', userError)
+        setIsReviewModalOpen(true)
+        return
+      }
+
+      const userGrade = userData?.user_grade || 'INJOO'
+
+      // 2. 입장까비(IMJANG)인 경우에만 포인트 차감
+      if (userGrade === 'IMJANG') {
+        // 현재 포인트 확인
+        const { data: pointsData, error: pointsError } = await supabase
+          .from('user_points')
+          .select('available_points')
+          .eq('supabase_user_id', authUser.id)
+          .single()
+
+        if (pointsError && pointsError.code !== 'PGRST116') {
+          console.error('포인트 조회 실패:', pointsError)
+          setIsReviewModalOpen(true)
+          return
+        }
+
+        const currentPoints = pointsData?.available_points || 0
+
+        // 포인트 부족 시 안내 모달 표시
+        if (currentPoints < 10) {
+          setShowPointsGuideModal(true)
+          return
+        }
+
+        // 10포인트 차감
+        const { error: deductError } = await supabase.rpc('deduct_points', {
+          user_id_param: authUser.id,
+          points_param: 10,
+          reason_param: '리뷰 조회',
+          reference_id_param: property.id
+        })
+
+        if (deductError) {
+          console.error('포인트 차감 실패:', deductError)
+          // 실패해도 리뷰는 보여줌
+        }
+      }
+
+      // 3. 리뷰 모달 열기
+      setIsReviewModalOpen(true)
+    } catch (error) {
+      console.error('리뷰 열기 오류:', error)
       setIsReviewModalOpen(true)
     }
   }
@@ -799,6 +862,59 @@ export default function PropertyDetailModal({
         onClose={() => setIsReviewModalOpen(false)}
         propertyName={property.name}
       />
+
+      {/* 포인트 안내 모달 */}
+      {showPointsGuideModal && (
+        <div className={styles.pointsGuideOverlay} onClick={() => setShowPointsGuideModal(false)}>
+          <div className={styles.pointsGuideModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.pointsGuideHeader}>
+              <div className={styles.pointsGuideIcon}>💰</div>
+              <h3 className={styles.pointsGuideTitle}>포인트가 부족합니다</h3>
+            </div>
+            <div className={styles.pointsGuideBody}>
+              <p className={styles.pointsGuideMessage}>
+                리뷰를 조회하려면 <strong>10포인트</strong>가 필요합니다.
+              </p>
+              <div className={styles.pointsGuideSection}>
+                <h4 className={styles.pointsGuideSectionTitle}>📌 포인트 획득 방법</h4>
+                <ul className={styles.pointsGuideList}>
+                  <li>✍️ <strong>리뷰 작성 시 50포인트 획득</strong></li>
+                  <li>📋 <strong>부동산 계약서 업로드 후 리뷰 작성 가능</strong></li>
+                  <li>⭐ 출석 체크 및 이벤트 참여</li>
+                </ul>
+              </div>
+              <div className={styles.pointsGuideHighlight}>
+                <div className={styles.pointsGuideHighlightIcon}>🎉</div>
+                <div>
+                  <div className={styles.pointsGuideHighlightTitle}>무제한 열람 혜택</div>
+                  <div className={styles.pointsGuideHighlightDesc}>
+                    리뷰를 1건 이상 작성하면<br />
+                    <strong>모든 리뷰를 포인트 차감 없이 무제한으로 볼 수 있습니다!</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className={styles.pointsGuideFooter}>
+              <button
+                className={styles.pointsGuideCloseButton}
+                onClick={() => setShowPointsGuideModal(false)}
+              >
+                닫기
+              </button>
+              <button
+                className={styles.pointsGuideReviewButton}
+                onClick={() => {
+                  setShowPointsGuideModal(false)
+                  // 리뷰 작성 버튼 클릭 이벤트 발생
+                  window.dispatchEvent(new Event('review:start'))
+                }}
+              >
+                리뷰 작성하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

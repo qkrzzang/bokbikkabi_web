@@ -67,6 +67,7 @@ export default function CameraButton() {
   }>>([])
   const [reviewText, setReviewText] = useState('')
   const [showThankYouModal, setShowThankYouModal] = useState(false)
+  const [alertModal, setAlertModal] = useState<{ show: boolean; message: string }>({ show: false, message: '' })
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false)
   const [hoverRatings, setHoverRatings] = useState<Record<string, number>>({})
   const [isAgreementChecked, setIsAgreementChecked] = useState(false)
@@ -160,9 +161,23 @@ export default function CameraButton() {
     setIsConfirmModalOpen(true)
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!isAgreementChecked) {
       return
+
+    // Authentication check
+    if (!checkAuth()) return
+    if (!authUser?.id) {
+      setAlertModal({ show: true, message: 'Login required.' })
+      return
+    }
+
+    // Review limit check
+    const canProceed = await checkReviewLimits()
+    if (!canProceed) {
+      return
+    }
+
     }
     setIsConfirmModalOpen(false)
     setIsAgreementChecked(false)
@@ -177,6 +192,70 @@ export default function CameraButton() {
     setIsConfirmModalOpen(false)
     setIsAgreementChecked(false)
   }
+
+  const checkReviewLimits = async (): Promise<boolean> => {
+    try {
+      const { data: policies, error: policyError } = await supabase
+        .from('common_code_detail')
+        .select('code_value, extra_value1')
+        .eq('code_group', 'REVIEW_POLICY')
+        .eq('use_yn', 'Y')
+      
+      let dailyLimit = 1
+      let monthlyLimit = 3
+      let userLimit = 10
+
+      if (!policyError && policies) {
+        policies.forEach((p: any) => {
+          if (p.code_value === 'DAILY_LIMIT') dailyLimit = Number(p.extra_value1) || 1
+          if (p.code_value === 'MONTHLY_LIMIT') monthlyLimit = Number(p.extra_value1) || 3
+          if (p.code_value === 'USER_LIMIT') userLimit = Number(p.extra_value1) || 10
+        })
+      }
+
+      const today = new Date()
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
+
+      const { count: dailyCount, error: dailyError } = await supabase
+        .from('agent_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('supabase_user_id', authUser!.id)
+        .gte('created_at', startOfDay)
+      
+      if (!dailyError && (dailyCount || 0) >= dailyLimit) {
+        setAlertModal({ show: true, message: `You can submit up to ${dailyLimit} reviews per day.\nPlease try again tomorrow.` })
+        return false
+      }
+
+      const { count: monthlyCount, error: monthlyError } = await supabase
+        .from('agent_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('supabase_user_id', authUser!.id)
+        .gte('created_at', startOfMonth)
+
+      if (!monthlyError && (monthlyCount || 0) >= monthlyLimit) {
+        setAlertModal({ show: true, message: `You can submit up to ${monthlyLimit} reviews per month.\nPlease try again next month.` })
+        return false
+      }
+
+      const { count: totalCount, error: totalError } = await supabase
+        .from('agent_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('supabase_user_id', authUser!.id)
+
+      if (!totalError && (totalCount || 0) >= userLimit) {
+        setAlertModal({ show: true, message: `You can submit up to ${userLimit} reviews per account.` })
+        return false
+      }
+
+      return true
+    } catch (error) {
+      console.error('Review limit check error:', error)
+      return true
+    }
+  }
+
 
   const getRatingText = (codeValue: string, rating: number): string => {
     if (rating === 0) return ''
@@ -527,17 +606,57 @@ export default function CameraButton() {
     resetFileInput()
   }
 
-  const processFile = (file: File) => {
-    if (file.type.startsWith('image/')) {
-      setOriginalFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setCapturedImage(reader.result as string)
+    const processFile = (file: File) => {
+    // iOS Safari compatibility: Check file type and size
+    const isImageType = file.type.startsWith('image/') || 
+                        file.name.toLowerCase().endsWith('.heic') || 
+                        file.name.toLowerCase().endsWith('.heif')
+
+    if (!isImageType) {
+      alert('`1')
+      return
+    }
+
+    // iOS Safari: Check file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      alert('`1')
+      return
+    }
+
+    setOriginalFile(file)
+    const reader = new FileReader()
+
+    reader.onerror = () => {
+      console.error('FileReader error:', reader.error)
+      alert('`1')
+    }
+
+    reader.onloadend = () => {
+      try {
+        const result = reader.result as string
+        
+        if (!result || !result.startsWith('data:image/')) {
+          console.error('Invalid Data URL format')
+          alert('`1')
+          return
+        }
+
+        const cleanedResult = result.replace(/s/g, '')
+        
+        setCapturedImage(cleanedResult)
         setMode('upload')
+      } catch (error) {
+        console.error('Error processing image:', error)
+        alert('`1')
       }
+    }
+
+    try {
       reader.readAsDataURL(file)
-    } else {
-      alert('이미지 파일만 업로드 가능합니다.')
+    } catch (error) {
+      console.error('Error reading file:', error)
+      alert('`1')
     }
   }
 
@@ -1987,7 +2106,22 @@ export default function CameraButton() {
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
-    </>
+    
+
+      {/* Alert Modal */}
+      {alertModal.show && (
+        <div className={styles.alertModalOverlay}>
+          <div className={styles.alertModal}>
+            <div className={styles.alertModalContent}>
+              <p className={styles.alertModalMessage}>{alertModal.message}</p>
+              <button className={styles.alertModalButton} onClick={() => setAlertModal({ show: false, message: "" })}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</>
   )
 }
 
