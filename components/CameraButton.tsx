@@ -5,7 +5,7 @@ import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthCheck } from '@/components/AuthGuard'
-import heic2any from 'heic2any'
+// heic2any는 window를 참조하므로 동적 import 사용 (SSR 방지)
 
 // ── HEIC 파일 감지 유틸리티 ──
 function isHeicFile(file: File): boolean {
@@ -32,6 +32,7 @@ function isImageFileLoose(file: File): boolean {
 async function convertHeicToJpeg(file: File): Promise<File> {
   console.log('[HEIC] 변환 시작:', file.name, file.type, file.size)
   try {
+    const heic2any = (await import('heic2any')).default
     const result = await heic2any({
       blob: file,
       toType: 'image/jpeg',
