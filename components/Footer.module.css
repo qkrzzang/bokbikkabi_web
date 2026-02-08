@@ -2,6 +2,8 @@
   background-color: #1e293b;
   color: #e2e8f0;
   padding: 20px 20px;
+  /* Safe Area 대응: iPhone 하단 홈 바 영역 */
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
   border-top: 1px solid #334155;
   flex-shrink: 0;
   margin-top: auto;
@@ -51,6 +53,8 @@
 @media (max-width: 768px) {
   .footer {
     padding: 16px 16px;
+    /* 모바일 Safe Area 대응 */
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
 
   .content {

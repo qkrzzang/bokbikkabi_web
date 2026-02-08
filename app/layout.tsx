@@ -20,6 +20,9 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
+        {/* 모바일 뷰포트 설정 */}
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+        
         {/* 네이버 지도 API 스크립트 (submodules=geocoder 추가) */}
         {naverMapClientId && (
           <Script
@@ -36,6 +39,38 @@ export default function RootLayout({
           {children}
           <Footer />
         </AuthProvider>
+        {/* 실제 모바일 뷰포트 높이 계산 */}
+        <Script
+          id="mobile-viewport-height"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function setVhProperty() {
+                  // 실제 뷰포트 높이를 계산 (주소창/툴바 제외)
+                  const vh = window.innerHeight * 0.01;
+                  document.documentElement.style.setProperty('--vh', vh + 'px');
+                }
+                
+                // 초기 설정
+                setVhProperty();
+                
+                // 리사이즈 이벤트 (방향 전환, 키보드 등)
+                let resizeTimer;
+                window.addEventListener('resize', function() {
+                  clearTimeout(resizeTimer);
+                  resizeTimer = setTimeout(setVhProperty, 100);
+                });
+                
+                // orientationchange 이벤트 (iOS Safari)
+                window.addEventListener('orientationchange', function() {
+                  setTimeout(setVhProperty, 300);
+                });
+              })();
+            `
+          }}
+        />
+        
         {/* Chrome 확장 프로그램 오류 무시 */}
         <Script
           id="suppress-extension-errors"
@@ -53,7 +88,7 @@ export default function RootLayout({
               window.addEventListener('unhandledrejection', function(e) {
                 if (e.reason && e.reason.message && e.reason.message.includes('message channel closed')) {
                   e.preventDefault();
-e.stopPropagation();
+                  e.stopPropagation();
                 }
               });
             `

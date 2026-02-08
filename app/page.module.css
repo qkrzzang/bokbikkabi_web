@@ -4,8 +4,15 @@
   background-color: #f5f7fa;
   position: relative;
   transition: background-color 0.3s ease;
+  /* 스크롤 가능 영역 */
   overflow-y: auto;
   overflow-x: hidden;
+  /* iOS에서 부드러운 스크롤 */
+  -webkit-overflow-scrolling: touch;
+  /* 모바일에서 스크롤 모멘텀 */
+  overscroll-behavior-y: contain;
+  /* 터치 스크롤 허용 */
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
 }

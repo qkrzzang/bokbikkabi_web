@@ -4,10 +4,25 @@
   margin: 0;
 }
 
-html,
+/* 실제 뷰포트 높이를 위한 CSS 변수 */
+:root {
+  --vh: 1vh;
+}
+
+html {
+  /* 모바일에서 스크롤 바운스 방지 */
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   max-width: 100vw;
-  height: 100vh;
+  width: 100%;
+  /* 실제 뷰포트 높이 사용 (모바일 주소창 고려) */
+  height: calc(var(--vh, 1vh) * 100);
+  /* body는 overflow hidden으로 고정 */
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -16,17 +31,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #f5f7fa;
   transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-body {
   display: flex;
   flex-direction: column;
+  /* 모바일 Safari 탭 제스처 방지 */
+  overscroll-behavior: none;
+  /* 모바일 터치 이벤트 최적화 */
+  touch-action: pan-y;
 }
 
 body > div {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .dark body {
