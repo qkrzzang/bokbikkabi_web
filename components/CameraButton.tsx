@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthCheck } from '@/components/AuthGuard'
+import confetti from 'canvas-confetti'
 // heic2any는 window를 참조하므로 동적 import 사용 (SSR 방지)
 
 // ── HEIC 파일 감지 유틸리티 ──
@@ -211,11 +212,64 @@ export default function CameraButton() {
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false)
   const [hoverRatings, setHoverRatings] = useState<Record<string, number>>({})
   const [isAgreementChecked, setIsAgreementChecked] = useState(false)
+  const [isConfettiLocked, setIsConfettiLocked] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
+
+  // 모달이 열릴 때 body 스크롤 잠금, 닫힐 때 복구
+  useEffect(() => {
+    if (isOpen || showThankYouModal || showAgentSelection || showConfirmSelection) {
+      document.body.style.overflow = 'hidden'
+      document.body.style.touchAction = 'none'
+    } else {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+  }, [isOpen, showThankYouModal, showAgentSelection, showConfirmSelection])
+
+  // 폭죽 효과 발사 함수
+  const fireConfetti = useCallback(() => {
+    const duration = 1500
+    const end = Date.now() + duration
+
+    const frame = () => {
+      confetti({
+        particleCount: 4,
+        angle: 60,
+        spread: 65,
+        origin: { x: 0, y: 0.6 },
+        colors: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+      })
+      confetti({
+        particleCount: 4,
+        angle: 120,
+        spread: 65,
+        origin: { x: 1, y: 0.6 },
+        colors: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+      })
+
+      if (Date.now() < end) {
+        requestAnimationFrame(frame)
+      }
+    }
+
+    // 중앙 대형 폭발
+    confetti({
+      particleCount: 100,
+      spread: 100,
+      origin: { x: 0.5, y: 0.4 },
+      colors: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff', '#5f27cd', '#01a3a4'],
+    })
+
+    frame()
+  }, [])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -1452,7 +1506,13 @@ export default function CameraButton() {
         window.dispatchEvent(new CustomEvent('review:saved', { detail: { query: reviewAgentName } }))
       }
 
-      setShowThankYouModal(true)
+      // 폭죽 효과 + 화면 잠금 (1.5초)
+      setIsConfettiLocked(true)
+      fireConfetti()
+      setTimeout(() => {
+        setIsConfettiLocked(false)
+        setShowThankYouModal(true)
+      }, 1500)
     } catch (error) {
       console.error('리뷰 저장 오류:', error)
       alert('리뷰 저장 중 오류가 발생했습니다.')
@@ -2303,6 +2363,11 @@ export default function CameraButton() {
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
+
+      {/* 폭죽 효과 중 화면 잠금 오버레이 */}
+      {isConfettiLocked && (
+        <div className={styles.confettiLock} />
+      )}
     </>
   )
 }

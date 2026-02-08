@@ -641,6 +641,22 @@ export default function Header() {
 
   // 사용자 정보 가져오기 - AuthContext에서 관리하므로 제거됨
 
+  // 모달이 열릴 때 body 스크롤 잠금
+  const anyModalOpen = isLoginModalOpen || isFavoritesModalOpen || isSettingsModalOpen || isGradeInfoModalOpen || isPartnershipModalOpen || isPolicyModalOpen || isMyContractsModalOpen || isContractDetailModalOpen || isAdminModalOpen
+  useEffect(() => {
+    if (anyModalOpen) {
+      document.body.style.overflow = 'hidden'
+      document.body.style.touchAction = 'none'
+    } else {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+  }, [anyModalOpen])
+
   // 관리자 화면 열릴 때 공통코드 데이터 로드
   useEffect(() => {
     let isMounted = true

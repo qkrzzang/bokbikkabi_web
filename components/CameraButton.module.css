@@ -71,6 +71,7 @@
   justify-content: center;
   z-index: 1001;
   animation: fadeIn 0.2s ease;
+  overscroll-behavior: contain;
 }
 
 @keyframes fadeIn {
@@ -1022,12 +1023,21 @@
     padding: 6px 10px;
   }
 
+  .overlay {
+    align-items: flex-start;
+    padding-top: 80px;
+    overscroll-behavior: contain;
+  }
+
   .modal {
-    width: 80%;
+    width: 92%;
     max-width: 425px;
-    max-height: 85vh;
-    max-height: 85dvh;
+    height: calc(100vh - 100px);
+    height: calc(100dvh - 100px);
+    max-height: none;
     padding-bottom: env(safe-area-inset-bottom);
+    border-radius: 16px 16px 0 0;
+    margin-bottom: 0;
   }
 
   .modalHeader {
@@ -1041,6 +1051,7 @@
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .optionButton {
@@ -1541,4 +1552,16 @@
     padding: 12px 32px;
     font-size: 15px;
   }
+}
+
+/* 폭죽 효과 잠금 오버레이 */
+.confettiLock {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99999;
+  pointer-events: all;
+  background-color: transparent;
 }

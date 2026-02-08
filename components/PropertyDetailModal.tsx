@@ -117,6 +117,21 @@ export default function PropertyDetailModal({
     }
   }, [isOpen, property, authUser])
 
+  // 모달이 열릴 때 body 스크롤 잠금
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+      document.body.style.touchAction = 'none'
+    } else {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+  }, [isOpen])
+
   // 주소를 좌표로 변환 (DB에 좌표가 있으면 사용, 없으면 Geocoding API 호출)
   useEffect(() => {
     if (!isOpen || !isLoggedIn || !property) {

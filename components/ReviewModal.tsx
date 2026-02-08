@@ -56,6 +56,21 @@ export default function ReviewModal({
     return visiblePart + maskedPart
   }
 
+  // 모달이 열릴 때 body 스크롤 잠금
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+      document.body.style.touchAction = 'none'
+    } else {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.touchAction = ''
+    }
+  }, [isOpen])
+
   // 사용자가 "도움돼요"를 누른 리뷰 목록 로드
   useEffect(() => {
     if (!isOpen) return

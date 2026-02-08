@@ -2805,6 +2805,12 @@
 }
 
 @media (max-width: 768px) {
+  .overlay {
+    align-items: flex-start;
+    padding-top: 80px;
+    overscroll-behavior: contain;
+  }
+
   .headerContent {
     padding: 10px 16px;
     min-height: 56px;
@@ -2822,6 +2828,9 @@
   .loginModal {
     width: 80%;
     max-width: 306px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .loginOptions {
@@ -2838,31 +2847,49 @@
   .profileModal {
     width: 80%;
     max-width: 306px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .favoritesModal {
     width: 80%;
     max-width: 323px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .gradeInfoModal {
     width: 76%;
     max-width: 357px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .infoModal {
     width: 76%;
     max-width: 357px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .settingsModal {
     width: 80%;
     max-width: 289px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .adminModal {
     width: 80%;
     max-width: 306px;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .profileInfo {
@@ -3319,7 +3346,9 @@
   .modalContent {
     width: 80%;
     max-width: 510px;
-    max-height: 90vh;
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .modalHeader {
