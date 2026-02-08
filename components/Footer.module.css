@@ -1,12 +1,11 @@
 .footer {
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
   background-color: #1e293b;
   color: #e2e8f0;
   padding: 20px 20px;
-  /* Safe Area 대응: iPhone 하단 홈 바 영역 */
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
   border-top: 1px solid #334155;
-  flex-shrink: 0;
-  margin-top: auto;
 }
 
 .container {
@@ -52,8 +51,10 @@
 /* 반응형 디자인 */
 @media (max-width: 768px) {
   .footer {
+    /* 높이 고정 유지 */
+    flex-shrink: 0;
     padding: 16px 16px;
-    /* 모바일 Safe Area 대응 */
+    /* 모바일 Safe Area 대응: 홈 바와 겹치지 않게 */
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
 

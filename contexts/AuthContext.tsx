@@ -164,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={value}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '100vh' }}>
+      <div className="appLayout">
         {children}
       </div>
     </AuthContext.Provider>

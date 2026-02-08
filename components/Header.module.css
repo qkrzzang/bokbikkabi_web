@@ -1,9 +1,9 @@
 .header {
-  flex-shrink: 0;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
   z-index: 100;
   background-color: #7C3AED;
   border-bottom: 1px solid #6D28D9;
-  /* Safe Area 대응: iPhone 노치/다이나믹 아일랜드 */
   padding-top: env(safe-area-inset-top);
 }
 
