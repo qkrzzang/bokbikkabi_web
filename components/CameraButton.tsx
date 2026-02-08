@@ -455,6 +455,10 @@ export default function CameraButton() {
   }
 
   const getContractAgentNumber = (contract: any) => {
+    if (!contract || typeof contract !== 'object') {
+      console.warn('[getContractAgentNumber] 유효하지 않은 계약 데이터:', typeof contract)
+      return ''
+    }
     const raw =
       contract?.agent_number ??
       contract?.agentNumber ??
@@ -462,27 +466,48 @@ export default function CameraButton() {
       contract?.agentNo ??
       contract?.registration_number ??
       contract?.registrationNumber ??
+      contract?.broker_number ??
+      contract?.brokerNumber ??
+      contract?.license_number ??
+      contract?.licenseNumber ??
       ''
-    return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+    const result = typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+    // 숫자와 하이픈만 남기는 정규화 (OCR에서 특수문자가 끼는 경우 대응)
+    const normalized = result.replace(/[^\d\-\s]/g, '').replace(/\s+/g, '').trim()
+    if (result && result !== normalized) {
+      console.log(`[getContractAgentNumber] 정규화: "${result}" → "${normalized}"`)
+    }
+    return normalized || result // 정규화 결과가 비어있으면 원본 반환
   }
 
   const getContractAgentName = (contract: any) => {
+    if (!contract || typeof contract !== 'object') {
+      console.warn('[getContractAgentName] 유효하지 않은 계약 데이터:', typeof contract)
+      return ''
+    }
     const raw =
       contract?.agent_name ??
       contract?.agentName ??
       contract?.office_name ??
       contract?.officeName ??
+      contract?.broker_name ??
+      contract?.brokerName ??
+      contract?.realtor_name ??
+      contract?.realtorName ??
       ''
     return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
   }
 
   const getContractAgentAddress = (contract: any) => {
+    if (!contract || typeof contract !== 'object') return ''
     const raw =
       contract?.agent_address ??
       contract?.agentAddress ??
       contract?.address ??
       contract?.road_address ??
       contract?.roadAddress ??
+      contract?.broker_address ??
+      contract?.brokerAddress ??
       ''
     return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
   }
@@ -923,15 +948,52 @@ export default function CameraButton() {
           ).finally(() => window.clearTimeout(n8nTimeoutId))
 
           if (!n8nResponse.ok) {
-            const errorText = await n8nResponse.text()
-            console.error('n8n 웹훅 전송 실패:', n8nResponse.status, errorText)
+            let errorText = ''
+            try {
+              errorText = await n8nResponse.text()
+            } catch { /* ignore */ }
+            console.error('[n8n] 웹훅 전송 실패:', n8nResponse.status, errorText.substring(0, 200))
             setN8nError(`n8n 호출 실패: ${n8nResponse.status}`)
             setMode('result')
             setIsLoading(false)
           } else {
-            const n8nData = await n8nResponse.json()
+            let n8nRawText = ''
+            let n8nData: any
+            try {
+              n8nRawText = await n8nResponse.text()
+              console.log('[n8n] 원본 응답 길이:', n8nRawText.length)
+              console.log('[n8n] 원본 응답 앞 200자:', n8nRawText.substring(0, 200))
+              n8nData = JSON.parse(n8nRawText)
+            } catch (parseError) {
+              console.error('[n8n] JSON 파싱 실패:', parseError)
+              console.error('[n8n] 원본 응답 앞 100자:', n8nRawText.substring(0, 100))
+              setN8nError('n8n 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
+              setMode('result')
+              setIsLoading(false)
+              return
+            }
             console.log('====== n8n 응답 받음 ======')
-            console.log('n8n 응답 전체:', JSON.stringify(n8nData, null, 2))
+            console.log('[n8n] 응답 타입:', typeof n8nData, Array.isArray(n8nData) ? `(배열, 길이: ${n8nData.length})` : '')
+            console.log('[n8n] 응답 전체:', JSON.stringify(n8nData, null, 2))
+
+            // ── n8n 응답이 래핑되어 있을 수 있는 경우 언래핑 ──
+            // n8n이 { data: [...] } 또는 { result: [...] } 등으로 감쌀 수 있음
+            let unwrappedData = n8nData
+            if (unwrappedData && typeof unwrappedData === 'object' && !Array.isArray(unwrappedData)) {
+              if (unwrappedData.data && (Array.isArray(unwrappedData.data) || typeof unwrappedData.data === 'object')) {
+                console.log('[n8n] 응답을 data 필드에서 언래핑')
+                unwrappedData = unwrappedData.data
+              } else if (unwrappedData.result && (Array.isArray(unwrappedData.result) || typeof unwrappedData.result === 'object')) {
+                console.log('[n8n] 응답을 result 필드에서 언래핑')
+                unwrappedData = unwrappedData.result
+              } else if (unwrappedData.output && (Array.isArray(unwrappedData.output) || typeof unwrappedData.output === 'object')) {
+                console.log('[n8n] 응답을 output 필드에서 언래핑')
+                unwrappedData = unwrappedData.output
+              } else if (unwrappedData.contracts && Array.isArray(unwrappedData.contracts)) {
+                console.log('[n8n] 응답을 contracts 필드에서 언래핑')
+                unwrappedData = unwrappedData.contracts
+              }
+            }
             
             // contract_type이 'NON_CONTRACT'인 항목 필터링
             const filterValidContracts = (data: any): any => {
@@ -944,7 +1006,34 @@ export default function CameraButton() {
               return null
             }
             
-            const validContracts = filterValidContracts(n8nData)
+            const validContracts = filterValidContracts(unwrappedData)
+            
+            // ── 유효 계약서의 agent 관련 필드 상세 로깅 ──
+            if (validContracts) {
+              const contractsArr = Array.isArray(validContracts) ? validContracts : [validContracts]
+              contractsArr.forEach((c: any, idx: number) => {
+                console.log(`[n8n] 계약서[${idx}] agent 필드 상세:`, {
+                  agent_number: c?.agent_number,
+                  agentNumber: c?.agentNumber,
+                  agent_no: c?.agent_no,
+                  registration_number: c?.registration_number,
+                  broker_number: c?.broker_number,
+                  agent_name: c?.agent_name,
+                  agentName: c?.agentName,
+                  office_name: c?.office_name,
+                  broker_name: c?.broker_name,
+                  contract_type: c?.contract_type,
+                  all_keys: Object.keys(c || {}),
+                })
+              })
+            } else {
+              console.warn('[n8n] 유효한 계약서 없음. 원본 데이터 키:', 
+                unwrappedData ? (Array.isArray(unwrappedData) 
+                  ? unwrappedData.map((d: any) => Object.keys(d || {})) 
+                  : Object.keys(unwrappedData)) 
+                : 'null'
+              )
+            }
             
             if (!validContracts || (Array.isArray(validContracts) && validContracts.length === 0)) {
               setN8nError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
@@ -979,13 +1068,21 @@ export default function CameraButton() {
                   
                   console.log(`[계약서 ${i}] OCR 추출값:`, { 
                     agent_number: contractAgentNumber, 
+                    agent_number_length: contractAgentNumber?.length,
                     agent_name: contractAgentName,
-                    raw: contract 
+                    agent_name_length: contractAgentName?.length,
+                    contract_keys: Object.keys(contract || {}),
                   })
+
+                  // agent 필드가 모두 비어있으면 상세 경고
+                  if (!contractAgentNumber && !contractAgentName) {
+                    console.warn(`[계약서 ${i}] ⚠️ agent_number, agent_name 모두 비어있음!`)
+                    console.warn(`[계약서 ${i}] n8n 원본 데이터:`, JSON.stringify(contract, null, 2))
+                  }
                   
                   // 1단계: agent_number로 정확 일치 조회 (반드시 실행)
                   if (contractAgentNumber) {
-                    console.log(`[1단계] agent_number 정확 일치 조회 시작: "${contractAgentNumber}"`)
+                    console.log(`[1단계] agent_number 정확 일치 조회 시작: "${contractAgentNumber}" (길이: ${contractAgentNumber.length})`)
                     try {
                       const numberData = await fetchExactAgent(contractAgentNumber)
                       

@@ -20,11 +20,24 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
+    // MIME Type 보장 (모바일에서 type이 비어있을 수 있음)
+    let contentType = file.type
+    if (!contentType || contentType === '' || contentType === 'application/octet-stream') {
+      const ext = file.name.toLowerCase().split('.').pop()
+      const mimeMap: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+        tiff: 'image/tiff', tif: 'image/tiff', bmp: 'image/bmp',
+      }
+      contentType = (ext && mimeMap[ext]) || 'image/jpeg'
+      console.log(`[OCR] MIME type 보정: "${file.type}" → "${contentType}" (파일명: ${file.name})`)
+    }
+
     // Upstage API로 전송할 FormData 생성
     const upstageFormData = new FormData()
     upstageFormData.append('document', buffer, {
       filename: file.name,
-      contentType: file.type,
+      contentType: contentType,
     })
     upstageFormData.append('schema', 'oac')
     upstageFormData.append('model', 'ocr')
