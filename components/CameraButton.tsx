@@ -5,6 +5,146 @@ import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthCheck } from '@/components/AuthGuard'
+import heic2any from 'heic2any'
+
+// ── HEIC 파일 감지 유틸리티 ──
+function isHeicFile(file: File): boolean {
+  const type = file.type.toLowerCase()
+  const name = file.name.toLowerCase()
+  return (
+    type === 'image/heic' ||
+    type === 'image/heif' ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  )
+}
+
+// ── iOS에서 type이 비어있는 이미지 파일 감지 ──
+function isImageFileLoose(file: File): boolean {
+  if (file.type.startsWith('image/')) return true
+  // iOS Safari에서 HEIC 파일의 type이 빈 문자열일 수 있음
+  const name = file.name.toLowerCase()
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif', '.tiff', '.tif']
+  return imageExtensions.some(ext => name.endsWith(ext))
+}
+
+// ── HEIC → JPEG 변환 ──
+async function convertHeicToJpeg(file: File): Promise<File> {
+  console.log('[HEIC] 변환 시작:', file.name, file.type, file.size)
+  try {
+    const result = await heic2any({
+      blob: file,
+      toType: 'image/jpeg',
+      quality: 0.9,
+    })
+    const jpegBlob = Array.isArray(result) ? result[0] : result
+    const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
+    const convertedFile = new File([jpegBlob], newName, { type: 'image/jpeg' })
+    console.log('[HEIC] 변환 완료:', convertedFile.name, convertedFile.type, convertedFile.size)
+    return convertedFile
+  } catch (error) {
+    console.error('[HEIC] 변환 실패:', error)
+    throw new Error('HEIC 이미지를 변환할 수 없습니다. 다른 형식의 이미지를 사용해주세요.')
+  }
+}
+
+// ── Base64 데이터 URI 검증 및 정규화 ──
+function validateAndNormalizeBase64(dataUrl: string): string {
+  // 줄바꿈/공백 제거
+  const cleaned = dataUrl.replace(/[\r\n\s]/g, '')
+  // data:image/xxx;base64,... 패턴 검증
+  const base64Regex = /^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/
+  if (!base64Regex.test(cleaned)) {
+    console.warn('[Base64] 유효하지 않은 패턴 감지, 앞 50자:', cleaned.substring(0, 50))
+    // prefix가 없으면 JPEG로 기본 설정
+    if (!cleaned.startsWith('data:')) {
+      return `data:image/jpeg;base64,${cleaned}`
+    }
+  }
+  return cleaned
+}
+
+// ── 이미지 File을 안전하게 Base64로 변환 ──
+function safeReadAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        try {
+          const result = reader.result as string
+          const normalized = validateAndNormalizeBase64(result)
+          resolve(normalized)
+        } catch (error) {
+          console.error('[Base64] 정규화 중 에러:', error)
+          console.error('[Base64] 원본 데이터 앞 50자:', (reader.result as string)?.substring(0, 50))
+          reject(error)
+        }
+      }
+      reader.onerror = () => {
+        console.error('[FileReader] 읽기 실패:', reader.error)
+        reject(reader.error || new Error('파일 읽기에 실패했습니다.'))
+      }
+      reader.readAsDataURL(file)
+    } catch (error) {
+      console.error('[FileReader] The string did not match the expected pattern:', error)
+      console.error('[FileReader] 파일 정보:', { name: file.name, type: file.type, size: file.size })
+      reject(error)
+    }
+  })
+}
+
+// ── 이미지 리사이즈 (큰 이미지를 OCR 전에 축소하여 안정성 확보) ──
+function resizeImageIfNeeded(file: File, maxDimension: number = 4096): Promise<File> {
+  return new Promise((resolve) => {
+    // 2MB 이하이면 리사이즈 불필요
+    if (file.size <= 2 * 1024 * 1024) {
+      resolve(file)
+      return
+    }
+
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const { width, height } = img
+
+      // 이미 충분히 작은 경우
+      if (width <= maxDimension && height <= maxDimension) {
+        resolve(file)
+        return
+      }
+
+      const scale = Math.min(maxDimension / width, maxDimension / height)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(width * scale)
+      canvas.height = Math.round(height * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(file)
+        return
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            const resized = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+            console.log('[Resize] 이미지 리사이즈 완료:', { before: file.size, after: resized.size, scale: scale.toFixed(2) })
+            resolve(resized)
+          } else {
+            resolve(file)
+          }
+        },
+        'image/jpeg',
+        0.85
+      )
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(file) // 실패 시 원본 반환
+    }
+    img.src = url
+  })
+}
 
 export default function CameraButton() {
   const { user: authUser } = useAuth()
@@ -160,88 +300,17 @@ export default function CameraButton() {
     setIsConfirmModalOpen(true)
   }
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     if (!isAgreementChecked) {
       return
     }
-
-    // Check authentication
-    if (!checkAuth()) return
-    if (!authUser?.id) {
-      alert('Please log in to write a review.')
-      return
-    }
-
-    try {
-      // Check review limits from REVIEW_POLICY
-      const { data: policies, error: policyError } = await supabase
-        .from('common_code_detail')
-        .select('code_value, extra_value1')
-        .eq('code_group', 'REVIEW_POLICY')
-        .eq('use_yn', 'Y')
-      
-      let dailyLimit = 1
-      let monthlyLimit = 3
-      let userLimit = 10
-
-      if (!policyError && policies) {
-        policies.forEach((p: any) => {
-          if (p.code_value === 'DAILY_LIMIT') dailyLimit = Number(p.extra_value1) || 1
-          if (p.code_value === 'MONTHLY_LIMIT') monthlyLimit = Number(p.extra_value1) || 3
-          if (p.code_value === 'USER_LIMIT') userLimit = Number(p.extra_value1) || 10
-        })
-      }
-
-      const today = new Date()
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
-
-      // 1. Daily limit check
-      const { count: dailyCount, error: dailyError } = await supabase
-        .from('agent_reviews')
-        .select('*', { count: 'exact', head: true })
-        .eq('supabase_user_id', authUser.id)
-        .gte('created_at', startOfDay)
-      
-      if (!dailyError && (dailyCount || 0) >= dailyLimit) {
-        alert(`You can submit up to ${dailyLimit} review(s) per day.\nPlease try again tomorrow.`)
-        return
-      }
-
-      // 2. Monthly limit check
-      const { count: monthlyCount, error: monthlyError } = await supabase
-        .from('agent_reviews')
-        .select('*', { count: 'exact', head: true })
-        .eq('supabase_user_id', authUser.id)
-        .gte('created_at', startOfMonth)
-
-      if (!monthlyError && (monthlyCount || 0) >= monthlyLimit) {
-        alert(`You can submit up to ${monthlyLimit} review(s) per month.\nPlease try again next month.`)
-        return
-      }
-
-      // 3. Total user limit check
-      const { count: totalCount, error: totalError } = await supabase
-        .from('agent_reviews')
-        .select('*', { count: 'exact', head: true })
-        .eq('supabase_user_id', authUser.id)
-
-      if (!totalError && (totalCount || 0) >= userLimit) {
-        alert(`You can submit up to ${userLimit} review(s) in total.`)
-        return
-      }
-
-      // All checks passed - open review modal
-      setIsConfirmModalOpen(false)
-      setIsAgreementChecked(false)
-      setIsOpen(true)
-      setMode('select')
-      setCapturedImage(null)
-      console.log('Review process started - all limits checked')
-    } catch (error) {
-      console.error('Error checking review limits:', error)
-      alert('Failed to check review limits. Please try again.')
-    }
+    setIsConfirmModalOpen(false)
+    setIsAgreementChecked(false)
+    setIsOpen(true)
+    setMode('select')
+    setCapturedImage(null)
+    // TODO: 리뷰 작성 페이지로 이동하거나 다음 프로세스 진행
+    console.log('리뷰 작성 프로세스 시작')
   }
 
   const handleCancelConfirm = () => {
@@ -601,17 +670,46 @@ export default function CameraButton() {
     resetFileInput()
   }
 
-  const processFile = (file: File) => {
-    if (file.type.startsWith('image/')) {
-      setOriginalFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setCapturedImage(reader.result as string)
+  const processFile = async (file: File) => {
+    // iOS Safari에서 HEIC의 type이 비어있을 수 있으므로 확장자도 함께 체크
+    if (!isImageFileLoose(file)) {
+      alert('이미지 파일만 업로드 가능합니다.')
+      return
+    }
+
+    try {
+      let processedFile = file
+
+      // HEIC/HEIF 파일이면 JPEG로 변환
+      if (isHeicFile(file)) {
+        try {
+          processedFile = await convertHeicToJpeg(file)
+        } catch (heicError) {
+          console.error('[processFile] HEIC 변환 실패:', heicError)
+          alert('HEIC 이미지를 변환할 수 없습니다. JPEG 또는 PNG 파일로 다시 시도해주세요.')
+          return
+        }
+      }
+
+      // 큰 이미지 리사이즈 (iOS에서 촬영한 고해상도 사진 대응)
+      processedFile = await resizeImageIfNeeded(processedFile)
+
+      setOriginalFile(processedFile)
+
+      // 안전한 Base64 변환 (에러 핸들링 포함)
+      try {
+        const dataUrl = await safeReadAsDataURL(processedFile)
+        setCapturedImage(dataUrl)
+        setMode('upload')
+      } catch (readError) {
+        console.error('[processFile] Base64 변환 실패:', readError)
+        // Base64 프리뷰 실패해도 원본 파일은 보존 → 업로드는 가능하게
+        setCapturedImage(null)
         setMode('upload')
       }
-      reader.readAsDataURL(file)
-    } else {
-      alert('이미지 파일만 업로드 가능합니다.')
+    } catch (error) {
+      console.error('[processFile] 파일 처리 중 오류:', error)
+      alert('이미지 처리 중 오류가 발생했습니다. 다시 시도해주세요.')
     }
   }
 
@@ -670,8 +768,16 @@ export default function CameraButton() {
       const ctx = canvas.getContext('2d')
       if (ctx) {
         ctx.drawImage(video, 0, 0)
-        const imageData = canvas.toDataURL('image/jpeg')
-        setCapturedImage(imageData)
+
+        try {
+          const imageData = canvas.toDataURL('image/jpeg')
+          const normalizedImageData = validateAndNormalizeBase64(imageData)
+          setCapturedImage(normalizedImageData)
+        } catch (error) {
+          console.error('[capturePhoto] toDataURL 에러:', error)
+          console.error('[capturePhoto] canvas 크기:', { width: canvas.width, height: canvas.height })
+          setCapturedImage(null)
+        }
         
         // Canvas를 Blob으로 변환하여 File 객체 생성
         canvas.toBlob((blob) => {
@@ -699,8 +805,35 @@ export default function CameraButton() {
     setN8nResult(null)
 
     try {
+      // ── 파일 전처리: HEIC 변환 + 타입 보장 ──
+      let fileToUpload = originalFile
+
+      // 혹시 HEIC가 processFile에서 변환되지 않았을 경우 재시도
+      if (isHeicFile(fileToUpload)) {
+        try {
+          fileToUpload = await convertHeicToJpeg(fileToUpload)
+          setOriginalFile(fileToUpload)
+        } catch (heicError) {
+          console.error('[handleImageSubmit] HEIC 변환 실패:', heicError)
+          throw new Error('HEIC 이미지를 변환할 수 없습니다. JPEG 또는 PNG 파일로 다시 시도해주세요.')
+        }
+      }
+
+      // iOS Safari에서 type이 비어있는 경우 JPEG로 기본 설정
+      if (!fileToUpload.type || fileToUpload.type === '') {
+        console.warn('[handleImageSubmit] 파일 타입이 비어있음, JPEG로 재설정:', fileToUpload.name)
+        fileToUpload = new File([fileToUpload], fileToUpload.name, { type: 'image/jpeg' })
+      }
+
+      console.log('[handleImageSubmit] 업로드 파일 정보:', {
+        name: fileToUpload.name,
+        type: fileToUpload.type,
+        size: fileToUpload.size,
+      })
+
+      // ── FormData 생성 (binary 전송 — Base64 문자열 대신 File 객체 직접 전송) ──
       const formData = new FormData()
-      formData.append('file', originalFile)
+      formData.append('file', fileToUpload, fileToUpload.name)
 
       // OCR 요청 타임아웃 (60초)
       const ocrController = new AbortController()
@@ -713,8 +846,16 @@ export default function CameraButton() {
       }).finally(() => window.clearTimeout(ocrTimeoutId))
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'OCR 처리 중 오류가 발생했습니다.')
+        let errorMsg = 'OCR 처리 중 오류가 발생했습니다.'
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.error || errorMsg
+          console.error('[handleImageSubmit] OCR API 에러 상세:', errorData)
+        } catch {
+          const errorText = await response.text().catch(() => '')
+          console.error('[handleImageSubmit] OCR API 에러 (text):', errorText.substring(0, 200))
+        }
+        throw new Error(errorMsg)
       }
 
       const data = await response.json()
@@ -742,9 +883,31 @@ export default function CameraButton() {
       // n8n 웹훅으로 OCR text만 전송하고 응답 받기
       if (ocrText) {
         try {
+          // ── OCR 텍스트 정규화 (불필요한 제어 문자 제거) ──
+          const sanitizedOcrText = ocrText
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // 제어 문자 제거
+            .trim()
+
+          console.log('[n8n] 전송할 텍스트 길이:', sanitizedOcrText.length)
+          console.log('[n8n] 텍스트 앞 50자:', sanitizedOcrText.substring(0, 50))
+
           // n8n 요청 타임아웃 (45초)
           const n8nController = new AbortController()
           const n8nTimeoutId = window.setTimeout(() => n8nController.abort(), 45_000)
+
+          // ── JSON body 사전 검증 ──
+          const n8nPayload = {
+            text: sanitizedOcrText,
+            timestamp: new Date().toISOString(),
+          }
+          let n8nBodyString: string
+          try {
+            n8nBodyString = JSON.stringify(n8nPayload)
+          } catch (jsonError) {
+            console.error('[n8n] JSON.stringify 실패:', jsonError)
+            console.error('[n8n] 텍스트 앞 50자:', sanitizedOcrText.substring(0, 50))
+            throw new Error('OCR 결과를 JSON으로 변환할 수 없습니다.')
+          }
 
           const n8nResponse = await fetch(
             'https://qkrzzang13.app.n8n.cloud/webhook/4fc817ac-3148-46e1-8127-8960ade84ae3',
@@ -753,10 +916,7 @@ export default function CameraButton() {
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                text: ocrText,
-                timestamp: new Date().toISOString(),
-              }),
+              body: n8nBodyString,
               signal: n8nController.signal,
             }
           ).finally(() => window.clearTimeout(n8nTimeoutId))
@@ -926,7 +1086,13 @@ export default function CameraButton() {
             }
           }
         } catch (n8nError) {
-          console.error('n8n 웹훅 전송 중 오류:', n8nError)
+          console.error('[n8n] 웹훅 전송 중 오류:', n8nError)
+          // "The string did not match the expected pattern" 디버깅
+          if (n8nError instanceof Error && n8nError.message.includes('did not match')) {
+            console.error('[n8n] 패턴 불일치 에러 발생! OCR 텍스트 앞 50자:', ocrText?.substring(0, 50))
+            console.error('[n8n] OCR 텍스트 길이:', ocrText?.length)
+            console.error('[n8n] 파일 정보:', { name: fileToUpload.name, type: fileToUpload.type, size: fileToUpload.size })
+          }
           setN8nError(
             n8nError instanceof DOMException && n8nError.name === 'AbortError'
               ? '검증 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
@@ -944,7 +1110,15 @@ export default function CameraButton() {
         setIsLoading(false)
       }
     } catch (error) {
-      console.error('OCR 오류:', error)
+      console.error('[handleImageSubmit] 오류:', error)
+      // "The string did not match the expected pattern" 디버깅
+      if (error instanceof Error && error.message.includes('did not match')) {
+        console.error('[handleImageSubmit] 패턴 불일치 에러! 파일 정보:', {
+          name: originalFile?.name,
+          type: originalFile?.type,
+          size: originalFile?.size,
+        })
+      }
       setMode('result')
       setOcrError(
         error instanceof DOMException && error.name === 'AbortError'
@@ -1092,35 +1266,6 @@ export default function CameraButton() {
       }
 
       const contractData = primaryContract
-
-      // Check duplicate contract_date (only LEASE can have multiple reviews on same date)
-      const contractType = transactionTags[0]
-      const contractDate = contractData?.contract_date
-
-      // SELL, RENT, JEONSE can only have 1 review per contract_date
-      // Only LEASE can have multiple reviews on same contract_date
-      if (contractDate && contractType && contractType !== 'LEASE') {
-        console.log('[Duplicate Check] Checking for date:', contractDate, 'Type:', contractType)
-        
-        const { data: existingReviews, error: duplicateError } = await supabase
-          .from('agent_reviews')
-          .select('id, contract_date, transaction_tag')
-          .eq('supabase_user_id', authUser.id)
-          .eq('contract_date', contractDate)
-
-        if (!duplicateError && existingReviews && existingReviews.length > 0) {
-          const leaseTagName = transactionTagOptions.find(tag => tag.code_value === 'LEASE')?.code_name || 'LEASE'
-          console.log('[Duplicate Check] BLOCKED - Found existing reviews:', existingReviews)
-          alert(`A review already exists for contract date ${contractDate}.\nOnly ${leaseTagName} transactions can have multiple reviews on the same date.`)
-          return
-        }
-        
-        console.log('[Duplicate Check] PASSED - No duplicates found')
-      } else if (contractDate && contractType === 'LEASE') {
-        console.log('[Duplicate Check] SKIPPED - LEASE can have multiple reviews')
-      }
-
-
 
       // code_value 또는 code_name으로 평가 점수 찾기
       const getRatingByKeywords = (keywords: string[]) => {

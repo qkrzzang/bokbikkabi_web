@@ -227,7 +227,8 @@
 /* 모바일 반응형 */
 @media (max-width: 768px) {
   .modal {
-    width: 95%;
+    width: 80%;
+    max-width: 510px;
     max-height: 95vh;
   }
 

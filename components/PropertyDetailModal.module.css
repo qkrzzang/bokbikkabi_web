@@ -453,6 +453,8 @@
   }
 
   .modal {
+    width: 85%;
+    max-width: 510px;
     max-height: 95vh;
   }
 
@@ -664,7 +666,8 @@
 
 @media (max-width: 768px) {
   .pointsGuideModal {
-    max-width: 360px;
+    width: 76%;
+    max-width: 306px;
   }
 
   .pointsGuideHeader {

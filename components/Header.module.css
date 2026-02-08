@@ -2820,8 +2820,8 @@
   }
 
   .loginModal {
-    width: 95%;
-    max-width: 360px;
+    width: 80%;
+    max-width: 306px;
   }
 
   .loginOptions {
@@ -2836,23 +2836,33 @@
 
   .notificationModal,
   .profileModal {
-    width: 95%;
-    max-width: 360px;
+    width: 80%;
+    max-width: 306px;
   }
 
   .favoritesModal {
-    width: 95%;
-    max-width: 380px;
+    width: 80%;
+    max-width: 323px;
+  }
+
+  .gradeInfoModal {
+    width: 76%;
+    max-width: 357px;
+  }
+
+  .infoModal {
+    width: 76%;
+    max-width: 357px;
   }
 
   .settingsModal {
-    width: 95%;
-    max-width: 340px;
+    width: 80%;
+    max-width: 289px;
   }
 
   .adminModal {
-    width: 95%;
-    max-width: 360px;
+    width: 80%;
+    max-width: 306px;
   }
 
   .profileInfo {
@@ -3307,7 +3317,8 @@
 
 @media (max-width: 768px) {
   .modalContent {
-    width: 95%;
+    width: 80%;
+    max-width: 510px;
     max-height: 90vh;
   }
 

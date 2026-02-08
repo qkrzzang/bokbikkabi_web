@@ -538,6 +538,8 @@
   }
 
   .modal {
+    width: 85%;
+    max-width: 595px;
     max-height: 95vh;
   }
 
@@ -581,6 +583,11 @@
 
   .reportOverlay {
     padding: 16px;
+  }
+
+  .reportModal {
+    width: 85%;
+    max-width: 442px;
   }
 }
 
