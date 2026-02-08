@@ -37,16 +37,17 @@
 
 @media (max-width: 768px) {
   .banner {
-    padding: 16px 16px;
-    margin-bottom: 16px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
   }
 
   .mainCopy {
     font-size: 16px;
+    margin-bottom: 8px;
   }
 
   .subCopy {
-    font-size: 14px;
+    font-size: 13px;
   }
 }
 
