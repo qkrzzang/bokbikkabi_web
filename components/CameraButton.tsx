@@ -1369,6 +1369,25 @@ export default function CameraButton() {
         return
       }
 
+      // 4. 계약일자 + 거래태그 중복 제한 체크
+      const selectedTagName = transactionTags[0] || null
+      const contractData4Check = primaryContract
+      const contractDate4Check = contractData4Check?.contract_date || null
+
+      if (contractDate4Check) {
+        // 동일 계약일자에 1건만 허용 (거래태그 무관)
+        const { count: contractDateCount, error: contractDateError } = await supabase
+          .from('agent_reviews')
+          .select('*', { count: 'exact', head: true })
+          .eq('supabase_user_id', authUser.id)
+          .eq('contract_date', contractDate4Check)
+
+        if (!contractDateError && (contractDateCount || 0) >= 1) {
+          alert(`동일한 계약일자(${contractDate4Check})에는 리뷰를 1건만 등록할 수 있습니다.`)
+          return
+        }
+      }
+
       const reviewLength = reviewText.trim().length
       if (reviewLength < 20) {
         alert('상세 리뷰는 20자 이상 작성해주세요.')

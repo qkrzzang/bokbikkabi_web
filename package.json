@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "2.90.1",
-    "canvas-confetti": "1.9.4",
+    "canvas-confetti": "^1.9.4",
     "crypto-js": "4.2.0",
     "form-data": "4.0.5",
     "heic2any": "0.0.4",
@@ -20,7 +20,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/canvas-confetti": "1.9.0",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/crypto-js": "4.2.2",
     "@types/node": "^20.0.0",
     "@types/node-fetch": "2.6.13",
