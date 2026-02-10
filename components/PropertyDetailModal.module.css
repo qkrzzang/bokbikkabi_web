@@ -161,7 +161,9 @@
 .ratingMain {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  width: 100%;
   transition: opacity 0.2s ease;
 }
 
@@ -188,9 +190,8 @@
 }
 
 .ratingStars {
-  color: #fbbf24;
-  font-size: 20px;
-  letter-spacing: 2px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .badgeSection {
@@ -490,10 +491,13 @@
   }
 
   .ratingStars {
-    font-size: 16px;
-    letter-spacing: 1px;
-    white-space: nowrap;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .ratingStars svg {
+    width: 16px;
+    height: 16px;
   }
 
   .ratingSection {

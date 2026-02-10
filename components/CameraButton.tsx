@@ -165,6 +165,9 @@ export default function CameraButton() {
   const [ocrError, setOcrError] = useState<string | null>(null)
   const [n8nResult, setN8nResult] = useState<any>(null)
   const [n8nError, setN8nError] = useState<string | null>(null)
+  // 도장 검증 결과
+  const [stampResult, setStampResult] = useState<{ agent_stamp: boolean; agent_stamp_confidence: number } | null>(null)
+  const [isStampVerifying, setIsStampVerifying] = useState(false)
   const [agentAddresses, setAgentAddresses] = useState<Record<string, { road_address: string; lot_address: string }>>({})
   const [selectedAgents, setSelectedAgents] = useState<Record<string, { agent_id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }>>({})
   const [showAgentSelection, setShowAgentSelection] = useState(false)
@@ -174,8 +177,10 @@ export default function CameraButton() {
     agentNumber?: string
     reason: 'exact' | 'multiple' | 'fuzzy'
     agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string; matchScore?: number }>
+    notFoundNumbers?: string[]
   } | null>(null)
   const [showConfirmSelection, setShowConfirmSelection] = useState(false)
+  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
   const [confirmingAgent, setConfirmingAgent] = useState<{
     agent: { id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }
     contractIndex: number
@@ -234,10 +239,11 @@ export default function CameraButton() {
     }
   }, [isOpen, showThankYouModal, showAgentSelection, showConfirmSelection])
 
-  // 폭죽 효과 발사 함수
+  // 폭죽 효과 발사 함수 (팝업 위로 표시되도록 zIndex 최상위)
   const fireConfetti = useCallback(() => {
     const duration = 1500
     const end = Date.now() + duration
+    const confettiZIndex = 2147483647 // 최상위 z-index
 
     const frame = () => {
       confetti({
@@ -246,6 +252,7 @@ export default function CameraButton() {
         spread: 65,
         origin: { x: 0, y: 0.6 },
         colors: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+        zIndex: confettiZIndex,
       })
       confetti({
         particleCount: 4,
@@ -253,6 +260,7 @@ export default function CameraButton() {
         spread: 65,
         origin: { x: 1, y: 0.6 },
         colors: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+        zIndex: confettiZIndex,
       })
 
       if (Date.now() < end) {
@@ -266,6 +274,7 @@ export default function CameraButton() {
       spread: 100,
       origin: { x: 0.5, y: 0.4 },
       colors: ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff', '#5f27cd', '#01a3a4'],
+      zIndex: confettiZIndex,
     })
 
     frame()
@@ -506,12 +515,36 @@ export default function CameraButton() {
   const handleAgentSelectionCancel = () => {
     setShowAgentSelection(false)
     setPendingAgentSelection(null)
+    // 선택 팝업 닫으면 업로드 화면(이미지 노출)으로 복귀, 검증 결과 화면은 표시하지 않음
+    setN8nResult(null)
+    setSelectedAgents({})
+    setAgentAddresses({})
+    setMode('upload')
   }
 
-  const getContractAgentNumber = (contract: any) => {
+  // agent_number 정규화 헬퍼 (공백만 제거, 원본 최대 보존)
+  const normalizeAgentNum = (raw: any): string => {
+    const result = typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+    if (!result) return ''
+    // 등록번호는 한글+숫자+하이픈 등 다양한 형식이 있으므로 공백만 제거
+    const normalized = result.replace(/\s+/g, '').trim()
+    if (result && result !== normalized) {
+      console.log(`[normalizeAgentNum] 정규화: "${result}" → "${normalized}"`)
+    }
+    return normalized
+  }
+
+  // 단일 agent_number 반환 (기존 호환 - 배열이면 첫 번째 반환)
+  const getContractAgentNumber = (contract: any): string => {
+    const numbers = getContractAgentNumbers(contract)
+    return numbers[0] || ''
+  }
+
+  // 배열로 agent_number(들) 반환 - 공동중개 지원
+  const getContractAgentNumbers = (contract: any): string[] => {
     if (!contract || typeof contract !== 'object') {
-      console.warn('[getContractAgentNumber] 유효하지 않은 계약 데이터:', typeof contract)
-      return ''
+      console.warn('[getContractAgentNumbers] 유효하지 않은 계약 데이터:', typeof contract)
+      return []
     }
     const raw =
       contract?.agent_number ??
@@ -525,13 +558,22 @@ export default function CameraButton() {
       contract?.license_number ??
       contract?.licenseNumber ??
       ''
-    const result = typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
-    // 숫자와 하이픈만 남기는 정규화 (OCR에서 특수문자가 끼는 경우 대응)
-    const normalized = result.replace(/[^\d\-\s]/g, '').replace(/\s+/g, '').trim()
-    if (result && result !== normalized) {
-      console.log(`[getContractAgentNumber] 정규화: "${result}" → "${normalized}"`)
+
+    console.log(`[getContractAgentNumbers] raw 값:`, raw, `(타입: ${typeof raw}, 배열: ${Array.isArray(raw)})`)
+
+    // 배열인 경우: 공동중개 (n8n에서 배열로 전달)
+    if (Array.isArray(raw)) {
+      const normalized = raw
+        .map((item: any) => normalizeAgentNum(item))
+        .filter((n: string) => n.length > 0)
+      console.log(`[getContractAgentNumbers] 배열 입력 (공동중개): ${normalized.length}개`, normalized)
+      return normalized
     }
-    return normalized || result // 정규화 결과가 비어있으면 원본 반환
+
+    // 단일 문자열인 경우
+    const single = normalizeAgentNum(raw)
+    console.log(`[getContractAgentNumbers] 단일 입력: "${single}"`)
+    return single ? [single] : []
   }
 
   const getContractAgentName = (contract: any) => {
@@ -567,96 +609,30 @@ export default function CameraButton() {
   }
 
 
-  const normalizeAgentNumber = (value: string) => value.toLowerCase().replace(/[^0-9a-z]/g, '')
+  // 등록번호 정규화 (공백 + 하이픈 모두 제거)
+  const stripAgentNumber = (num: string) => num.replace(/[\s\-]/g, '')
 
-  const normalizeText = (value: string) => value.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9가-힣]/g, '')
-
-  // Levenshtein Distance 기반 유사도 (0~1)
-  const calculateSimilarity = (a: string, b: string) => {
-    const source = normalizeText(a)
-    const target = normalizeText(b)
-    if (!source || !target) return 0
-    if (source === target) return 1
-
-    // 포함 관계 체크 (부분 문자열)
-    if (source.includes(target) || target.includes(source)) {
-      const minLen = Math.min(source.length, target.length)
-      const maxLen = Math.max(source.length, target.length)
-      return 0.7 + (0.3 * minLen / maxLen)
-    }
-
-    const sourceLen = source.length
-    const targetLen = target.length
-    const matrix = Array.from({ length: sourceLen + 1 }, () => new Array(targetLen + 1).fill(0))
-
-    for (let i = 0; i <= sourceLen; i++) matrix[i][0] = i
-    for (let j = 0; j <= targetLen; j++) matrix[0][j] = j
-
-    for (let i = 1; i <= sourceLen; i++) {
-      for (let j = 1; j <= targetLen; j++) {
-        const cost = source[i - 1] === target[j - 1] ? 0 : 1
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost
-        )
-      }
-    }
-
-    const distance = matrix[sourceLen][targetLen]
-    const maxLen = Math.max(sourceLen, targetLen)
-    return maxLen === 0 ? 0 : 1 - distance / maxLen
-  }
-
-  const getMatchScore = (
-    candidate: { agent_name: string; agent_number: string }, 
-    agentName?: string, 
-    agentNumber?: string
-  ) => {
-    const nameScore = agentName ? calculateSimilarity(candidate.agent_name, agentName) : 0
-    const numberScore = agentNumber ? calculateSimilarity(candidate.agent_number, agentNumber) : 0
-
-    if (!agentName && agentNumber) return numberScore
-    if (agentName && !agentNumber) return nameScore
-    return numberScore * 0.6 + nameScore * 0.4
-  }
-
-  // 정확 일치 조회
+  // 등록번호 조회 — DB에서 replace(replace(agent_number,'-',''),' ','') 로 비교
   const fetchExactAgent = async (agentNumber: string) => {
     const trimmedNumber = agentNumber.trim()
-    console.log(`[클라이언트] agent_master 테이블 정확 조회: "${trimmedNumber}"`)
-    console.log(`[클라이언트] 원본 값: "${agentNumber}", 길이: ${agentNumber.length}`)
-    console.log(`[클라이언트] trim 후: "${trimmedNumber}", 길이: ${trimmedNumber.length}`)
-    console.log(`[클라이언트] 조회 쿼리:`, {
-      table: 'agent_master',
-      condition: `agent_number = '${trimmedNumber}'`
-    })
+    console.log(`[클라이언트] agent_master RPC 조회: "${trimmedNumber}"`)
     
     try {
       const { data, error } = await supabase
-        .from('agent_master')
-        .select('id, agent_number, agent_name, road_address, lot_address, representative_name')
-        .eq('agent_number', trimmedNumber)
-        .maybeSingle()
-      
+        .rpc('search_agent_by_number', { input_number: trimmedNumber })
+
       if (error) {
-        console.error('[클라이언트] ❌ Supabase 조회 오류:', error)
-        console.error('[클라이언트] 오류 상세:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        })
+        console.error('[클라이언트] ❌ RPC 오류:', error.message)
         return null
       }
-      
-      if (data) {
-        console.log(`[클라이언트] ✅ 조회 성공:`, data)
-      } else {
-        console.log(`[클라이언트] ⚠️ 데이터 없음 (DB에 '${agentNumber}'가 없습니다)`)
+
+      if (data && data.length > 0) {
+        console.log(`[클라이언트] ✅ 매칭 성공:`, data[0].agent_name, `(DB: "${data[0].agent_number}")`)
+        return data[0]
       }
-      
-      return data
+
+      console.log(`[클라이언트] ⚠️ 조회 실패 (DB에 '${trimmedNumber}' 없음)`)
+      return null
     } catch (error) {
       // AbortError는 조용히 처리 (정상적인 취소 동작)
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -665,69 +641,6 @@ export default function CameraButton() {
       }
       console.error('[클라이언트] ❌ 예외 발생:', error)
       return null
-    }
-  }
-
-  // 유사도 검색
-  const fetchByNameAndNumber = async (agentName?: string, agentNumber?: string) => {
-    if (!agentName && !agentNumber) {
-      return []
-    }
-
-    const filters: string[] = []
-    
-    if (agentName) {
-      const cleanName = agentName.replace(/(공인중개사|부동산|사무소)$/g, '').trim()
-      if (cleanName.length >= 2) {
-        filters.push(`agent_name.ilike.%${cleanName}%`)
-      }
-    }
-    
-    if (agentNumber) {
-      const normalized = normalizeAgentNumber(agentNumber)
-      if (normalized.length >= 6) {
-        const prefix = normalized.substring(0, 6)
-        filters.push(`agent_number.ilike.%${prefix}%`)
-      } else if (normalized.length >= 3) {
-        filters.push(`agent_number.ilike.%${normalized}%`)
-      }
-    }
-
-    if (filters.length === 0) {
-      return []
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('agent_master')
-        .select('id, agent_number, agent_name, road_address, lot_address, representative_name')
-        .or(filters.join(','))
-        .limit(50)
-
-      if (error) {
-        return []
-      }
-
-      const scoredCandidates = (data || []).map((candidate: any) => ({
-        ...candidate,
-        matchScore: getMatchScore(candidate, agentName, agentNumber),
-        road_address: candidate.road_address || '',
-        lot_address: candidate.lot_address || '',
-      }))
-      
-      const finalCandidates = scoredCandidates
-        .filter((c: any) => (c.matchScore || 0) >= 0.3)
-        .sort((a: any, b: any) => (b.matchScore || 0) - (a.matchScore || 0))
-
-      return finalCandidates
-    } catch (error) {
-      // AbortError는 조용히 처리 (정상적인 취소 동작)
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        console.log('[클라이언트] ⚠️ 요청 취소됨 (AbortError)')
-        return []
-      }
-      console.error('[클라이언트] ❌ 예외 발생:', error)
-      return []
     }
   }
 
@@ -883,6 +796,14 @@ export default function CameraButton() {
     setOcrError(null)
     setN8nError(null)
     setN8nResult(null)
+    setStampResult(null)
+    // 이전 업로드 데이터 초기화 (stale data 방지)
+    setSelectedAgents({})
+    setAgentAddresses({})
+    setPendingAgentSelection(null)
+    setShowAgentSelection(false)
+    setShowConfirmSelection(false)
+    setConfirmingAgent(null)
 
     try {
       // ── 파일 전처리: HEIC 변환 + 타입 보장 ──
@@ -914,6 +835,35 @@ export default function CameraButton() {
       // ── FormData 생성 (binary 전송 — Base64 문자열 대신 File 객체 직접 전송) ──
       const formData = new FormData()
       formData.append('file', fileToUpload, fileToUpload.name)
+
+      // ── 도장 검증 (OCR과 병렬 실행) ──
+      const stampFormData = new FormData()
+      stampFormData.append('file', fileToUpload, fileToUpload.name)
+      setIsStampVerifying(true)
+      const stampPromise = fetch('/api/verify-stamp', {
+        method: 'POST',
+        body: stampFormData,
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            const stampData = await res.json()
+            console.log('[도장 검증] 결과:', stampData)
+            if (stampData.success) {
+              setStampResult({
+                agent_stamp: stampData.agent_stamp,
+                agent_stamp_confidence: stampData.agent_stamp_confidence,
+              })
+            }
+          } else {
+            console.warn('[도장 검증] API 오류:', res.status)
+          }
+        })
+        .catch((err) => {
+          console.warn('[도장 검증] 호출 실패 (리뷰 등록에는 영향 없음):', err.message)
+        })
+        .finally(() => {
+          setIsStampVerifying(false)
+        })
 
       // OCR 요청 타임아웃 (60초)
       const ocrController = new AbortController()
@@ -1110,6 +1060,7 @@ export default function CameraButton() {
                   agentNumber?: string
                   reason: 'exact' | 'multiple' | 'fuzzy'
                   agents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string; matchScore?: number }>
+                  notFoundNumbers?: string[]
                 }> = []
                 
                 // 모든 계약서에 대해 조회 수행
@@ -1117,91 +1068,98 @@ export default function CameraButton() {
                   const contract = contractsToProcess[i]
                   const key = `${i}`
                   let found = false
-                  const contractAgentNumber = getContractAgentNumber(contract)
+                  // 배열 또는 단일 agent_number 지원
+                  const contractAgentNumbers = getContractAgentNumbers(contract)
                   const contractAgentName = getContractAgentName(contract)
                   
                   console.log(`[계약서 ${i}] OCR 추출값:`, { 
-                    agent_number: contractAgentNumber, 
-                    agent_number_length: contractAgentNumber?.length,
+                    agent_numbers: contractAgentNumbers, 
+                    agent_numbers_count: contractAgentNumbers.length,
                     agent_name: contractAgentName,
                     agent_name_length: contractAgentName?.length,
                     contract_keys: Object.keys(contract || {}),
                   })
 
                   // agent 필드가 모두 비어있으면 상세 경고
-                  if (!contractAgentNumber && !contractAgentName) {
+                  if (contractAgentNumbers.length === 0 && !contractAgentName) {
                     console.warn(`[계약서 ${i}] ⚠️ agent_number, agent_name 모두 비어있음!`)
                     console.warn(`[계약서 ${i}] n8n 원본 데이터:`, JSON.stringify(contract, null, 2))
                   }
                   
-                  // 1단계: agent_number로 정확 일치 조회 (반드시 실행)
-                  if (contractAgentNumber) {
-                    console.log(`[1단계] agent_number 정확 일치 조회 시작: "${contractAgentNumber}" (길이: ${contractAgentNumber.length})`)
-                    try {
-                      const numberData = await fetchExactAgent(contractAgentNumber)
-                      
-                      console.log(`[1단계] 조회 결과:`, numberData)
+                  // 등록번호(agent_number)로 조회
+                  if (contractAgentNumbers.length > 0) {
+                    const foundAgents: Array<{ id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string; matchScore?: number }> = []
+                    const notFoundNumbers: string[] = []
 
-                      if (numberData) {
-                        console.log(`[1단계] 정확 일치 찾음! (사용자 확인 필요)`, numberData)
-                        // 정확 일치인 경우에도 선택 팝업 표시
-                        pendingSelections.push({
-                          contractIndex: i,
-                          agentName: numberData.agent_name,
-                          agentNumber: numberData.agent_number,
-                          reason: 'exact',
-                          agents: [{
+                    // 모든 등록번호에 대해 조회
+                    for (const agentNum of contractAgentNumbers) {
+                      console.log(`[조회] agent_number 조회: "${agentNum}"`)
+                      try {
+                        const numberData = await fetchExactAgent(agentNum)
+                        console.log(`[조회] 조회 결과:`, numberData)
+
+                        if (numberData) {
+                          foundAgents.push({
                             id: numberData.id,
                             agent_number: numberData.agent_number,
                             agent_name: numberData.agent_name,
                             road_address: numberData.road_address || '',
                             lot_address: numberData.lot_address || '',
-                            matchScore: 1.0
-                          }]
-                        })
-                        found = true
-                      } else {
-                        console.log(`[1단계] 정확 일치 없음. 2단계로 이동`)
+                            representative_name: numberData.representative_name,
+                            matchScore: 1.0,
+                          })
+                        } else {
+                          notFoundNumbers.push(agentNum)
+                          console.warn(`[조회] 등록번호 "${agentNum}"에 해당하는 중개사무소가 DB에 없습니다.`)
+                        }
+                      } catch (error) {
+                        notFoundNumbers.push(agentNum)
+                        console.error(`[조회] agent_number "${agentNum}" 조회 오류:`, error)
                       }
-                    } catch (error) {
-                      console.error('[1단계] agent_number 조회 오류:', error)
+                    }
+
+                    if (foundAgents.length > 0) {
+                      found = true
+
+                      if (foundAgents.length === 1 && notFoundNumbers.length === 0) {
+                        // 단일 중개사, 미확인 없음 → 확인 팝업
+                        console.log(`[조회] 단일 중개사 정확 일치:`, foundAgents[0].agent_name)
+                        pendingSelections.push({
+                          contractIndex: i,
+                          agentName: foundAgents[0].agent_name,
+                          agentNumber: foundAgents[0].agent_number,
+                          reason: 'exact',
+                          agents: foundAgents,
+                        })
+                      } else if (foundAgents.length === 1 && notFoundNumbers.length > 0) {
+                        // 2건 중 1건만 찾음 → 확인 팝업 + 미확인 번호 안내
+                        console.log(`[조회] 1건 확인, ${notFoundNumbers.length}건 미확인:`, notFoundNumbers)
+                        pendingSelections.push({
+                          contractIndex: i,
+                          agentName: foundAgents[0].agent_name,
+                          agentNumber: foundAgents[0].agent_number,
+                          reason: 'exact',
+                          agents: foundAgents,
+                          notFoundNumbers,
+                        })
+                      } else {
+                        // 복수 중개사 (공동중개) → 사용자 선택 필요
+                        console.log(`[조회] 공동중개 ${foundAgents.length}곳 발견:`, foundAgents.map(a => a.agent_name))
+                        pendingSelections.push({
+                          contractIndex: i,
+                          agentName: foundAgents.map(a => a.agent_name).join(' / '),
+                          reason: 'multiple',
+                          agents: foundAgents,
+                          notFoundNumbers: notFoundNumbers.length > 0 ? notFoundNumbers : undefined,
+                        })
+                      }
                     }
                   } else {
-                    console.log(`[1단계] OCR에서 agent_number 없음. 2단계로 이동`)
-                  }
-                  
-                  // 2단계: 등록번호+이름 조합 유사도 검색 (상위 2건)
-                  if (!found) {
-                    console.log(`[2단계] 등록번호+이름 유사도 조회:`, { 
-                      name: contractAgentName, 
-                      number: contractAgentNumber
-                    })
-                    const combinedCandidates = await fetchByNameAndNumber(
-                      contractAgentName || undefined,
-                      contractAgentNumber || undefined
-                    )
-                    
-                    // 상위 2건만 유지
-                    const topCandidates = combinedCandidates.slice(0, 2)
-                    
-                    console.log(`[2단계] 후보 개수: ${topCandidates.length}`,
-                      topCandidates.map((c: any) => ({ name: c.agent_name, score: c.matchScore?.toFixed(2) }))
-                    )
-                    
-                    if (topCandidates.length > 0) {
-                      pendingSelections.push({
-                        contractIndex: i,
-                        agentName: contractAgentName || '알 수 없음',
-                        agentNumber: contractAgentNumber || undefined,
-                        reason: 'fuzzy',
-                        agents: topCandidates
-                      })
-                      found = true
-                    }
+                    console.warn(`[계약서 ${i}] OCR에서 등록번호를 추출하지 못했습니다.`)
                   }
                   
                   if (!found) {
-                    console.warn(`[계약서 ${i}] 중개사무소를 찾지 못했습니다. → 검증 결과 화면에서 "확인 필요" 표시`)
+                    console.warn(`[계약서 ${i}] 등록번호 기반으로 중개사무소를 찾지 못했습니다. → 검증 결과 화면에서 "확인 필요" 표시`)
                   }
                 }
                 
@@ -1213,9 +1171,9 @@ export default function CameraButton() {
                 if (pendingSelections.length > 0) {
                   const firstSelection = pendingSelections[0]
                   
-                  // 정확 일치 1건인 경우 바로 확인 팝업 표시
                   if (firstSelection.reason === 'exact' && firstSelection.agents.length === 1) {
-                    console.log(`[검증] ✅ 정확 일치 1건 → 확인 팝업 바로 표시`)
+                    // 단일 중개사 정확 일치 → 확인 팝업
+                    console.log(`[검증] ✅ 단일 중개사 정확 일치 → 확인 팝업`)
                     console.log(`[검증] 중개사: ${firstSelection.agents[0].agent_name} (${firstSelection.agents[0].agent_number})`)
                     setConfirmingAgent({
                       agent: firstSelection.agents[0],
@@ -1223,9 +1181,14 @@ export default function CameraButton() {
                     })
                     setPendingAgentSelection(firstSelection)
                     setShowConfirmSelection(true)
+                  } else if (firstSelection.reason === 'multiple' || firstSelection.agents.length > 1) {
+                    // 공동중개 또는 복수 후보 → 선택 팝업
+                    console.log(`[검증] 🏢 공동중개 ${firstSelection.agents.length}곳 → 선택 팝업 표시`)
+                    setPendingAgentSelection(firstSelection)
+                    setShowAgentSelection(true)
                   } else {
-                    // 유사 검색이거나 여러 건인 경우 선택 팝업 표시
-                    console.log(`[검증] 🔍 ${firstSelection.reason === 'exact' ? '정확 일치 여러 건' : '유사 검색 ' + firstSelection.agents.length + '건'} → 선택 팝업 표시`)
+                    // 기타 → 선택 팝업
+                    console.log(`[검증] 기타 → 선택 팝업 표시`)
                     setPendingAgentSelection(firstSelection)
                     setShowAgentSelection(true)
                   }
@@ -1383,7 +1346,10 @@ export default function CameraButton() {
           .eq('contract_date', contractDate4Check)
 
         if (!contractDateError && (contractDateCount || 0) >= 1) {
-          alert(`동일한 계약일자(${contractDate4Check})에는 리뷰를 1건만 등록할 수 있습니다.`)
+          setAlertModal({
+            title: '등록 불가',
+            message: `동일한 계약일자(${contractDate4Check})에는\n리뷰를 1건만 등록할 수 있습니다.`,
+          })
           return
         }
       }
@@ -1492,6 +1458,8 @@ export default function CameraButton() {
           response_speed: getRatingByKeywords(['RESPONSE_SPEED', 'COMMUNICATION', '응답', '속도']),
           review_text: reviewText || null,
           contract_date: contractData?.contract_date || null,
+          agent_stamp: stampResult?.agent_stamp ?? null,
+          agent_stamp_confidence: stampResult?.agent_stamp_confidence ?? null,
         })
 
       if (error) {
@@ -1917,7 +1885,7 @@ export default function CameraButton() {
                     </div>
                   ) : n8nResult ? (
                     <div className={styles.resultContainer}>
-                      <h3>{hasSelectedAgent ? '검증 결과' : '🔍 중개사 정보를 찾을 수 없습니다'}</h3>
+                      <h3>검증 결과</h3>
                       <div className={styles.contractInfo}>
                         {Array.isArray(n8nResult) && n8nResult.length > 0 ? (
                           n8nResult.map((contract: any, index: number) => (
@@ -1950,27 +1918,34 @@ export default function CameraButton() {
                                     <span className={styles.fieldLabel}>주소(지번):</span>
                                     <span className={styles.fieldValue}>{selectedAgents[`${index}`].lot_address || '-'}</span>
                                   </div>
+                                  {/* 도장 검증 결과 */}
+                                  <div className={styles.contractField}>
+                                    <span className={styles.fieldLabel}>중개사 도장:</span>
+                                    {isStampVerifying ? (
+                                      <span className={styles.fieldValue} style={{ color: '#64748b' }}>검증 중...</span>
+                                    ) : stampResult ? (
+                                      <span className={styles.fieldValue} style={{
+                                        color: stampResult.agent_stamp ? '#16a34a' : '#ef4444',
+                                        fontWeight: 600,
+                                      }}>
+                                        {stampResult.agent_stamp ? '확인됨' : '미확인'}
+                                        <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: '6px', fontSize: '12px' }}>
+                                          (신뢰도 {stampResult.agent_stamp_confidence}%)
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <span className={styles.fieldValue} style={{ color: '#94a3b8' }}>검증 불가</span>
+                                    )}
+                                  </div>
                                 </>
                               ) : (
                                 <>
                                   <div className={styles.contractField}>
-                                    <span className={styles.fieldLabel}>중개사 정보:</span>
-                                    <span className={styles.fieldValue} style={{ color: '#ef4444', fontWeight: 600 }}>
-                                      중개사 정보 식별 불가
+                                    <span className={styles.fieldLabel}>중개사무소:</span>
+                                    <span className={styles.fieldValue} style={{ color: '#64748b' }}>
+                                      미확인
                                     </span>
                                   </div>
-                                  <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
-                                    <span className={styles.fieldValue} style={{ color: '#1e293b', fontSize: '14px', lineHeight: '1.6' }}>
-                                      계약서 하단의 공인중개사 날인란이 선명하게 포함되었는지 확인해 주세요. 
-                                      개인정보(이름, 주소 등)를 가리느라 중개사 정보까지 가려지지는 않았나요?
-                                    </span>
-                                  </div>
-                                  {pendingAgentSelection?.contractIndex === index && (
-                                    <div className={styles.contractField}>
-                                      <span className={styles.fieldLabel}>검증 상태:</span>
-                                      <span className={styles.fieldValue} style={{ color: '#64748b', fontStyle: 'italic' }}>선택 중...</span>
-                                    </div>
-                                  )}
                                 </>
                               )}
                             </div>
@@ -1984,41 +1959,19 @@ export default function CameraButton() {
                         )}
                       </div>
                       <div className={styles.resultControls}>
-                        {hasSelectedAgent ? (
-                          <>
-                            <button
-                              className={styles.cancelButton}
-                              onClick={handleCancel}
-                            >
-                              뒤로
-                            </button>
-                            <button
-                              className={styles.submitButton}
-                              onClick={() => setMode('review')}
-                            >
-                              리뷰 작성
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              className={styles.cancelButton}
-                              onClick={handleCancel}
-                            >
-                              뒤로
-                            </button>
-                          </>
-                        )}
-                        {!hasSelectedAgent && (
-                          <div className={styles.reviewNotice} style={{ textAlign: 'left', lineHeight: '1.6' }}>
-                            <div style={{ color: '#64748b', fontSize: '13px', marginBottom: '8px' }}>
-                              <strong style={{ color: '#475569' }}>📌 촬영 가이드</strong>
-                            </div>
-                            <ul style={{ margin: 0, paddingLeft: '20px', color: '#64748b', fontSize: '13px' }}>
-                              <li style={{ marginBottom: '4px' }}>종이가 접히거나 빛 반사가 심하면 인식이 어려울 수 있습니다.</li>
-                              <li>중개업소의 상호, 등록번호, 소재지가 모두 보이도록 촬영해 주세요.</li>
-                            </ul>
-                          </div>
+                        <button
+                          className={styles.cancelButton}
+                          onClick={handleCancel}
+                        >
+                          뒤로
+                        </button>
+                        {hasSelectedAgent && (
+                          <button
+                            className={styles.submitButton}
+                            onClick={() => setMode('review')}
+                          >
+                            리뷰 작성
+                          </button>
                         )}
                       </div>
                     </div>
@@ -2260,8 +2213,8 @@ export default function CameraButton() {
                   </>
                 ) : pendingAgentSelection.reason === 'multiple' ? (
                   <>
-                    "{pendingAgentSelection.agentName}"와 동일한 이름의 중개사무소가 여러 개 있습니다.<br />
-                    해당하는 사무소를 선택해주세요.
+                    공동중개 계약서입니다.<br />
+                    <strong>거래하신 중개사무소</strong>를 선택해주세요.
                   </>
                 ) : (
                   <>
@@ -2291,14 +2244,31 @@ export default function CameraButton() {
                         <span>등록번호: {agent.agent_number}</span>
                         <span>도로명 주소: {agent.road_address || '-'}</span>
                         <span>지번 주소: {agent.lot_address || '-'}</span>
-                        {typeof agent.matchScore === 'number' && (
-                          <span>유사도: {Math.round(agent.matchScore * 100)}%</span>
-                        )}
                       </div>
                     </div>
                   </button>
                 ))}
               </div>
+              {pendingAgentSelection.notFoundNumbers && pendingAgentSelection.notFoundNumbers.length > 0 && (
+                <div style={{
+                  background: '#fef3c7',
+                  border: '1px solid #fcd34d',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  marginTop: '12px',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  color: '#92400e',
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ 미확인 등록번호</div>
+                  {pendingAgentSelection.notFoundNumbers.map((num, idx) => (
+                    <div key={idx} style={{ fontFamily: 'monospace', fontSize: '12px' }}>{num}</div>
+                  ))}
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: '#78350f' }}>
+                    폐업했거나 OCR 분석이 정확하지 않을 수 있습니다.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2356,6 +2326,26 @@ export default function CameraButton() {
                   </div>
                 </div>
               </div>
+              {pendingAgentSelection?.notFoundNumbers && pendingAgentSelection.notFoundNumbers.length > 0 && (
+                <div style={{
+                  background: '#fef3c7',
+                  border: '1px solid #fcd34d',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  marginTop: '8px',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  color: '#92400e',
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px' }}>⚠️ 미확인 등록번호</div>
+                  {pendingAgentSelection.notFoundNumbers.map((num, idx) => (
+                    <div key={idx} style={{ fontFamily: 'monospace', fontSize: '12px' }}>{num}</div>
+                  ))}
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: '#78350f' }}>
+                    폐업했거나 OCR 분석이 정확하지 않을 수 있습니다.
+                  </div>
+                </div>
+              )}
               <div className={styles.confirmSelectionButtons}>
                 <button
                   className={styles.confirmCancelButton}
@@ -2371,6 +2361,27 @@ export default function CameraButton() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 서비스 알림 팝업 */}
+      {alertModal && (
+        <div className={styles.overlay} onClick={() => setAlertModal(null)}>
+          <div className={styles.alertModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.alertModalIcon}>⚠️</div>
+            <h3 className={styles.alertModalTitle}>{alertModal.title}</h3>
+            <p className={styles.alertModalMessage}>
+              {alertModal.message.split('\n').map((line, i) => (
+                <span key={i}>{line}{i < alertModal.message.split('\n').length - 1 && <br />}</span>
+              ))}
+            </p>
+            <button
+              className={styles.submitButton}
+              onClick={() => setAlertModal(null)}
+            >
+              확인
+            </button>
           </div>
         </div>
       )}

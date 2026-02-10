@@ -25,7 +25,7 @@ export default function Header() {
   const [isImageLoading, setIsImageLoading] = useState(false)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
   const [isAdminScreenOpen, setIsAdminScreenOpen] = useState(false)
-  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'survey' | 'partnership' | 'content-visibility' | 'analytics'>('common-code')
+  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'survey' | 'partnership' | 'content-visibility' | 'analytics' | 'reports'>('common-code')
   const [isMobileAdminMenuOpen, setIsMobileAdminMenuOpen] = useState(false)
   const [selectedCodeGroup, setSelectedCodeGroup] = useState<string | null>(null)
   const [showSaveSuccessToast, setShowSaveSuccessToast] = useState(false)
@@ -37,6 +37,68 @@ export default function Header() {
   const [detailDateFrom, setDetailDateFrom] = useState('')
   const [detailDateTo, setDetailDateTo] = useState('')
   
+  // 배치 관리 State
+  interface BatchJob {
+    id: number
+    job_name: string
+    job_description: string | null
+    cron_expression: string
+    cron_description: string | null
+    is_active: boolean
+    endpoint_url: string | null
+    last_run_at: string | null
+    last_status: string
+    last_message: string | null
+    created_at: string
+    updated_at: string
+  }
+  interface BatchJobLog {
+    id: number
+    job_id: number
+    status: string
+    started_at: string
+    finished_at: string | null
+    message: string | null
+    error_detail: string | null
+    created_at: string
+  }
+  const [batchJobs, setBatchJobs] = useState<BatchJob[]>([])
+  const [isBatchLoading, setIsBatchLoading] = useState(false)
+  const [editingBatchJob, setEditingBatchJob] = useState<BatchJob | null>(null)
+  const [isAddingBatchJob, setIsAddingBatchJob] = useState(false)
+  const [newBatchJob, setNewBatchJob] = useState({
+    job_name: '',
+    job_description: '',
+    cron_expression: '',
+    cron_description: '',
+    endpoint_url: '',
+  })
+  const [batchLogs, setBatchLogs] = useState<BatchJobLog[]>([])
+  const [showBatchLogs, setShowBatchLogs] = useState<number | null>(null)
+  const [isBatchLogLoading, setIsBatchLogLoading] = useState(false)
+
+  // 신고 관리 State
+  interface Report {
+    id: number
+    review_id: string
+    reporter_user_id: string
+    reason: string
+    detail: string | null
+    status: string
+    admin_note: string | null
+    processed_at: string | null
+    created_at: string
+    updated_at: string
+    reporter?: { nickname: string | null; email: string | null }
+    review?: { review_text: string | null; agent_id: number | null }
+  }
+  const [reports, setReports] = useState<Report[]>([])
+  const [isReportsLoading, setIsReportsLoading] = useState(false)
+  const [reportStatusFilter, setReportStatusFilter] = useState<string>('ALL')
+  const [editingReport, setEditingReport] = useState<Report | null>(null)
+  const [editReportStatus, setEditReportStatus] = useState('')
+  const [editReportNote, setEditReportNote] = useState('')
+
   // 데이터 분석 State
   const [analyticsData, setAnalyticsData] = useState<any>({
     totalUsers: 0,
@@ -437,6 +499,396 @@ export default function Header() {
     }
   }
 
+  // ============ 신고 관리 함수 ============
+  const loadReports = async () => {
+    try {
+      setIsReportsLoading(true)
+      const { data, error } = await supabase
+        .from('reports')
+        .select(`
+          *,
+          reporter:users!reports_reporter_user_id_fkey(nickname, email),
+          review:agent_reviews!reports_review_id_fkey(review_text, agent_id)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('[신고 관리] 조회 오류:', error)
+        // fallback: join 없이 조회
+        const { data: fallbackData } = await supabase
+          .from('reports')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (fallbackData) setReports(fallbackData)
+      } else {
+        setReports(data || [])
+      }
+    } catch (err) {
+      console.error('[신고 관리] 오류:', err)
+    } finally {
+      setIsReportsLoading(false)
+    }
+  }
+
+  const updateReportStatus = async (reportId: number, status: string, adminNote: string) => {
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .update({
+          status,
+          admin_note: adminNote || null,
+          processed_at: status === 'COMPLETED' || status === 'DISMISSED' ? new Date().toISOString() : null,
+          processed_by: (await supabase.auth.getUser()).data.user?.id || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', reportId)
+
+      if (error) {
+        alert('상태 변경에 실패했습니다: ' + error.message)
+      } else {
+        setEditingReport(null)
+        await loadReports()
+      }
+    } catch {
+      alert('상태 변경 중 오류가 발생했습니다.')
+    }
+  }
+
+  const getReportStatusLabel = (status: string) => {
+    switch (status) {
+      case 'RECEIVED': return '접수'
+      case 'PROCESSING': return '처리중'
+      case 'COMPLETED': return '처리완료'
+      case 'DISMISSED': return '기각'
+      default: return status
+    }
+  }
+
+  const getReportStatusStyle = (status: string): React.CSSProperties => {
+    switch (status) {
+      case 'RECEIVED': return { background: '#fef3c7', color: '#92400e' }
+      case 'PROCESSING': return { background: '#dbeafe', color: '#1e40af' }
+      case 'COMPLETED': return { background: '#dcfce7', color: '#166534' }
+      case 'DISMISSED': return { background: '#f1f5f9', color: '#64748b' }
+      default: return {}
+    }
+  }
+
+  const getReportReasonLabel = (reason: string) => {
+    switch (reason) {
+      case 'fake': return '허위 리뷰'
+      case 'privacy': return '개인정보 노출'
+      case 'other': return '기타'
+      default: return reason
+    }
+  }
+
+  // ============ 배치 관리 함수 ============
+  const loadBatchJobs = async () => {
+    try {
+      setIsBatchLoading(true)
+      const { data, error } = await supabase
+        .from('batch_jobs')
+        .select('*')
+        .order('id', { ascending: true })
+
+      if (error) {
+        console.error('[배치] 로드 오류:', error)
+        return
+      }
+      setBatchJobs(data || [])
+    } catch (err) {
+      console.error('[배치] 로드 예외:', err)
+    } finally {
+      setIsBatchLoading(false)
+    }
+  }
+
+  const loadBatchLogs = async (jobId: number) => {
+    try {
+      setIsBatchLogLoading(true)
+      const { data, error } = await supabase
+        .from('batch_job_logs')
+        .select('*')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (error) {
+        console.error('[배치 로그] 로드 오류:', error)
+        return
+      }
+      setBatchLogs(data || [])
+      setShowBatchLogs(jobId)
+    } catch (err) {
+      console.error('[배치 로그] 로드 예외:', err)
+    } finally {
+      setIsBatchLogLoading(false)
+    }
+  }
+
+  const saveBatchJob = async (job: BatchJob) => {
+    try {
+      const { error } = await supabase
+        .from('batch_jobs')
+        .update({
+          job_name: job.job_name,
+          job_description: job.job_description,
+          cron_expression: job.cron_expression,
+          cron_description: job.cron_description,
+          is_active: job.is_active,
+          endpoint_url: job.endpoint_url,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', job.id)
+
+      if (error) {
+        console.error('[배치] 저장 오류:', error)
+        alert('저장에 실패했습니다.')
+        return
+      }
+      setEditingBatchJob(null)
+      setSaveSuccessMessage('배치 작업이 저장되었습니다.')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 2000)
+      await loadBatchJobs()
+    } catch (err) {
+      console.error('[배치] 저장 예외:', err)
+      alert('저장 중 오류가 발생했습니다.')
+    }
+  }
+
+  const addBatchJob = async () => {
+    if (!newBatchJob.job_name.trim() || !newBatchJob.cron_expression.trim()) {
+      alert('작업명과 Cron 표현식은 필수입니다.')
+      return
+    }
+    try {
+      const { error } = await supabase
+        .from('batch_jobs')
+        .insert({
+          job_name: newBatchJob.job_name,
+          job_description: newBatchJob.job_description || null,
+          cron_expression: newBatchJob.cron_expression,
+          cron_description: newBatchJob.cron_description || null,
+          endpoint_url: newBatchJob.endpoint_url || null,
+          is_active: true,
+        })
+
+      if (error) {
+        console.error('[배치] 추가 오류:', error)
+        alert('추가에 실패했습니다.')
+        return
+      }
+      setIsAddingBatchJob(false)
+      setNewBatchJob({ job_name: '', job_description: '', cron_expression: '', cron_description: '', endpoint_url: '' })
+      setSaveSuccessMessage('배치 작업이 추가되었습니다.')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 2000)
+      await loadBatchJobs()
+    } catch (err) {
+      console.error('[배치] 추가 예외:', err)
+      alert('추가 중 오류가 발생했습니다.')
+    }
+  }
+
+  const deleteBatchJob = async (jobId: number) => {
+    if (!confirm('이 배치 작업을 삭제하시겠습니까?\n관련 로그도 함께 삭제됩니다.')) return
+    try {
+      const { error } = await supabase
+        .from('batch_jobs')
+        .delete()
+        .eq('id', jobId)
+
+      if (error) {
+        console.error('[배치] 삭제 오류:', error)
+        alert('삭제에 실패했습니다.')
+        return
+      }
+      setSaveSuccessMessage('배치 작업이 삭제되었습니다.')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 2000)
+      await loadBatchJobs()
+    } catch (err) {
+      console.error('[배치] 삭제 예외:', err)
+      alert('삭제 중 오류가 발생했습니다.')
+    }
+  }
+
+  const toggleBatchJobActive = async (job: BatchJob) => {
+    try {
+      const { error } = await supabase
+        .from('batch_jobs')
+        .update({ is_active: !job.is_active, updated_at: new Date().toISOString() })
+        .eq('id', job.id)
+
+      if (error) {
+        console.error('[배치] 상태 변경 오류:', error)
+        return
+      }
+      await loadBatchJobs()
+    } catch (err) {
+      console.error('[배치] 상태 변경 예외:', err)
+    }
+  }
+
+  const runBatchJobManually = async (job: BatchJob) => {
+    if (!confirm(`"${job.job_name}" 배치를 수동 실행하시겠습니까?`)) return
+    try {
+      // 로그 기록 - RUNNING
+      const { data: logData, error: logError } = await supabase
+        .from('batch_job_logs')
+        .insert({
+          job_id: job.id,
+          status: 'RUNNING',
+          started_at: new Date().toISOString(),
+          message: '수동 실행',
+        })
+        .select('id')
+        .single()
+
+      // 배치 상태 업데이트
+      await supabase
+        .from('batch_jobs')
+        .update({
+          last_run_at: new Date().toISOString(),
+          last_status: 'RUNNING',
+          last_message: '수동 실행 중...',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', job.id)
+
+      await loadBatchJobs()
+
+      // endpoint_url이 있으면 실제 호출
+      if (job.endpoint_url) {
+        try {
+          // 상대 경로면 현재 도메인 기준으로 절대 URL 생성
+          const url = job.endpoint_url.startsWith('/') 
+            ? `${window.location.origin}${job.endpoint_url}` 
+            : job.endpoint_url
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_id: job.id }),
+          })
+          const resultJson = await response.json().catch(() => null)
+          const resultMessage = response.ok 
+            ? (resultJson?.message || '수동 실행 성공') 
+            : `실행 실패 (HTTP ${response.status})`
+          const resultStatus = response.ok ? 'SUCCESS' : 'FAILED'
+
+          // 로그 완료 업데이트
+          if (logData?.id) {
+            await supabase
+              .from('batch_job_logs')
+              .update({
+                status: resultStatus,
+                finished_at: new Date().toISOString(),
+                message: resultMessage,
+              })
+              .eq('id', logData.id)
+          }
+
+          // 배치 상태 업데이트
+          await supabase
+            .from('batch_jobs')
+            .update({
+              last_status: resultStatus,
+              last_message: resultMessage,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id)
+
+        } catch (fetchErr: any) {
+          if (logData?.id) {
+            await supabase
+              .from('batch_job_logs')
+              .update({
+                status: 'FAILED',
+                finished_at: new Date().toISOString(),
+                message: '실행 오류',
+                error_detail: fetchErr?.message || '알 수 없는 오류',
+              })
+              .eq('id', logData.id)
+          }
+          await supabase
+            .from('batch_jobs')
+            .update({
+              last_status: 'FAILED',
+              last_message: fetchErr?.message || '실행 오류',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id)
+        }
+      } else {
+        // endpoint 없으면 바로 성공 처리
+        if (logData?.id) {
+          await supabase
+            .from('batch_job_logs')
+            .update({
+              status: 'SUCCESS',
+              finished_at: new Date().toISOString(),
+              message: '수동 실행 완료 (엔드포인트 미설정)',
+            })
+            .eq('id', logData.id)
+        }
+        await supabase
+          .from('batch_jobs')
+          .update({
+            last_status: 'SUCCESS',
+            last_message: '수동 실행 완료 (엔드포인트 미설정)',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id)
+      }
+
+      await loadBatchJobs()
+      setSaveSuccessMessage('배치 실행이 완료되었습니다.')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 2000)
+    } catch (err) {
+      console.error('[배치] 수동 실행 예외:', err)
+      alert('배치 실행 중 오류가 발생했습니다.')
+    }
+  }
+
+  // cron 표현식 프리셋
+  const cronPresets = [
+    { label: '매분', value: '* * * * *', desc: '매분 실행' },
+    { label: '매시간', value: '0 * * * *', desc: '매시간 정각' },
+    { label: '매일 02:00', value: '0 2 * * *', desc: '매일 새벽 2시' },
+    { label: '매일 06:00', value: '0 6 * * *', desc: '매일 오전 6시' },
+    { label: '매주 월요일 02:00', value: '0 2 * * 1', desc: '매주 월요일 새벽 2시' },
+    { label: '매주 일요일 04:00', value: '0 4 * * 0', desc: '매주 일요일 새벽 4시' },
+    { label: '매월 1일 02:00', value: '0 2 1 * *', desc: '매월 1일 새벽 2시' },
+  ]
+
+  const formatDateTime = (dateStr: string | null) => {
+    if (!dateStr) return '-'
+    const d = new Date(dateStr)
+    return d.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+
+  const getBatchStatusLabel = (status: string) => {
+    switch (status) {
+      case 'RUNNING': return '실행 중'
+      case 'SUCCESS': return '성공'
+      case 'FAILED': return '실패'
+      case 'IDLE': return '대기'
+      default: return status
+    }
+  }
+
+  const getBatchStatusStyle = (status: string) => {
+    switch (status) {
+      case 'RUNNING': return styles.batchStatusRunning
+      case 'SUCCESS': return styles.batchStatusSuccess
+      case 'FAILED': return styles.batchStatusFailed
+      default: return ''
+    }
+  }
+
   // 데이터 분석 로드 (병렬 쿼리로 최적화)
   const loadAnalytics = async () => {
     try {
@@ -695,6 +1147,19 @@ export default function Header() {
     }
   }, [isAdminScreenOpen, adminMenu])
 
+  // 관리자 화면 열릴 때 배치 데이터 로드
+  useEffect(() => {
+    let isMounted = true
+    
+    if (isAdminScreenOpen && adminMenu === 'batch' && isMounted) {
+      loadBatchJobs()
+    }
+    
+    return () => {
+      isMounted = false
+    }
+  }, [isAdminScreenOpen, adminMenu])
+
   // 관리자 화면 열릴 때 광고/제휴 문의 데이터 로드
   useEffect(() => {
     let isMounted = true
@@ -706,6 +1171,19 @@ export default function Header() {
     }
     
     loadData()
+    
+    return () => {
+      isMounted = false
+    }
+  }, [isAdminScreenOpen, adminMenu])
+
+  // 관리자 화면 열릴 때 신고 데이터 로드
+  useEffect(() => {
+    let isMounted = true
+    
+    if (isAdminScreenOpen && adminMenu === 'reports' && isMounted) {
+      loadReports()
+    }
     
     return () => {
       isMounted = false
@@ -1596,7 +2074,11 @@ export default function Header() {
                 <button
                   className={styles.adminMenuItem}
                   type="button"
-                  onClick={() => alert('신고 관리 (목)')}
+                  onClick={() => {
+                    setAdminMenu('reports')
+                    setIsAdminModalOpen(false)
+                    setIsAdminScreenOpen(true)
+                  }}
                 >
                   <span className={styles.adminMenuIcon}>🚨</span>
                   <span className={styles.adminMenuLabel}>신고 관리</span>
@@ -1757,6 +2239,16 @@ export default function Header() {
                       <span className={styles.mobileAdminMenuLabel}>콘텐츠 노출 관리</span>
                     </button>
                     <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'reports' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('reports')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>🚨</span>
+                      <span className={styles.mobileAdminMenuLabel}>신고 관리</span>
+                    </button>
+                    <button
                       className={`${styles.mobileAdminMenuItem} ${adminMenu === 'analytics' ? styles.mobileAdminMenuItemActive : ''}`}
                       onClick={() => {
                         setAdminMenu('analytics')
@@ -1815,6 +2307,13 @@ export default function Header() {
                 >
                   <span className={styles.adminSidebarIcon}>👁️</span>
                   <span className={styles.adminSidebarLabel}>콘텐츠 노출 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'reports' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('reports')}
+                >
+                  <span className={styles.adminSidebarIcon}>🚨</span>
+                  <span className={styles.adminSidebarLabel}>신고 관리</span>
                 </button>
                 <button
                   className={`${styles.adminSidebarItem} ${adminMenu === 'analytics' ? styles.adminSidebarItemActive : ''}`}
@@ -2490,81 +2989,371 @@ export default function Header() {
                 <div className={styles.adminSection}>
                   <h2 className={styles.adminSectionTitle}>배치 관리</h2>
                   <p className={styles.adminSectionDesc}>
-                    시스템 배치 작업을 관리하고 실행합니다.
+                    Crontab 스케줄 기반으로 배치 작업을 관리하고 실행합니다.
                   </p>
 
-                  {/* 배치 작업 목록 */}
-                  <div className={styles.adminBatchList}>
-                    <div className={styles.adminBatchItem}>
-                      <div className={styles.adminBatchInfo}>
-                        <h3 className={styles.adminBatchName}>중개사 데이터 동기화</h3>
-                        <p className={styles.adminBatchDesc}>공공데이터 API에서 중개사 정보를 가져와 동기화합니다.</p>
-                        <div className={styles.adminBatchMeta}>
-                          <span className={styles.adminBatchSchedule}>⏰ 매일 02:00</span>
-                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 02:00:15</span>
-                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
-                        </div>
-                      </div>
-                      <div className={styles.adminBatchActions}>
-                        <button className={styles.adminBatchRunBtn} type="button">
-                          수동 실행
-                        </button>
-                        <button className={styles.adminBatchLogBtn} type="button">
-                          로그 보기
-                        </button>
-                      </div>
+                  {isBatchLoading ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                      배치 작업을 불러오는 중...
                     </div>
+                  ) : (
+                    <>
+                      {/* 배치 작업 목록 */}
+                      <div className={styles.adminBatchList}>
+                        {batchJobs.length === 0 && (
+                          <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                            등록된 배치 작업이 없습니다.
+                          </div>
+                        )}
+                        {batchJobs.map((job) => (
+                          <div key={job.id} className={styles.adminBatchItem} style={{ opacity: job.is_active ? 1 : 0.5 }}>
+                            {editingBatchJob?.id === job.id ? (
+                              /* 수정 모드 */
+                              <div style={{ width: '100%' }}>
+                                <div className={styles.batchEditForm}>
+                                  <div className={styles.batchEditRow}>
+                                    <label className={styles.batchEditLabel}>작업명 *</label>
+                                    <input
+                                      type="text"
+                                      className={styles.batchEditInput}
+                                      value={editingBatchJob.job_name}
+                                      onChange={(e) => setEditingBatchJob({ ...editingBatchJob, job_name: e.target.value })}
+                                    />
+                                  </div>
+                                  <div className={styles.batchEditRow}>
+                                    <label className={styles.batchEditLabel}>설명</label>
+                                    <input
+                                      type="text"
+                                      className={styles.batchEditInput}
+                                      value={editingBatchJob.job_description || ''}
+                                      onChange={(e) => setEditingBatchJob({ ...editingBatchJob, job_description: e.target.value })}
+                                    />
+                                  </div>
+                                  <div className={styles.batchEditRow}>
+                                    <label className={styles.batchEditLabel}>Cron 표현식 *</label>
+                                    <div style={{ flex: 1 }}>
+                                      <input
+                                        type="text"
+                                        className={styles.batchEditInput}
+                                        value={editingBatchJob.cron_expression}
+                                        onChange={(e) => setEditingBatchJob({ ...editingBatchJob, cron_expression: e.target.value })}
+                                        placeholder="예: 0 2 * * *"
+                                      />
+                                      <div className={styles.cronPresets}>
+                                        {cronPresets.map((p) => (
+                                          <button
+                                            key={p.value}
+                                            type="button"
+                                            className={styles.cronPresetBtn}
+                                            onClick={() => setEditingBatchJob({
+                                              ...editingBatchJob,
+                                              cron_expression: p.value,
+                                              cron_description: p.desc,
+                                            })}
+                                          >
+                                            {p.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className={styles.batchEditRow}>
+                                    <label className={styles.batchEditLabel}>스케줄 설명</label>
+                                    <input
+                                      type="text"
+                                      className={styles.batchEditInput}
+                                      value={editingBatchJob.cron_description || ''}
+                                      onChange={(e) => setEditingBatchJob({ ...editingBatchJob, cron_description: e.target.value })}
+                                      placeholder="예: 매일 새벽 2시"
+                                    />
+                                  </div>
+                                  <div className={styles.batchEditRow}>
+                                    <label className={styles.batchEditLabel}>API 엔드포인트</label>
+                                    <input
+                                      type="text"
+                                      className={styles.batchEditInput}
+                                      value={editingBatchJob.endpoint_url || ''}
+                                      onChange={(e) => setEditingBatchJob({ ...editingBatchJob, endpoint_url: e.target.value })}
+                                      placeholder="https://..."
+                                    />
+                                  </div>
+                                  <div className={styles.batchEditActions}>
+                                    <button
+                                      type="button"
+                                      className={styles.adminBatchRunBtn}
+                                      onClick={() => saveBatchJob(editingBatchJob)}
+                                    >
+                                      저장
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles.adminBatchLogBtn}
+                                      onClick={() => setEditingBatchJob(null)}
+                                    >
+                                      취소
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              /* 조회 모드 */
+                              <>
+                                <div className={styles.adminBatchInfo}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                    <h3 className={styles.adminBatchName} style={{ margin: 0 }}>{job.job_name}</h3>
+                                    <span
+                                      style={{
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        backgroundColor: job.is_active ? '#dcfce7' : '#f1f5f9',
+                                        color: job.is_active ? '#16a34a' : '#94a3b8',
+                                      }}
+                                    >
+                                      {job.is_active ? '활성' : '비활성'}
+                                    </span>
+                                  </div>
+                                  {job.job_description && (
+                                    <p className={styles.adminBatchDesc}>{job.job_description}</p>
+                                  )}
+                                  <div className={styles.adminBatchMeta}>
+                                    <span className={styles.adminBatchSchedule}>
+                                      <code style={{ fontSize: '12px', backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                        {job.cron_expression}
+                                      </code>
+                                      {job.cron_description && (
+                                        <span style={{ marginLeft: '6px', color: '#64748b' }}>{job.cron_description}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className={styles.adminBatchMeta} style={{ marginTop: '6px' }}>
+                                    <span className={styles.adminBatchLastRun}>
+                                      마지막 실행: {formatDateTime(job.last_run_at)}
+                                    </span>
+                                    <span className={`${styles.adminBatchStatus} ${getBatchStatusStyle(job.last_status)}`}>
+                                      {getBatchStatusLabel(job.last_status)}
+                                    </span>
+                                  </div>
+                                  {job.last_message && (
+                                    <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0' }}>{job.last_message}</p>
+                                  )}
+                                </div>
+                                <div className={styles.adminBatchActions}>
+                                  <button
+                                    className={styles.adminBatchRunBtn}
+                                    type="button"
+                                    onClick={() => runBatchJobManually(job)}
+                                    disabled={job.last_status === 'RUNNING'}
+                                  >
+                                    {job.last_status === 'RUNNING' ? '실행 중...' : '수동 실행'}
+                                  </button>
+                                  <button
+                                    className={styles.adminBatchLogBtn}
+                                    type="button"
+                                    onClick={() => loadBatchLogs(job.id)}
+                                  >
+                                    로그 보기
+                                  </button>
+                                  <button
+                                    className={styles.adminBatchLogBtn}
+                                    type="button"
+                                    onClick={() => setEditingBatchJob({ ...job })}
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    className={styles.adminBatchLogBtn}
+                                    type="button"
+                                    onClick={() => toggleBatchJobActive(job)}
+                                    style={{ color: job.is_active ? '#dc2626' : '#16a34a' }}
+                                  >
+                                    {job.is_active ? '비활성화' : '활성화'}
+                                  </button>
+                                  <button
+                                    className={styles.adminBatchLogBtn}
+                                    type="button"
+                                    onClick={() => deleteBatchJob(job.id)}
+                                    style={{ color: '#dc2626' }}
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
 
-                    <div className={styles.adminBatchItem}>
-                      <div className={styles.adminBatchInfo}>
-                        <h3 className={styles.adminBatchName}>접속 로그 정리</h3>
-                        <p className={styles.adminBatchDesc}>30일 이상 된 접속 로그를 아카이빙합니다.</p>
-                        <div className={styles.adminBatchMeta}>
-                          <span className={styles.adminBatchSchedule}>⏰ 매주 일요일 04:00</span>
-                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-19 04:00:22</span>
-                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                      {/* 배치 로그 모달 */}
+                      {showBatchLogs !== null && (
+                        <div className={styles.batchLogOverlay}>
+                          <div className={styles.batchLogModal}>
+                            <div className={styles.batchLogHeader}>
+                              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
+                                실행 로그 - {batchJobs.find(j => j.id === showBatchLogs)?.job_name}
+                              </h3>
+                              <button
+                                type="button"
+                                onClick={() => { setShowBatchLogs(null); setBatchLogs([]) }}
+                                className={styles.batchLogCloseBtn}
+                              >
+                                닫기
+                              </button>
+                            </div>
+                            <div className={styles.batchLogBody}>
+                              {isBatchLogLoading ? (
+                                <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>로그를 불러오는 중...</div>
+                              ) : batchLogs.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>실행 로그가 없습니다.</div>
+                              ) : (
+                                <table className={styles.batchLogTable}>
+                                  <thead>
+                                    <tr>
+                                      <th>상태</th>
+                                      <th>시작 시간</th>
+                                      <th>종료 시간</th>
+                                      <th>메시지</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {batchLogs.map((log) => (
+                                      <tr key={log.id}>
+                                        <td>
+                                          <span className={`${styles.adminBatchStatus} ${getBatchStatusStyle(log.status)}`}>
+                                            {getBatchStatusLabel(log.status)}
+                                          </span>
+                                        </td>
+                                        <td style={{ fontSize: '12px' }}>{formatDateTime(log.started_at)}</td>
+                                        <td style={{ fontSize: '12px' }}>{formatDateTime(log.finished_at)}</td>
+                                        <td style={{ fontSize: '12px' }}>
+                                          {log.message}
+                                          {log.error_detail && (
+                                            <div style={{ color: '#dc2626', fontSize: '11px', marginTop: '2px' }}>{log.error_detail}</div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className={styles.adminBatchActions}>
-                        <button className={styles.adminBatchRunBtn} type="button">
-                          수동 실행
-                        </button>
-                        <button className={styles.adminBatchLogBtn} type="button">
-                          로그 보기
-                        </button>
-                      </div>
-                    </div>
+                      )}
 
-                    <div className={styles.adminBatchItem}>
-                      <div className={styles.adminBatchInfo}>
-                        <h3 className={styles.adminBatchName}>부동산 계약서 정리</h3>
-                        <p className={styles.adminBatchDesc}>검증이 완료되거나 만료된 계약서 파일을 정리합니다.</p>
-                        <div className={styles.adminBatchMeta}>
-                          <span className={styles.adminBatchSchedule}>⏰ 매일 05:00</span>
-                          <span className={styles.adminBatchLastRun}>마지막 실행: 2025-01-23 05:00:12</span>
-                          <span className={`${styles.adminBatchStatus} ${styles.batchStatusSuccess}`}>성공</span>
+                      {/* 배치 추가 폼 */}
+                      {isAddingBatchJob ? (
+                        <div className={styles.adminBatchItem} style={{ marginTop: '16px' }}>
+                          <div style={{ width: '100%' }}>
+                            <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '0 0 12px', color: '#1e293b' }}>새 배치 작업 추가</h3>
+                            <div className={styles.batchEditForm}>
+                              <div className={styles.batchEditRow}>
+                                <label className={styles.batchEditLabel}>작업명 *</label>
+                                <input
+                                  type="text"
+                                  className={styles.batchEditInput}
+                                  value={newBatchJob.job_name}
+                                  onChange={(e) => setNewBatchJob({ ...newBatchJob, job_name: e.target.value })}
+                                  placeholder="배치 작업명을 입력하세요"
+                                />
+                              </div>
+                              <div className={styles.batchEditRow}>
+                                <label className={styles.batchEditLabel}>설명</label>
+                                <input
+                                  type="text"
+                                  className={styles.batchEditInput}
+                                  value={newBatchJob.job_description}
+                                  onChange={(e) => setNewBatchJob({ ...newBatchJob, job_description: e.target.value })}
+                                  placeholder="배치 작업 설명"
+                                />
+                              </div>
+                              <div className={styles.batchEditRow}>
+                                <label className={styles.batchEditLabel}>Cron 표현식 *</label>
+                                <div style={{ flex: 1 }}>
+                                  <input
+                                    type="text"
+                                    className={styles.batchEditInput}
+                                    value={newBatchJob.cron_expression}
+                                    onChange={(e) => setNewBatchJob({ ...newBatchJob, cron_expression: e.target.value })}
+                                    placeholder="분 시 일 월 요일 (예: 0 2 * * *)"
+                                  />
+                                  <div className={styles.cronPresets}>
+                                    {cronPresets.map((p) => (
+                                      <button
+                                        key={p.value}
+                                        type="button"
+                                        className={styles.cronPresetBtn}
+                                        onClick={() => setNewBatchJob({
+                                          ...newBatchJob,
+                                          cron_expression: p.value,
+                                          cron_description: p.desc,
+                                        })}
+                                      >
+                                        {p.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                                    형식: 분(0-59) 시(0-23) 일(1-31) 월(1-12) 요일(0-7, 0=일)
+                                  </div>
+                                </div>
+                              </div>
+                              <div className={styles.batchEditRow}>
+                                <label className={styles.batchEditLabel}>스케줄 설명</label>
+                                <input
+                                  type="text"
+                                  className={styles.batchEditInput}
+                                  value={newBatchJob.cron_description}
+                                  onChange={(e) => setNewBatchJob({ ...newBatchJob, cron_description: e.target.value })}
+                                  placeholder="예: 매일 새벽 2시"
+                                />
+                              </div>
+                              <div className={styles.batchEditRow}>
+                                <label className={styles.batchEditLabel}>API 엔드포인트</label>
+                                <input
+                                  type="text"
+                                  className={styles.batchEditInput}
+                                  value={newBatchJob.endpoint_url}
+                                  onChange={(e) => setNewBatchJob({ ...newBatchJob, endpoint_url: e.target.value })}
+                                  placeholder="https://..."
+                                />
+                              </div>
+                              <div className={styles.batchEditActions}>
+                                <button
+                                  type="button"
+                                  className={styles.adminBatchRunBtn}
+                                  onClick={addBatchJob}
+                                >
+                                  추가
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.adminBatchLogBtn}
+                                  onClick={() => {
+                                    setIsAddingBatchJob(false)
+                                    setNewBatchJob({ job_name: '', job_description: '', cron_expression: '', cron_description: '', endpoint_url: '' })
+                                  }}
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className={styles.adminBatchActions}>
-                        <button className={styles.adminBatchRunBtn} type="button">
-                          수동 실행
-                        </button>
-                        <button className={styles.adminBatchLogBtn} type="button">
-                          로그 보기
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={styles.adminActionButtons}>
-                    <button
-                      className={styles.adminAddButton}
-                      type="button"
-                      onClick={() => alert('배치 작업 추가 (목)')}
-                    >
-                      + 배치 작업 추가
-                    </button>
-                  </div>
+                      ) : (
+                        <div className={styles.adminActionButtons}>
+                          <button
+                            className={styles.adminAddButton}
+                            type="button"
+                            onClick={() => setIsAddingBatchJob(true)}
+                          >
+                            + 배치 작업 추가
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -2999,6 +3788,193 @@ export default function Header() {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* 신고 관리 */}
+              {adminMenu === 'reports' && (
+                <div className={styles.adminSection}>
+                  <h2 className={styles.adminSectionTitle}>신고 관리</h2>
+                  <p className={styles.adminSectionDesc}>
+                    사용자가 신고한 리뷰를 확인하고 처리 상태를 관리합니다.
+                  </p>
+
+                  {/* 상태 필터 */}
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    {['ALL', 'RECEIVED', 'PROCESSING', 'COMPLETED', 'DISMISSED'].map((st) => (
+                      <button
+                        key={st}
+                        onClick={() => setReportStatusFilter(st)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          border: reportStatusFilter === st ? '2px solid #7c3aed' : '1px solid #e2e8f0',
+                          background: reportStatusFilter === st ? '#7c3aed' : '#fff',
+                          color: reportStatusFilter === st ? '#fff' : '#475569',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {st === 'ALL' ? '전체' : getReportStatusLabel(st)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {isReportsLoading ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>로딩 중...</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {reports
+                        .filter((r) => reportStatusFilter === 'ALL' || r.status === reportStatusFilter)
+                        .map((report) => (
+                          <div
+                            key={report.id}
+                            style={{
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '16px',
+                              background: '#fff',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                              <span
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  ...getReportStatusStyle(report.status),
+                                }}
+                              >
+                                {getReportStatusLabel(report.status)}
+                              </span>
+                              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                {new Date(report.created_at).toLocaleDateString('ko-KR')} {new Date(report.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'grid', gap: '6px', fontSize: '13px', marginBottom: '10px' }}>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>신고 사유:</span>
+                                <span style={{ color: '#1e293b' }}>{getReportReasonLabel(report.reason)}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>상세 내용:</span>
+                                <span style={{ color: '#1e293b', wordBreak: 'break-word' }}>{report.detail || '-'}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>신고자:</span>
+                                <span style={{ color: '#1e293b' }}>{report.reporter?.nickname || report.reporter?.email || report.reporter_user_id.slice(0, 8)}</span>
+                              </div>
+                              {report.review?.review_text && (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>리뷰 내용:</span>
+                                  <span style={{ color: '#1e293b', wordBreak: 'break-word' }}>
+                                    {report.review.review_text.length > 100 ? report.review.review_text.slice(0, 100) + '...' : report.review.review_text}
+                                  </span>
+                                </div>
+                              )}
+                              {report.admin_note && (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>관리자 메모:</span>
+                                  <span style={{ color: '#1e293b', wordBreak: 'break-word' }}>{report.admin_note}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {editingReport?.id === report.id ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                                <select
+                                  value={editReportStatus}
+                                  onChange={(e) => setEditReportStatus(e.target.value)}
+                                  style={{
+                                    padding: '8px 12px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '8px',
+                                    fontSize: '13px',
+                                  }}
+                                >
+                                  <option value="RECEIVED">접수</option>
+                                  <option value="PROCESSING">처리중</option>
+                                  <option value="COMPLETED">처리완료</option>
+                                  <option value="DISMISSED">기각</option>
+                                </select>
+                                <textarea
+                                  value={editReportNote}
+                                  onChange={(e) => setEditReportNote(e.target.value)}
+                                  placeholder="관리자 메모 (선택)"
+                                  style={{
+                                    padding: '8px 12px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '8px',
+                                    fontSize: '13px',
+                                    resize: 'vertical',
+                                    minHeight: '60px',
+                                  }}
+                                />
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    onClick={() => setEditingReport(null)}
+                                    style={{
+                                      padding: '6px 14px',
+                                      border: '1px solid #e2e8f0',
+                                      borderRadius: '8px',
+                                      background: '#fff',
+                                      fontSize: '13px',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    취소
+                                  </button>
+                                  <button
+                                    onClick={() => updateReportStatus(report.id, editReportStatus, editReportNote)}
+                                    style={{
+                                      padding: '6px 14px',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      background: '#7c3aed',
+                                      color: '#fff',
+                                      fontSize: '13px',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    저장
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingReport(report)
+                                  setEditReportStatus(report.status)
+                                  setEditReportNote(report.admin_note || '')
+                                }}
+                                style={{
+                                  padding: '6px 14px',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '8px',
+                                  background: '#f8fafc',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  color: '#475569',
+                                  cursor: 'pointer',
+                                  width: '100%',
+                                }}
+                              >
+                                상태 변경
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      {reports.filter((r) => reportStatusFilter === 'ALL' || r.status === reportStatusFilter).length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontSize: '14px' }}>
+                          신고 내역이 없습니다.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

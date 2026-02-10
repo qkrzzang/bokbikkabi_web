@@ -8,7 +8,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import { apiRequest } from '@/lib/api/interceptor'
 import AdModal from './AdModal'
 
-type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'partnership' | 'policy' | 'admin'
+type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'partnership' | 'policy' | 'admin' | 'profile'
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
 
 interface SidebarProps {
   isOpen: boolean
@@ -52,17 +57,51 @@ export default function Sidebar({
   const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
   const [transactionLimit, setTransactionLimit] = useState(10) // 포인트 내역 표시 개수
   const [isGradeTooltipVisible, setIsGradeTooltipVisible] = useState(false) // 등급 툴팁 표시 여부
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null) // PWA 설치 프롬프트
+  const [isStandalone, setIsStandalone] = useState(false) // PWA standalone 모드 여부
+  const [showIOSGuide, setShowIOSGuide] = useState(false) // iOS 설치 가이드
+  const [isMobile, setIsMobile] = useState(false) // 모바일 여부
+  const [editNickname, setEditNickname] = useState('') // 닉네임 수정용
+  const [isNicknameSaving, setIsNicknameSaving] = useState(false) // 닉네임 저장 중
+  const [nicknameChangedAt, setNicknameChangedAt] = useState<string | null>(null) // 닉네임 마지막 변경일
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false) // 회원탈퇴 확인
+  const [isDeleting, setIsDeleting] = useState(false) // 탈퇴 진행 중
   const [transactionTagOptions, setTransactionTagOptions] = useState<Array<{
     code_value: string
     code_name: string
   }>>([]) // Transaction tag options from common_code_detail
   
+  // PWA 설치 프롬프트 감지 + 모바일 판별
+  useEffect(() => {
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true
+    setIsStandalone(standalone)
+
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    const cleanupResize = () => window.removeEventListener('resize', checkMobile)
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e as BeforeInstallPromptEvent)
+    }
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      cleanupResize()
+    }
+  }, [])
+
   // 사이드바가 닫힐 때 메뉴로 리셋
   useEffect(() => {
     if (!isOpen) {
       setCurrentScreen('menu')
       setSelectedContract(null)
       setDecryptedImageUrl(null)
+      setShowIOSGuide(false)
     }
   }, [isOpen])
 
@@ -164,7 +203,7 @@ export default function Sidebar({
         .from('agent_reviews')
         .select(`
           *,
-          agent:agent_master(agent_name, road_address, lot_address)
+          agent:agent_master(id, agent_name, road_address, lot_address)
         `)
         .eq('supabase_user_id', authUser.id)
         .order('created_at', { ascending: false }),
@@ -494,9 +533,9 @@ export default function Sidebar({
       
       {/* 사이드바 */}
       <div className={styles.sidebar}>
-        {/* 헤더 - 뒤로 가기 또는 닫기 */}
-        <div className={styles.sidebarHeader}>
-          {currentScreen !== 'menu' || selectedContract ? (
+        {/* 헤더 - 서브 화면에서만 표시 (메뉴 화면에서는 프로필 행에 X 버튼 포함) */}
+        {(currentScreen !== 'menu' || selectedContract) && (
+          <div className={styles.sidebarHeader}>
             <button
               className={styles.backButton}
               onClick={handleBack}
@@ -506,53 +545,32 @@ export default function Sidebar({
                 <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-          ) : null}
-          <h3 className={styles.screenTitle}>
-            {selectedContract ? '리뷰 상세' :
-             currentScreen === 'menu' ? '' :
-             currentScreen === 'contracts' ? '내 리뷰' :
-             currentScreen === 'favorites' ? '내 관심 부동산' :
-             currentScreen === 'survey' ? '서베이' :
-             currentScreen === 'points' ? '내 포인트' :
-             currentScreen === 'partnership' ? '광고/제휴 문의' :
-             currentScreen === 'policy' ? '약관/정책' :
-             currentScreen === 'admin' ? '관리자 메뉴' : ''}
-          </h3>
-          <button
-            className={styles.closeButton}
-            onClick={onClose}
-            aria-label="닫기"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        </div>
+            <h3 className={styles.screenTitle}>
+              {selectedContract ? '리뷰 상세' :
+               currentScreen === 'contracts' ? '내 리뷰' :
+               currentScreen === 'favorites' ? '내 관심 부동산' :
+               currentScreen === 'survey' ? '서베이' :
+               currentScreen === 'points' ? '내 포인트' :
+               currentScreen === 'partnership' ? '광고/제휴 문의' :
+               currentScreen === 'policy' ? '약관/정책' :
+               currentScreen === 'profile' ? '내 정보 설정' :
+               currentScreen === 'admin' ? '관리자 메뉴' : ''}
+            </h3>
+            <button
+              className={styles.closeButton}
+              onClick={onClose}
+              aria-label="닫기"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* 프로필 정보 - 메뉴 화면에서만 표시 */}
         {currentScreen === 'menu' && !selectedContract && (
           <div className={styles.profileSection}>
-          <button
-            className={styles.closeButton}
-            onClick={onClose}
-            aria-label="닫기"
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M18 6L6 18M6 6L18 18"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
           <div className={styles.profileInfo}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <h4 className={styles.profileName} style={{ margin: 0 }}>
@@ -614,10 +632,18 @@ export default function Sidebar({
                   </div>
                 )}
               </div>
+              <div style={{ flex: 1 }} />
+              <button
+                className={styles.closeButton}
+                onClick={onClose}
+                aria-label="닫기"
+                style={{ position: 'static', padding: '4px' }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             </div>
-            <p className={styles.profileEmail}>
-              {user.email || user.user_metadata?.kakao_account?.email || ''}
-            </p>
             <button 
               className={styles.pointsButton}
               onClick={() => {
@@ -699,6 +725,64 @@ export default function Sidebar({
                 <span className={styles.chevron}>›</span>
               </button>
 
+              {/* 홈 화면에 추가 - 모바일 + PWA standalone이 아닌 경우만 표시 */}
+              {isMobile && !isStandalone && (
+                <button 
+                  className={styles.navItem} 
+                  onClick={async () => {
+                    if (deferredPrompt) {
+                      // Android: 네이티브 설치 프롬프트
+                      deferredPrompt.prompt()
+                      const { outcome } = await deferredPrompt.userChoice
+                      if (outcome === 'accepted') {
+                        console.log('[PWA] 설치 수락')
+                        setIsStandalone(true)
+                      }
+                      setDeferredPrompt(null)
+                    } else {
+                      // iOS 또는 설치 프롬프트를 지원하지 않는 브라우저
+                      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
+                      if (isIOS) {
+                        setShowIOSGuide(true)
+                      } else {
+                        // 이미 설치 가능하지 않은 경우 (이미 설치됨 또는 지원하지 않는 브라우저)
+                        alert('브라우저 메뉴에서 "홈 화면에 추가" 또는 "앱 설치"를 선택해주세요.')
+                      }
+                    }
+                  }}
+                >
+                  <span className={styles.navIcon}>📲</span>
+                  <span className={styles.navLabel}>홈 화면에 추가</span>
+                  <span className={styles.chevron}>›</span>
+                </button>
+              )}
+
+              <button 
+                className={styles.navItem} 
+                onClick={async () => {
+                  const nickname = user.user_metadata?.name ||
+                    user.user_metadata?.kakao_account?.profile?.nickname ||
+                    user.user_metadata?.properties?.nickname ||
+                    user.user_metadata?.nickname || ''
+                  setEditNickname(nickname)
+                  setShowDeleteConfirm(false)
+                  setCurrentScreen('profile')
+                  // 닉네임 마지막 변경일 조회
+                  if (authUser) {
+                    const { data } = await supabase
+                      .from('users')
+                      .select('nickname_changed_at')
+                      .eq('supabase_user_id', authUser.id)
+                      .single()
+                    setNicknameChangedAt(data?.nickname_changed_at || null)
+                  }
+                }}
+              >
+                <span className={styles.navIcon}>⚙️</span>
+                <span className={styles.navLabel}>내 정보 설정</span>
+                <span className={styles.chevron}>›</span>
+              </button>
+
               {/* 시스템 관리 - 관리자만 표시 */}
               {isAdmin && (
                 <button 
@@ -777,7 +861,24 @@ export default function Sidebar({
                   <h4 className={styles.reviewSectionTitle}>📍 기본 정보</h4>
                   <div className={styles.reviewField}>
                     <span className={styles.reviewLabel}>공인중개사:</span>
-                    <span className={styles.reviewValue}>{selectedContract.agent?.agent_name || '알 수 없음'}</span>
+                    {selectedContract.agent?.agent_name && selectedContract.agent?.id ? (
+                      <span
+                        className={`${styles.reviewValue} ${styles.agentNameLink}`}
+                        onClick={() => {
+                          onClose()
+                          window.dispatchEvent(new CustomEvent('search:and-open-detail', {
+                            detail: {
+                              searchQuery: selectedContract.agent.agent_name,
+                              agentId: selectedContract.agent.id,
+                            }
+                          }))
+                        }}
+                      >
+                        {selectedContract.agent.agent_name}
+                      </span>
+                    ) : (
+                      <span className={styles.reviewValue}>{selectedContract.agent?.agent_name || '알 수 없음'}</span>
+                    )}
                   </div>
                   {selectedContract.agent?.road_address && (
                     <div className={styles.reviewField}>
@@ -1188,6 +1289,97 @@ export default function Sidebar({
             </div>
           )}
 
+          {/* 내 정보 설정 화면 */}
+          {currentScreen === 'profile' && (
+            <div className={styles.screenContent}>
+              <div className={styles.profileSettingsContainer}>
+                {/* 내 정보 */}
+                <div className={styles.profileSettingsSection}>
+                  <h4 className={styles.profileSettingsLabel}>닉네임</h4>
+                  <div className={styles.nicknameEditRow}>
+                    <input
+                      type="text"
+                      className={styles.nicknameInput}
+                      value={editNickname}
+                      onChange={(e) => setEditNickname(e.target.value)}
+                      placeholder="닉네임을 입력하세요"
+                      maxLength={20}
+                    />
+                    <button
+                      className={styles.nicknameSaveBtn}
+                      disabled={isNicknameSaving || !editNickname.trim()}
+                      onClick={async () => {
+                        if (!authUser || !editNickname.trim()) return
+
+                        // 월 1회 제한 체크
+                        if (nicknameChangedAt) {
+                          const lastChanged = new Date(nicknameChangedAt)
+                          const now = new Date()
+                          const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
+                          if (diffDays < 30) {
+                            const remainDays = 30 - diffDays
+                            alert(`닉네임은 한 달에 1회만 변경할 수 있습니다.\n${remainDays}일 후에 다시 시도해주세요.`)
+                            return
+                          }
+                        }
+
+                        setIsNicknameSaving(true)
+                        try {
+                          const trimmed = editNickname.trim()
+                          const now = new Date().toISOString()
+
+                          // 1. auth.users 메타데이터 업데이트
+                          const { error: authError } = await supabase.auth.updateUser({
+                            data: { name: trimmed, nickname: trimmed }
+                          })
+
+                          // 2. public.users 테이블 업데이트 (nickname_changed_at 포함)
+                          const { error: dbError } = await supabase
+                            .from('users')
+                            .update({ nickname: trimmed, nickname_changed_at: now, updated_at: now })
+                            .eq('supabase_user_id', authUser.id)
+
+                          if (authError && dbError) {
+                            alert('닉네임 변경에 실패했습니다.')
+                          } else {
+                            setNicknameChangedAt(now)
+                            alert('닉네임이 변경되었습니다.')
+                          }
+                        } catch {
+                          alert('닉네임 변경 중 오류가 발생했습니다.')
+                        } finally {
+                          setIsNicknameSaving(false)
+                        }
+                      }}
+                    >
+                      {isNicknameSaving ? '저장 중' : '저장'}
+                    </button>
+                    {nicknameChangedAt && (() => {
+                      const lastChanged = new Date(nicknameChangedAt)
+                      const now = new Date()
+                      const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
+                      if (diffDays < 30) {
+                        return (
+                          <p className={styles.nicknameNotice}>
+                            닉네임은 한 달에 1회만 변경 가능합니다. ({30 - diffDays}일 후 변경 가능)
+                          </p>
+                        )
+                      }
+                      return null
+                    })()}
+                  </div>
+                </div>
+
+                <div className={styles.profileSettingsSection}>
+                  <h4 className={styles.profileSettingsLabel}>이메일</h4>
+                  <p className={styles.profileSettingsValue}>
+                    {user.email || user.user_metadata?.kakao_account?.email || '-'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* 로그아웃 - 메뉴 화면에서만 표시 */}
@@ -1204,6 +1396,71 @@ export default function Sidebar({
             </button>
           </div>
         )}
+
+        {/* 회원탈퇴 - 내 정보 설정 화면에서 사이드바 최하단 우측 */}
+        {currentScreen === 'profile' && (
+          <div className={styles.profileDangerZone}>
+            {!showDeleteConfirm ? (
+              <button
+                className={styles.deleteAccountBtn}
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                회원탈퇴
+              </button>
+            ) : (
+              <div className={styles.deleteConfirmBox}>
+                <p className={styles.deleteWarning}>
+                  정말로 탈퇴하시겠습니까?
+                </p>
+                <ul className={styles.deleteWarningList}>
+                  <li>보유한 포인트 <strong>{userPoints.toLocaleString()}P</strong>가 모두 삭제됩니다.</li>
+                  <li>작성하신 리뷰가 모두 삭제됩니다.</li>
+                  <li>관심 부동산, 서베이 응답 등 모든 데이터가 삭제됩니다.</li>
+                  <li>삭제된 데이터는 복구할 수 없습니다.</li>
+                </ul>
+                <div className={styles.deleteConfirmActions}>
+                  <button
+                    className={styles.deleteCancelBtn}
+                    onClick={() => setShowDeleteConfirm(false)}
+                  >
+                    취소
+                  </button>
+                  <button
+                    className={styles.deleteConfirmBtn}
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      if (!authUser) return
+                      setIsDeleting(true)
+                      try {
+                        await supabase.from('review_helpful').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('agent_reviews').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('agent_comments').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('favorite_agents').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('point_transactions').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('user_points').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('user_attendance').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('survey_responses').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('partnership_inquiries').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('access_logs').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('users').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.auth.signOut()
+                        alert('회원탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.')
+                        window.location.href = '/'
+                      } catch (error) {
+                        console.error('[회원탈퇴] 오류:', error)
+                        alert('회원탈퇴 처리 중 오류가 발생했습니다.')
+                      } finally {
+                        setIsDeleting(false)
+                      }
+                    }}
+                  >
+                    {isDeleting ? '탈퇴 처리 중...' : '탈퇴하기'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 광고 모달 */}
@@ -1212,6 +1469,43 @@ export default function Sidebar({
         onClose={() => setIsAdModalOpen(false)}
         onComplete={handleAdComplete}
       />
+
+      {/* iOS 홈 화면 추가 가이드 */}
+      {showIOSGuide && (
+        <div className={styles.iosGuideOverlay} onClick={() => setShowIOSGuide(false)}>
+          <div className={styles.iosGuideModal} onClick={(e) => e.stopPropagation()}>
+            <button className={styles.iosGuideClose} onClick={() => setShowIOSGuide(false)}>
+              &times;
+            </button>
+            <div className={styles.iosGuideIcon}>
+              <img src="/images/bokbikkabi_icon.png" alt="복비까비" width={48} height={48} style={{ borderRadius: '12px' }} />
+            </div>
+            <h3 className={styles.iosGuideTitle}>홈 화면에 추가하기</h3>
+            <p className={styles.iosGuideDesc}><strong>복비까비</strong>를 앱처럼 사용해보세요!</p>
+            <div className={styles.iosGuideSteps}>
+              <div className={styles.iosGuideStep}>
+                <span className={styles.iosStepNum}>1</span>
+                <span>하단의 <strong>공유 버튼</strong>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" style={{ verticalAlign: 'middle', margin: '0 2px' }}>
+                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                    <polyline points="16 6 12 2 8 6" />
+                    <line x1="12" y1="2" x2="12" y2="15" />
+                  </svg>
+                  을 탭하세요
+                </span>
+              </div>
+              <div className={styles.iosGuideStep}>
+                <span className={styles.iosStepNum}>2</span>
+                <span><strong>&quot;홈 화면에 추가&quot;</strong>를 선택하세요</span>
+              </div>
+              <div className={styles.iosGuideStep}>
+                <span className={styles.iosStepNum}>3</span>
+                <span>우측 상단 <strong>&quot;추가&quot;</strong>를 탭하면 완료!</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

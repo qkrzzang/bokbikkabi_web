@@ -299,15 +299,30 @@ export default function PropertyDetailModal({
   if (!isOpen || !property) return null
 
   const renderStars = (rating: number) => {
-    const fullStars = Math.floor(rating)
-    const hasHalfStar = rating % 1 >= 0.5
-    return (
-      <>
-        {'★'.repeat(fullStars)}
-        {hasHalfStar && '☆'}
-        {'☆'.repeat(5 - fullStars - (hasHalfStar ? 1 : 0))}
-      </>
-    )
+    const stars = []
+    for (let i = 1; i <= 5; i++) {
+      const fill = Math.min(1, Math.max(0, rating - (i - 1)))
+      // fill: 1 = 꽉 찬 별, 0.5 = 반쪽 별, 0 = 빈 별, 그 외 = 비율만큼 채움
+      const fillPercent = Math.round(fill * 100)
+      const gradientId = `starGrad_${i}_${fillPercent}`
+      stars.push(
+        <svg key={i} width="20" height="20" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset={`${fillPercent}%`} stopColor="#fbbf24" />
+              <stop offset={`${fillPercent}%`} stopColor="#e2e8f0" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+            fill={`url(#${gradientId})`}
+            stroke="#fbbf24"
+            strokeWidth="0.5"
+          />
+        </svg>
+      )
+    }
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '1px' }}>{stars}</span>
   }
 
   const renderScoreBar = (score: number) => {

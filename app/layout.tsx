@@ -3,11 +3,19 @@ import Script from 'next/script'
 import { AuthProvider } from '@/contexts/AuthContext'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
+import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: '복비까비 - 부동산 평가',
   description: '부동산 정보를 검색하고 평가해보세요',
+  manifest: '/manifest.json',
+  themeColor: '#F5A623',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: '복비까비',
+  },
 }
 
 export default function RootLayout({
@@ -22,6 +30,12 @@ export default function RootLayout({
       <head>
         {/* 모바일 뷰포트 설정 */}
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+        
+        {/* PWA - iOS 지원 */}
+        <link rel="apple-touch-icon" href="/images/bokbikkabi_icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="복비까비" />
         
         {/* 네이버 지도 API 스크립트 (submodules=geocoder 추가) */}
         {naverMapClientId && (
@@ -38,6 +52,7 @@ export default function RootLayout({
           <Header />
           {children}
           <Footer />
+          <PWAInstallPrompt />
         </AuthProvider>
         {/* 실제 모바일 뷰포트 높이 계산 */}
         <Script

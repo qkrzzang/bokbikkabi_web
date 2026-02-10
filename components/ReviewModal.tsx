@@ -149,7 +149,12 @@ export default function ReviewModal({
     setReportError(null)
   }
 
-  const submitReport = () => {
+  const submitReport = async () => {
+    if (!checkAuth()) return
+    if (!authUser?.id) {
+      setReportError('로그인이 필요합니다.')
+      return
+    }
     if (!reportReason) {
       setReportError('신고 사유를 선택해주세요.')
       return
@@ -158,9 +163,31 @@ export default function ReviewModal({
       setReportError('신고하시는 이유를 입력해주세요.')
       return
     }
+    if (!reportingReview) return
 
-    alert('신고가 접수되었습니다. (목)')
-    closeReport()
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          review_id: reportingReview.id,
+          reporter_user_id: authUser.id,
+          reason: reportReason,
+          detail: reportText.trim(),
+          status: 'RECEIVED',
+        })
+
+      if (error) {
+        console.error('[신고] DB 저장 오류:', error)
+        setReportError('신고 접수 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+
+      alert('신고가 접수되었습니다. 관리자가 확인 후 처리하겠습니다.')
+      closeReport()
+    } catch (err) {
+      console.error('[신고] 오류:', err)
+      setReportError('신고 접수 중 오류가 발생했습니다.')
+    }
   }
 
   const handleHelpfulClick = async (reviewId: string) => {
