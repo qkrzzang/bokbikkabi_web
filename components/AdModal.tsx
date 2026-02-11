@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import styles from './AdModal.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAlert } from '@/contexts/AlertContext'
 import { apiRequest } from '@/lib/api/interceptor'
 
 interface AdModalProps {
@@ -14,6 +15,7 @@ interface AdModalProps {
 
 export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
   const { user: authUser } = useAuth()
+  const { showAlert, showSuccess, showError, showWarning } = useAlert()
   const [countdown, setCountdown] = useState(30) // 30초 광고
   const [canClose, setCanClose] = useState(false)
   const [isWatched, setIsWatched] = useState(false)
@@ -45,7 +47,7 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
 
   const handleClose = async () => {
     if (!canClose) {
-      alert('광고를 끝까지 시청해주세요!')
+      showWarning('광고를 끝까지 시청해주세요!')
       return
     }
 
@@ -87,7 +89,7 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
       )
 
       if (existingTransactions && existingTransactions.length > 0) {
-        alert('오늘은 이미 광고 시청 포인트를 받았습니다!')
+        showAlert('오늘은 이미 광고 시청 포인트를 받았습니다!')
         return
       }
 
@@ -120,9 +122,9 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
 
       if (error) {
         console.error('광고 포인트 적립 오류:', error)
-        alert('포인트 적립에 실패했습니다.')
+        showError('포인트 적립에 실패했습니다.')
       } else {
-        alert(`광고 시청 완료! ${points}P가 적립되었습니다! 🎉`)
+        showSuccess(`광고 시청 완료! ${points}P가 적립되었습니다!`)
       }
     } catch (error) {
       console.error('광고 포인트 적립 예외:', error)

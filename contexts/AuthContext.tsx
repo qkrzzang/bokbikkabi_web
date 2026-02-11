@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useAlert } from '@/contexts/AlertContext'
 
 interface AuthContextType {
   user: User | null
@@ -111,7 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await upsertUser(initialSession.user)
           await fetchUserType(initialSession.user.id)
         }
-      } catch (error) {
+      } catch (error: any) {
+        // AbortError는 무시 (Next.js 빌드/SSR 환경에서 발생하는 정상 동작)
+        if (error?.name === 'AbortError') return
         console.error('[AuthContext] 초기화 오류:', error)
       } finally {
         if (mounted) {
@@ -188,13 +191,14 @@ export function requireAuth<P extends object>(
   return function AuthenticatedComponent(props: P) {
     const { user, isLoading } = useAuth()
     const router = useRouter()
+    const { showWarning } = useAlert()
 
     useEffect(() => {
       if (!isLoading && !user) {
-        alert('로그인이 필요합니다.')
+        showWarning('로그인이 필요합니다.')
         router.push(redirectTo)
       }
-    }, [user, isLoading, router])
+    }, [user, isLoading, router, showWarning])
 
     if (isLoading) {
       return <div>로딩 중...</div>

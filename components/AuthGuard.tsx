@@ -3,6 +3,7 @@
 import { useEffect, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAlert } from '@/contexts/AlertContext'
 
 interface AuthGuardProps {
   children: ReactNode
@@ -33,6 +34,7 @@ export function AuthGuard({
   requireAdmin = false 
 }: AuthGuardProps) {
   const { user, userType, isLoading } = useAuth()
+  const { showWarning } = useAlert()
   const router = useRouter()
 
   useEffect(() => {
@@ -40,18 +42,18 @@ export function AuthGuard({
 
     // 로그인 필요
     if (!user) {
-      alert('로그인이 필요합니다.')
+      showWarning('로그인이 필요합니다.')
       router.push(redirectTo)
       return
     }
 
     // 관리자 권한 필요
     if (requireAdmin && userType !== 'ADMIN') {
-      alert('관리자 권한이 필요합니다.')
+      showWarning('관리자 권한이 필요합니다.')
       router.push(redirectTo)
       return
     }
-  }, [user, userType, isLoading, router, redirectTo, requireAdmin])
+  }, [user, userType, isLoading, router, redirectTo, requireAdmin, showWarning])
 
   // 로딩 중
   if (isLoading) {
@@ -94,13 +96,14 @@ export function useAuthCheck(options?: {
   requireAdmin?: boolean
 }) {
   const { user, userType } = useAuth()
+  const { showWarning } = useAlert()
   const router = useRouter()
   const { redirectTo = '/', showAlert = true, requireAdmin = false } = options || {}
 
   return (): boolean => {
     if (!user) {
       if (showAlert) {
-        alert('로그인이 필요합니다.')
+        showWarning('로그인이 필요합니다.')
       }
       router.push(redirectTo)
       return false
@@ -108,7 +111,7 @@ export function useAuthCheck(options?: {
 
     if (requireAdmin && userType !== 'ADMIN') {
       if (showAlert) {
-        alert('관리자 권한이 필요합니다.')
+        showWarning('관리자 권한이 필요합니다.')
       }
       router.push(redirectTo)
       return false

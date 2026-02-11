@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { apiRequest } from '@/lib/api/interceptor'
 import AdModal from './AdModal'
+import { useAlert } from '@/contexts/AlertContext'
 
 type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'partnership' | 'policy' | 'admin' | 'profile'
 
@@ -36,6 +37,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const router = useRouter()
   const { user: authUser } = useAuth()
+  const { showAlert, showSuccess, showError, showWarning } = useAlert()
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('menu')
   const [myContracts, setMyContracts] = useState<any[]>([])
   const [selectedContract, setSelectedContract] = useState<any>(null)
@@ -332,14 +334,14 @@ export default function Sidebar({
   // 서베이 최종 제출
   const submitSurvey = async () => {
     if (!authUser) {
-      alert('로그인이 필요합니다.')
+      showWarning('로그인이 필요합니다.')
       return
     }
 
     // 모든 질문에 응답했는지 확인
     const allQuestionsAnswered = surveyQuestions.every(q => tempSurveyResponses[q.code_value])
     if (!allQuestionsAnswered) {
-      alert('모든 질문에 답변해주세요.')
+      showWarning('모든 질문에 답변해주세요.')
       return
     }
 
@@ -362,7 +364,7 @@ export default function Sidebar({
 
       if (insertError) {
         console.error('[서베이] 제출 오류:', insertError)
-        alert('서베이 제출 중 오류가 발생했습니다.')
+        showError('서베이 제출 중 오류가 발생했습니다.')
         return
       }
 
@@ -386,10 +388,10 @@ export default function Sidebar({
       // 포인트 새로고침
       await loadUserPoints()
       
-      alert('🎉 서베이가 제출되었습니다! 포인트가 적립되었습니다.')
+      showSuccess('🎉 서베이가 제출되었습니다! 포인트가 적립되었습니다.')
     } catch (error) {
       console.error('[서베이] 제출 예외:', error)
-      alert('서베이 제출 중 오류가 발생했습니다.')
+      showError('서베이 제출 중 오류가 발생했습니다.')
     } finally {
       setIsSurveySubmitting(false)
     }
@@ -398,7 +400,7 @@ export default function Sidebar({
   // 출석 체크
   const checkInAttendance = async () => {
     if (!authUser) {
-      alert('로그인이 필요합니다.')
+      showWarning('로그인이 필요합니다.')
       return
     }
 
@@ -410,9 +412,11 @@ export default function Sidebar({
     )
 
     if (data) {
-      alert(data.message)
       if (data.success) {
+        showSuccess(data.message)
         loadUserPoints() // 포인트 새로고침
+      } else {
+        showAlert(data.message)
       }
     }
   }
@@ -460,7 +464,7 @@ export default function Sidebar({
 
     if (error) {
       console.error('[Sidebar] 관심 부동산 삭제 오류:', error)
-      alert('관심 부동산 삭제에 실패했습니다.')
+      showError('관심 부동산 삭제에 실패했습니다.')
     } else {
       // 목록 새로고침
       loadFavoriteAgents()
@@ -746,7 +750,7 @@ export default function Sidebar({
                         setShowIOSGuide(true)
                       } else {
                         // 이미 설치 가능하지 않은 경우 (이미 설치됨 또는 지원하지 않는 브라우저)
-                        alert('브라우저 메뉴에서 "홈 화면에 추가" 또는 "앱 설치"를 선택해주세요.')
+                        showAlert('브라우저 메뉴에서 "홈 화면에 추가" 또는 "앱 설치"를 선택해주세요.')
                       }
                     }
                   }}
@@ -1213,7 +1217,7 @@ export default function Sidebar({
                 const formData = new FormData(e.currentTarget)
                 
                 if (!authUser) {
-                  alert('로그인이 필요합니다.')
+                  showWarning('로그인이 필요합니다.')
                   return
                 }
 
@@ -1235,14 +1239,14 @@ export default function Sidebar({
                   )
 
                   if (!error) {
-                    alert('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
+                    showSuccess('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
                     e.currentTarget.reset()
                     setCurrentScreen('menu')
                   } else {
-                    alert('문의 접수 중 오류가 발생했습니다.')
+                    showError('문의 접수 중 오류가 발생했습니다.')
                   }
                 } catch (error: any) {
-                  alert('문의 접수 중 오류가 발생했습니다.')
+                  showError('문의 접수 중 오류가 발생했습니다.')
                 }
               }}>
                 <div className={styles.formGroup}>
@@ -1318,7 +1322,7 @@ export default function Sidebar({
                           const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
                           if (diffDays < 30) {
                             const remainDays = 30 - diffDays
-                            alert(`닉네임은 한 달에 1회만 변경할 수 있습니다.\n${remainDays}일 후에 다시 시도해주세요.`)
+                            showWarning(`닉네임은 한 달에 1회만 변경할 수 있습니다.\n${remainDays}일 후에 다시 시도해주세요.`)
                             return
                           }
                         }
@@ -1340,13 +1344,13 @@ export default function Sidebar({
                             .eq('supabase_user_id', authUser.id)
 
                           if (authError && dbError) {
-                            alert('닉네임 변경에 실패했습니다.')
+                            showError('닉네임 변경에 실패했습니다.')
                           } else {
                             setNicknameChangedAt(now)
-                            alert('닉네임이 변경되었습니다.')
+                            showSuccess('닉네임이 변경되었습니다.')
                           }
                         } catch {
-                          alert('닉네임 변경 중 오류가 발생했습니다.')
+                          showError('닉네임 변경 중 오류가 발생했습니다.')
                         } finally {
                           setIsNicknameSaving(false)
                         }
@@ -1444,11 +1448,11 @@ export default function Sidebar({
                         await supabase.from('access_logs').delete().eq('supabase_user_id', authUser.id)
                         await supabase.from('users').delete().eq('supabase_user_id', authUser.id)
                         await supabase.auth.signOut()
-                        alert('회원탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.')
+                        showSuccess('회원탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.')
                         window.location.href = '/'
                       } catch (error) {
                         console.error('[회원탈퇴] 오류:', error)
-                        alert('회원탈퇴 처리 중 오류가 발생했습니다.')
+                        showError('회원탈퇴 처리 중 오류가 발생했습니다.')
                       } finally {
                         setIsDeleting(false)
                       }

@@ -73,7 +73,8 @@ export default function Home() {
         } else {
           console.log(data?.message || '오늘 이미 로그인 포인트를 받았습니다.')
         }
-      } catch (error) {
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return
         console.error('로그인 포인트 적립 예외:', error)
       }
     }

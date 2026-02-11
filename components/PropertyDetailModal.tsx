@@ -6,6 +6,7 @@ import styles from './PropertyDetailModal.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthCheck } from '@/components/AuthGuard'
+import { useAlert } from '@/contexts/AlertContext'
 import { apiRequest } from '@/lib/api/interceptor'
 
 // 네이버 지도 타입 선언
@@ -66,6 +67,7 @@ export default function PropertyDetailModal({
   onClose,
 }: PropertyDetailModalProps) {
   const { user: authUser } = useAuth()
+  const { showError } = useAlert()
   const checkAuth = useAuthCheck({ showAlert: true })
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -457,7 +459,7 @@ export default function PropertyDetailModal({
       }
     } catch (error: any) {
       console.error('관심 등록/해제 오류:', error)
-      alert('오류가 발생했습니다. 다시 시도해주세요.')
+      showError('오류가 발생했습니다. 다시 시도해주세요.')
     } finally {
       setIsFavoriteLoading(false)
     }

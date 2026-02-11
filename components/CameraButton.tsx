@@ -5,6 +5,7 @@ import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthCheck } from '@/components/AuthGuard'
+import { useAlert } from '@/contexts/AlertContext'
 import confetti from 'canvas-confetti'
 // heic2any는 window를 참조하므로 동적 import 사용 (SSR 방지)
 
@@ -151,6 +152,7 @@ function resizeImageIfNeeded(file: File, maxDimension: number = 4096): Promise<F
 export default function CameraButton() {
   const { user: authUser } = useAuth()
   const checkAuth = useAuthCheck({ showAlert: true })
+  const { showAlert, showSuccess, showError, showWarning } = useAlert()
   const [isOpen, setIsOpen] = useState(false)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [mode, setMode] = useState<'select' | 'camera' | 'upload' | 'result' | 'review'>('select')
@@ -180,7 +182,6 @@ export default function CameraButton() {
     notFoundNumbers?: string[]
   } | null>(null)
   const [showConfirmSelection, setShowConfirmSelection] = useState(false)
-  const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null)
   const [confirmingAgent, setConfirmingAgent] = useState<{
     agent: { id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }
     contractIndex: number
@@ -578,7 +579,6 @@ export default function CameraButton() {
 
   const getContractAgentName = (contract: any) => {
     if (!contract || typeof contract !== 'object') {
-      console.warn('[getContractAgentName] 유효하지 않은 계약 데이터:', typeof contract)
       return ''
     }
     const raw =
@@ -666,7 +666,7 @@ export default function CameraButton() {
   const processFile = async (file: File) => {
     // iOS Safari에서 HEIC의 type이 비어있을 수 있으므로 확장자도 함께 체크
     if (!isImageFileLoose(file)) {
-      alert('이미지 파일만 업로드 가능합니다.')
+      showError('이미지 파일만 업로드 가능합니다.')
       return
     }
 
@@ -679,7 +679,7 @@ export default function CameraButton() {
           processedFile = await convertHeicToJpeg(file)
         } catch (heicError) {
           console.error('[processFile] HEIC 변환 실패:', heicError)
-          alert('HEIC 이미지를 변환할 수 없습니다. JPEG 또는 PNG 파일로 다시 시도해주세요.')
+          showError('HEIC 이미지를 변환할 수 없습니다.\nJPEG 또는 PNG 파일로 다시 시도해주세요.')
           return
         }
       }
@@ -702,7 +702,7 @@ export default function CameraButton() {
       }
     } catch (error) {
       console.error('[processFile] 파일 처리 중 오류:', error)
-      alert('이미지 처리 중 오류가 발생했습니다. 다시 시도해주세요.')
+      showError('이미지 처리 중 오류가 발생했습니다.\n다시 시도해주세요.')
     }
   }
 
@@ -741,7 +741,7 @@ export default function CameraButton() {
       }
     } catch (error) {
       console.error('카메라 접근 실패:', error)
-      alert('카메라 접근 권한이 필요합니다.')
+      showWarning('카메라 접근 권한이 필요합니다.')
     }
   }
 
@@ -788,7 +788,7 @@ export default function CameraButton() {
 
   const handleImageSubmit = async () => {
     if (!originalFile) {
-      alert('파일을 찾을 수 없습니다.')
+      showError('파일을 찾을 수 없습니다.')
       return
     }
 
@@ -804,6 +804,8 @@ export default function CameraButton() {
     setShowAgentSelection(false)
     setShowConfirmSelection(false)
     setConfirmingAgent(null)
+
+    let stampPromise: Promise<void> = Promise.resolve()
 
     try {
       // ── 파일 전처리: HEIC 변환 + 타입 보장 ──
@@ -840,7 +842,7 @@ export default function CameraButton() {
       const stampFormData = new FormData()
       stampFormData.append('file', fileToUpload, fileToUpload.name)
       setIsStampVerifying(true)
-      const stampPromise = fetch('/api/verify-stamp', {
+      stampPromise = fetch('/api/verify-stamp', {
         method: 'POST',
         body: stampFormData,
       })
@@ -958,6 +960,7 @@ export default function CameraButton() {
             } catch { /* ignore */ }
             console.error('[n8n] 웹훅 전송 실패:', n8nResponse.status, errorText.substring(0, 200))
             setN8nError(`n8n 호출 실패: ${n8nResponse.status}`)
+            await stampPromise
             setMode('result')
             setIsLoading(false)
           } else {
@@ -972,6 +975,7 @@ export default function CameraButton() {
               console.error('[n8n] JSON 파싱 실패:', parseError)
               console.error('[n8n] 원본 응답 앞 100자:', n8nRawText.substring(0, 100))
               setN8nError('n8n 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
+              await stampPromise
               setMode('result')
               setIsLoading(false)
               return
@@ -1042,10 +1046,15 @@ export default function CameraButton() {
             if (!validContracts || (Array.isArray(validContracts) && validContracts.length === 0)) {
               setN8nError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
               setN8nResult(null)
+              await stampPromise
               setMode('result')
               setIsLoading(false)
             } else {
               setN8nResult(validContracts)
+
+              // 도장 검증이 아직 진행 중이면 완료될 때까지 대기
+              await stampPromise
+
               setMode('result')
               setIsLoading(false)
               
@@ -1215,12 +1224,14 @@ export default function CameraButton() {
                 ? n8nError.message
                 : 'n8n 호출 중 오류가 발생했습니다.'
           )
+          await stampPromise
           setMode('result')
           setIsLoading(false)
         }
       } else {
         console.warn('OCR 결과에서 텍스트를 추출할 수 없습니다:', data)
         setN8nError('부동산 계약서를 다시 올려주세요.')
+        await stampPromise
         setMode('result')
         setIsLoading(false)
       }
@@ -1234,6 +1245,8 @@ export default function CameraButton() {
           size: originalFile?.size,
         })
       }
+      // 도장 검증이 진행 중이면 완료 대기 (에러 무시)
+      await stampPromise.catch(() => {})
       setMode('result')
       setOcrError(
         error instanceof DOMException && error.name === 'AbortError'
@@ -1267,7 +1280,7 @@ export default function CameraButton() {
     // 인증 체크
     if (!checkAuth()) return
     if (!authUser?.id) {
-      alert('로그인이 필요합니다.')
+      showWarning('로그인이 필요합니다.')
       return
     }
 
@@ -1305,7 +1318,7 @@ export default function CameraButton() {
         .gte('created_at', startOfDay)
       
       if (!dailyError && (dailyCount || 0) >= dailyLimit) {
-        alert(`하루에 최대 ${dailyLimit}건의 리뷰만 등록할 수 있습니다.\n내일 다시 시도해주세요.`)
+        showWarning(`하루에 최대 ${dailyLimit}건의 리뷰만 등록할 수 있습니다.\n내일 다시 시도해주세요.`)
         return
       }
 
@@ -1317,7 +1330,7 @@ export default function CameraButton() {
         .gte('created_at', startOfMonth)
 
       if (!monthlyError && (monthlyCount || 0) >= monthlyLimit) {
-        alert(`한 달에 최대 ${monthlyLimit}건의 리뷰만 등록할 수 있습니다.\n다음 달에 다시 시도해주세요.`)
+        showWarning(`한 달에 최대 ${monthlyLimit}건의 리뷰만 등록할 수 있습니다.\n다음 달에 다시 시도해주세요.`)
         return
       }
 
@@ -1328,7 +1341,7 @@ export default function CameraButton() {
         .eq('supabase_user_id', authUser.id)
 
       if (!totalError && (totalCount || 0) >= userLimit) {
-        alert(`계정당 최대 ${userLimit}건의 리뷰만 등록할 수 있습니다.`)
+        showWarning(`계정당 최대 ${userLimit}건의 리뷰만 등록할 수 있습니다.`)
         return
       }
 
@@ -1346,29 +1359,26 @@ export default function CameraButton() {
           .eq('contract_date', contractDate4Check)
 
         if (!contractDateError && (contractDateCount || 0) >= 1) {
-          setAlertModal({
-            title: '등록 불가',
-            message: `동일한 계약일자(${contractDate4Check})에는\n리뷰를 1건만 등록할 수 있습니다.`,
-          })
+          showWarning(`동일한 계약일자(${contractDate4Check})에는\n리뷰를 1건만 등록할 수 있습니다.`, { title: '등록 불가' })
           return
         }
       }
 
       const reviewLength = reviewText.trim().length
       if (reviewLength < 20) {
-        alert('상세 리뷰는 20자 이상 작성해주세요.')
+        showWarning('상세 리뷰는 20자 이상 작성해주세요.')
         return
       }
 
       // 거래 태그 필수 체크
       if (transactionTags.length === 0) {
-        alert('거래 태그를 선택해주세요.')
+        showWarning('거래 태그를 선택해주세요.')
         return
       }
 
       // 칭찬 태그 또는 아쉬움 태그 필수 체크 (최소 1개)
       if (praiseTags.length === 0 && regretTags.length === 0) {
-        alert('칭찬 태그 또는 아쉬움 태그 중 최소 1개를 선택해주세요.')
+        showWarning('칭찬 태그 또는 아쉬움 태그 중 최소 1개를 선택해주세요.')
         return
       }
 
@@ -1384,13 +1394,13 @@ export default function CameraButton() {
           .map(code => detailEvaluations.find(e => e.code_value === code)?.code_name)
           .filter(Boolean)
           .join(', ')
-        alert(`모든 상세 평가 항목을 선택해주세요.\n미선택 항목: ${missingNames}`)
+        showWarning(`모든 상세 평가 항목을 선택해주세요.\n미선택 항목: ${missingNames}`)
         return
       }
 
       const selectedKeys = Object.keys(selectedAgents)
       if (selectedKeys.length === 0) {
-        alert('중개사무소 확인이 필요합니다. 후보 중 하나를 선택해주세요.')
+        showWarning('중개사무소 확인이 필요합니다.\n후보 중 하나를 선택해주세요.')
         return
       }
 
@@ -1398,7 +1408,7 @@ export default function CameraButton() {
       const selectedAgent = selectedAgents[String(reviewIndex)]
 
       if (!selectedAgent?.agent_id) {
-        alert('중개사무소 정보가 없습니다. 다시 확인해주세요.')
+        showError('중개사무소 정보가 없습니다.\n다시 확인해주세요.')
         return
       }
 
@@ -1464,7 +1474,7 @@ export default function CameraButton() {
 
       if (error) {
         console.error('리뷰 저장 실패:', error)
-        alert(`리뷰 저장에 실패했습니다: ${error.message}`)
+        showError(`리뷰 저장에 실패했습니다: ${error.message}`)
         return
       }
 
@@ -1502,7 +1512,7 @@ export default function CameraButton() {
       }, 1500)
     } catch (error) {
       console.error('리뷰 저장 오류:', error)
-      alert('리뷰 저장 중 오류가 발생했습니다.')
+      showError('리뷰 저장 중 오류가 발생했습니다.')
     } finally {
       setIsReviewSubmitting(false)
     }
@@ -2361,27 +2371,6 @@ export default function CameraButton() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 서비스 알림 팝업 */}
-      {alertModal && (
-        <div className={styles.overlay} onClick={() => setAlertModal(null)}>
-          <div className={styles.alertModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.alertModalIcon}>⚠️</div>
-            <h3 className={styles.alertModalTitle}>{alertModal.title}</h3>
-            <p className={styles.alertModalMessage}>
-              {alertModal.message.split('\n').map((line, i) => (
-                <span key={i}>{line}{i < alertModal.message.split('\n').length - 1 && <br />}</span>
-              ))}
-            </p>
-            <button
-              className={styles.submitButton}
-              onClick={() => setAlertModal(null)}
-            >
-              확인
-            </button>
           </div>
         </div>
       )}

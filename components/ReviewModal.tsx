@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import styles from './ReviewModal.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAlert } from '@/contexts/AlertContext'
 import { useAuthCheck } from '@/components/AuthGuard'
 import { apiRequest } from '@/lib/api/interceptor'
 
@@ -39,6 +40,7 @@ export default function ReviewModal({
 }: ReviewModalProps) {
   const { user: authUser } = useAuth()
   const checkAuth = useAuthCheck({ showAlert: true })
+  const { showAlert, showSuccess, showError } = useAlert()
   const [reportingReview, setReportingReview] = useState<Review | null>(null)
   const [reportReason, setReportReason] = useState<'fake' | 'privacy' | 'other' | ''>('')
   const [reportText, setReportText] = useState('')
@@ -182,7 +184,7 @@ export default function ReviewModal({
         return
       }
 
-      alert('신고가 접수되었습니다. 관리자가 확인 후 처리하겠습니다.')
+      showSuccess('신고가 접수되었습니다.\n관리자가 확인 후 처리하겠습니다.')
       closeReport()
     } catch (err) {
       console.error('[신고] 오류:', err)
@@ -210,7 +212,7 @@ export default function ReviewModal({
 
         if (error) {
           console.error('[ReviewModal] 도움돼요 취소 오류:', error)
-          alert('도움돼요 취소에 실패했습니다.')
+          showError('도움돼요 취소에 실패했습니다.')
           return
         }
 
@@ -239,9 +241,9 @@ export default function ReviewModal({
         if (error) {
           console.error('[ReviewModal] 도움돼요 추가 오류:', error)
           if (error.code === '23505') {
-            alert('이미 도움돼요를 눌렀습니다.')
+            showAlert('이미 도움돼요를 눌렀습니다.')
           } else {
-            alert('도움돼요 추가에 실패했습니다.')
+            showError('도움돼요 추가에 실패했습니다.')
           }
           return
         }
@@ -255,7 +257,7 @@ export default function ReviewModal({
       }
     } catch (error) {
       console.error('[ReviewModal] 도움돼요 처리 오류:', error)
-      alert('오류가 발생했습니다. 다시 시도해주세요.')
+      showError('오류가 발생했습니다. 다시 시도해주세요.')
     }
   }
 

@@ -6,6 +6,7 @@ import { signInWithKakao, signInWithGoogle, getCurrentUser } from '@/lib/auth'
 import { logAccess } from '@/lib/accessLog'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAlert } from '@/contexts/AlertContext'
 import { apiRequest } from '@/lib/api/interceptor'
 import Sidebar from './Sidebar'
 
@@ -76,6 +77,8 @@ export default function Header() {
   const [batchLogs, setBatchLogs] = useState<BatchJobLog[]>([])
   const [showBatchLogs, setShowBatchLogs] = useState<number | null>(null)
   const [isBatchLogLoading, setIsBatchLogLoading] = useState(false)
+  const [runningBatchJobId, setRunningBatchJobId] = useState<number | null>(null)
+  const [batchRunElapsed, setBatchRunElapsed] = useState(0)
 
   // 신고 관리 State
   interface Report {
@@ -90,7 +93,28 @@ export default function Header() {
     created_at: string
     updated_at: string
     reporter?: { nickname: string | null; email: string | null }
-    review?: { review_text: string | null; agent_id: number | null }
+    review?: {
+      id: string
+      review_text: string | null
+      agent_id: number | null
+      transaction_tag: string | null
+      fee_satisfaction: number | null
+      expertise: number | null
+      kindness: number | null
+      property_reliability: number | null
+      response_speed: number | null
+      praise_tags: string[] | null
+      regret_tags: string[] | null
+      contract_date: string | null
+      created_at: string | null
+      is_hidden: boolean | null
+      agent?: {
+        id: number
+        agent_name: string | null
+        road_address: string | null
+        agent_number: string | null
+      } | null
+    }
   }
   const [reports, setReports] = useState<Report[]>([])
   const [isReportsLoading, setIsReportsLoading] = useState(false)
@@ -218,6 +242,7 @@ export default function Header() {
   
   // useAuth Hook으로 중앙화된 인증 상태 관리
   const { user, userType, isLoading, signOut } = useAuth()
+  const { showAlert, showSuccess, showError, showWarning } = useAlert()
 
   // TODO: Supabase 연동 전까지 목 데이터 사용
   const mockFavoriteAgents: Array<{
@@ -329,7 +354,7 @@ export default function Header() {
           })
         
         if (error) {
-          alert('마스터 코드 추가 실패: ' + error.message)
+          showError('마스터 코드 추가 실패: ' + error.message)
           return
         }
         // 토스트 표시
@@ -351,7 +376,7 @@ export default function Header() {
           .eq('code_group', editingMaster.code_group)
         
         if (error) {
-          alert('마스터 코드 수정 실패: ' + error.message)
+          showError('마스터 코드 수정 실패: ' + error.message)
           return
         }
         // 토스트 표시
@@ -365,7 +390,7 @@ export default function Header() {
       fetchCodeMaster()
     } catch (error) {
       console.error('마스터 코드 저장 오류:', error)
-      alert('저장 중 오류가 발생했습니다.')
+      showError('저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -395,7 +420,7 @@ export default function Header() {
           })
         
         if (error) {
-          alert('상세 코드 추가 실패: ' + error.message)
+          showError('상세 코드 추가 실패: ' + error.message)
           return
         }
         // 토스트 표시
@@ -425,7 +450,7 @@ export default function Header() {
           .eq('id', editingDetail.id)
         
         if (error) {
-          alert('상세 코드 수정 실패: ' + error.message)
+          showError('상세 코드 수정 실패: ' + error.message)
           return
         }
         // 토스트 표시
@@ -440,7 +465,7 @@ export default function Header() {
       fetchCodeMaster() // 개수 업데이트
     } catch (error) {
       console.error('상세 코드 저장 오류:', error)
-      alert('저장 중 오류가 발생했습니다.')
+      showError('저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -482,7 +507,7 @@ export default function Header() {
         .eq('supabase_user_id', editingUser.supabase_user_id)
       
       if (error) {
-        alert('사용자 정보 수정 실패: ' + error.message)
+        showError('사용자 정보 수정 실패: ' + error.message)
         return
       }
       
@@ -495,7 +520,7 @@ export default function Header() {
       fetchUsers()
     } catch (error) {
       console.error('사용자 정보 저장 오류:', error)
-      alert('저장 중 오류가 발생했습니다.')
+      showError('저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -503,12 +528,18 @@ export default function Header() {
   const loadReports = async () => {
     try {
       setIsReportsLoading(true)
+
+      // 1) reports + review(agent_reviews -> agent_master) 조회
       const { data, error } = await supabase
         .from('reports')
         .select(`
           *,
-          reporter:users!reports_reporter_user_id_fkey(nickname, email),
-          review:agent_reviews!reports_review_id_fkey(review_text, agent_id)
+          review:agent_reviews!reports_review_id_fkey(
+            id, review_text, agent_id, transaction_tag,
+            fee_satisfaction, expertise, kindness, property_reliability, response_speed,
+            praise_tags, regret_tags, contract_date, created_at, is_hidden,
+            agent:agent_master(id, agent_name, road_address, agent_number)
+          )
         `)
         .order('created_at', { ascending: false })
 
@@ -520,9 +551,33 @@ export default function Header() {
           .select('*')
           .order('created_at', { ascending: false })
         if (fallbackData) setReports(fallbackData)
-      } else {
-        setReports(data || [])
+        return
       }
+
+      // 2) reporter 정보를 별도로 조회 (reports.reporter_user_id → auth.users → public.users)
+      const reporterIds = Array.from(new Set((data || []).map((r: any) => r.reporter_user_id).filter(Boolean))) as string[]
+      let reporterMap: Record<string, { nickname: string | null; email: string | null }> = {}
+
+      if (reporterIds.length > 0) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('supabase_user_id, nickname, email')
+          .in('supabase_user_id', reporterIds)
+
+        if (usersData) {
+          usersData.forEach((u: any) => {
+            reporterMap[u.supabase_user_id] = { nickname: u.nickname, email: u.email }
+          })
+        }
+      }
+
+      // 3) reporter 정보를 합침
+      const enriched = (data || []).map((r: any) => ({
+        ...r,
+        reporter: reporterMap[r.reporter_user_id] || null,
+      }))
+
+      setReports(enriched)
     } catch (err) {
       console.error('[신고 관리] 오류:', err)
     } finally {
@@ -544,13 +599,37 @@ export default function Header() {
         .eq('id', reportId)
 
       if (error) {
-        alert('상태 변경에 실패했습니다: ' + error.message)
+        showError('상태 변경에 실패했습니다: ' + error.message)
       } else {
         setEditingReport(null)
         await loadReports()
       }
     } catch {
-      alert('상태 변경 중 오류가 발생했습니다.')
+      showError('상태 변경 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 리뷰 숨김/해제 토글
+  const toggleReviewHidden = async (reviewId: string, currentlyHidden: boolean) => {
+    try {
+      const adminUser = (await supabase.auth.getUser()).data.user
+      const { error } = await supabase
+        .from('agent_reviews')
+        .update({
+          is_hidden: !currentlyHidden,
+          hidden_at: !currentlyHidden ? new Date().toISOString() : null,
+          hidden_by: !currentlyHidden ? (adminUser?.id || null) : null,
+        })
+        .eq('id', reviewId)
+
+      if (error) {
+        showError('리뷰 숨김 처리에 실패했습니다: ' + error.message)
+      } else {
+        showSuccess(!currentlyHidden ? '리뷰가 숨김 처리되었습니다.' : '리뷰 숨김이 해제되었습니다.')
+        await loadReports()
+      }
+    } catch {
+      showError('리뷰 숨김 처리 중 오류가 발생했습니다.')
     }
   }
 
@@ -644,7 +723,7 @@ export default function Header() {
 
       if (error) {
         console.error('[배치] 저장 오류:', error)
-        alert('저장에 실패했습니다.')
+        showError('저장에 실패했습니다.')
         return
       }
       setEditingBatchJob(null)
@@ -654,13 +733,13 @@ export default function Header() {
       await loadBatchJobs()
     } catch (err) {
       console.error('[배치] 저장 예외:', err)
-      alert('저장 중 오류가 발생했습니다.')
+      showError('저장 중 오류가 발생했습니다.')
     }
   }
 
   const addBatchJob = async () => {
     if (!newBatchJob.job_name.trim() || !newBatchJob.cron_expression.trim()) {
-      alert('작업명과 Cron 표현식은 필수입니다.')
+      showWarning('작업명과 Cron 표현식은 필수입니다.')
       return
     }
     try {
@@ -677,7 +756,7 @@ export default function Header() {
 
       if (error) {
         console.error('[배치] 추가 오류:', error)
-        alert('추가에 실패했습니다.')
+        showError('추가에 실패했습니다.')
         return
       }
       setIsAddingBatchJob(false)
@@ -688,7 +767,7 @@ export default function Header() {
       await loadBatchJobs()
     } catch (err) {
       console.error('[배치] 추가 예외:', err)
-      alert('추가 중 오류가 발생했습니다.')
+      showError('추가 중 오류가 발생했습니다.')
     }
   }
 
@@ -702,7 +781,7 @@ export default function Header() {
 
       if (error) {
         console.error('[배치] 삭제 오류:', error)
-        alert('삭제에 실패했습니다.')
+        showError('삭제에 실패했습니다.')
         return
       }
       setSaveSuccessMessage('배치 작업이 삭제되었습니다.')
@@ -711,7 +790,7 @@ export default function Header() {
       await loadBatchJobs()
     } catch (err) {
       console.error('[배치] 삭제 예외:', err)
-      alert('삭제 중 오류가 발생했습니다.')
+      showError('삭제 중 오류가 발생했습니다.')
     }
   }
 
@@ -733,10 +812,28 @@ export default function Header() {
   }
 
   const runBatchJobManually = async (job: BatchJob) => {
-    if (!confirm(`"${job.job_name}" 배치를 수동 실행하시겠습니까?`)) return
+    // 이미 실행 중이면 무시
+    if (runningBatchJobId) return
+
+    showAlert(`"${job.job_name}" 배치를 수동 실행하시겠습니까?`, {
+      title: '배치 수동 실행',
+      icon: '⚙️',
+      onClose: () => { executeBatchJob(job) },
+    })
+  }
+
+  const executeBatchJob = async (job: BatchJob) => {
+    // 경과 시간 타이머 시작
+    setRunningBatchJobId(job.id)
+    setBatchRunElapsed(0)
+    const timerStart = Date.now()
+    const timer = setInterval(() => {
+      setBatchRunElapsed(Math.floor((Date.now() - timerStart) / 1000))
+    }, 1000)
+
     try {
       // 로그 기록 - RUNNING
-      const { data: logData, error: logError } = await supabase
+      const { data: logData } = await supabase
         .from('batch_job_logs')
         .insert({
           job_id: job.id,
@@ -773,9 +870,10 @@ export default function Header() {
             body: JSON.stringify({ job_id: job.id }),
           })
           const resultJson = await response.json().catch(() => null)
+          const elapsed = ((Date.now() - timerStart) / 1000).toFixed(1)
           const resultMessage = response.ok 
-            ? (resultJson?.message || '수동 실행 성공') 
-            : `실행 실패 (HTTP ${response.status})`
+            ? (resultJson?.message || `수동 실행 성공 (${elapsed}초)`) 
+            : `실행 실패 (HTTP ${response.status}, ${elapsed}초)`
           const resultStatus = response.ok ? 'SUCCESS' : 'FAILED'
 
           // 로그 완료 업데이트
@@ -800,14 +898,30 @@ export default function Header() {
             })
             .eq('id', job.id)
 
+          // 결과에 따라 다른 알림 표시
+          if (response.ok) {
+            const details = resultJson?.details
+            if (details) {
+              showSuccess(
+                `INSERT ${details.inserted || 0}건, UPDATE ${details.updated || 0}건, 오류 ${details.errors || 0}건\nAPI 호출 ${details.apiCalls || 0}회 (소요시간: ${details.elapsed || elapsed + 's'})`,
+                { title: '배치 실행 완료' }
+              )
+            } else {
+              showSuccess(resultMessage, { title: '배치 실행 완료' })
+            }
+          } else {
+            showError(`${resultMessage}\n${resultJson?.error || ''}`, { title: '배치 실행 실패' })
+          }
+
         } catch (fetchErr: any) {
+          const elapsed = ((Date.now() - timerStart) / 1000).toFixed(1)
           if (logData?.id) {
             await supabase
               .from('batch_job_logs')
               .update({
                 status: 'FAILED',
                 finished_at: new Date().toISOString(),
-                message: '실행 오류',
+                message: `실행 오류 (${elapsed}초)`,
                 error_detail: fetchErr?.message || '알 수 없는 오류',
               })
               .eq('id', logData.id)
@@ -816,10 +930,11 @@ export default function Header() {
             .from('batch_jobs')
             .update({
               last_status: 'FAILED',
-              last_message: fetchErr?.message || '실행 오류',
+              last_message: fetchErr?.message || `실행 오류 (${elapsed}초)`,
               updated_at: new Date().toISOString(),
             })
             .eq('id', job.id)
+          showError(`API 호출 중 오류가 발생했습니다.\n${fetchErr?.message || '알 수 없는 오류'}`, { title: '배치 실행 오류' })
         }
       } else {
         // endpoint 없으면 바로 성공 처리
@@ -841,15 +956,17 @@ export default function Header() {
             updated_at: new Date().toISOString(),
           })
           .eq('id', job.id)
+        showWarning('엔드포인트 URL이 설정되지 않았습니다.', { title: '배치 실행' })
       }
 
       await loadBatchJobs()
-      setSaveSuccessMessage('배치 실행이 완료되었습니다.')
-      setShowSaveSuccessToast(true)
-      setTimeout(() => setShowSaveSuccessToast(false), 2000)
     } catch (err) {
       console.error('[배치] 수동 실행 예외:', err)
-      alert('배치 실행 중 오류가 발생했습니다.')
+      showError('배치 실행 중 오류가 발생했습니다.')
+    } finally {
+      clearInterval(timer)
+      setRunningBatchJobId(null)
+      setBatchRunElapsed(0)
     }
   }
 
@@ -907,14 +1024,14 @@ export default function Header() {
         { data: monthlyReviews }
       ] = await Promise.all([
         supabase.from('users').select('*', { count: 'exact', head: true }),
-        supabase.from('agent_reviews').select('*', { count: 'exact', head: true }),
+        supabase.from('agent_reviews').select('*', { count: 'exact', head: true }).or('is_hidden.is.null,is_hidden.eq.false'),
         supabase.from('agent_master').select('*', { count: 'exact', head: true }),
-        supabase.from('agent_reviews').select('fee_satisfaction, expertise, kindness, property_reliability, response_speed'),
-        supabase.from('agent_reviews').select('praise_tags, regret_tags, transaction_tag, created_at'),
+        supabase.from('agent_reviews').select('fee_satisfaction, expertise, kindness, property_reliability, response_speed').or('is_hidden.is.null,is_hidden.eq.false'),
+        supabase.from('agent_reviews').select('praise_tags, regret_tags, transaction_tag, created_at').or('is_hidden.is.null,is_hidden.eq.false'),
         supabase.from('users').select('user_grade'),
         supabase.from('survey_responses').select('question_code, response_value'),
         supabase.from('common_code_detail').select('*').eq('code_group', 'SURVEY').eq('use_yn', 'Y').order('sort_order'),
-        supabase.from('agent_reviews').select('created_at').gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString())
+        supabase.from('agent_reviews').select('created_at').gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()).or('is_hidden.is.null,is_hidden.eq.false')
       ])
 
       // 평균 평점 계산
@@ -1087,7 +1204,7 @@ export default function Header() {
       setShowSaveSuccessToast(true)
       setTimeout(() => setShowSaveSuccessToast(false), 2000)
     } catch (error) {
-      alert('저장 중 오류가 발생했습니다.')
+      showError('저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -1246,7 +1363,7 @@ export default function Header() {
       // OAuth 리다이렉트가 발생하므로 모달은 자동으로 닫힘
     } catch (error) {
       console.error('카카오 로그인 오류:', error)
-      alert('카카오 로그인 중 오류가 발생했습니다.')
+      showError('카카오 로그인 중 오류가 발생했습니다.')
     }
   }
 
@@ -1257,7 +1374,7 @@ export default function Header() {
       // OAuth 리다이렉트가 발생하므로 모달은 자동으로 닫힘
     } catch (error) {
       console.error('구글 로그인 오류:', error)
-      alert('구글 로그인 중 오류가 발생했습니다.')
+      showError('구글 로그인 중 오류가 발생했습니다.')
     }
   }
 
@@ -1271,7 +1388,7 @@ export default function Header() {
     } catch (error) {
       console.error('로그아웃 오류:', error)
       // 오류 발생 시에만 알림
-      alert('로그아웃 중 오류가 발생했습니다.')
+      showError('로그아웃 중 오류가 발생했습니다.')
     }
   }
 
@@ -1381,7 +1498,7 @@ export default function Header() {
             setIsSidebarOpen(false)
             logAccess({ action: 'logout' })
           } catch (error) {
-            alert('로그아웃 중 오류가 발생했습니다.')
+            showError('로그아웃 중 오류가 발생했습니다.')
           }
         }}
       />
@@ -1750,7 +1867,7 @@ export default function Header() {
                   const formData = new FormData(e.currentTarget)
                   
                   if (!user) {
-                    alert('로그인이 필요합니다.')
+                    showWarning('로그인이 필요합니다.')
                     return
                   }
 
@@ -1772,14 +1889,14 @@ export default function Header() {
                     )
 
                     if (!error) {
-                      alert('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
+                      showSuccess('문의가 접수되었습니다.\n빠른 시일 내에 답변드리겠습니다.')
                       e.currentTarget.reset()
                       closePartnershipModal()
                     } else {
-                      alert('문의 접수 중 오류가 발생했습니다.')
+                      showError('문의 접수 중 오류가 발생했습니다.')
                     }
                   } catch (error: any) {
-                    alert('문의 접수 중 오류가 발생했습니다.')
+                    showError('문의 접수 중 오류가 발생했습니다.')
                   }
                 }}>
                   <div className={styles.formGroup}>
@@ -1945,7 +2062,7 @@ export default function Header() {
                   type="button"
                   onClick={() => {
                     // TODO: 알림설정 화면/모달 연결
-                    alert('알림설정 (목)')
+                    showAlert('알림설정 (목)')
                   }}
                 >
                   알림설정
@@ -1955,7 +2072,7 @@ export default function Header() {
                   type="button"
                   onClick={() => {
                     // TODO: 서비스 설정 화면/모달 연결
-                    alert('서비스 설정 (목)')
+                    showAlert('서비스 설정 (목)')
                   }}
                 >
                   서비스 설정
@@ -2058,7 +2175,7 @@ export default function Header() {
                 <button
                   className={styles.adminMenuItem}
                   type="button"
-                  onClick={() => alert('사용자 관리 (목)')}
+                  onClick={() => showAlert('사용자 관리 (목)')}
                 >
                   <span className={styles.adminMenuIcon}>👥</span>
                   <span className={styles.adminMenuLabel}>사용자 관리</span>
@@ -2066,7 +2183,7 @@ export default function Header() {
                 <button
                   className={styles.adminMenuItem}
                   type="button"
-                  onClick={() => alert('리뷰 관리 (목)')}
+                  onClick={() => showAlert('리뷰 관리 (목)')}
                 >
                   <span className={styles.adminMenuIcon}>📝</span>
                   <span className={styles.adminMenuLabel}>리뷰 관리</span>
@@ -2086,7 +2203,7 @@ export default function Header() {
                 <button
                   className={styles.adminMenuItem}
                   type="button"
-                  onClick={() => alert('통계 (목)')}
+                  onClick={() => showAlert('통계 (목)')}
                 >
                   <span className={styles.adminMenuIcon}>📊</span>
                   <span className={styles.adminMenuLabel}>통계</span>
@@ -3074,7 +3191,7 @@ export default function Header() {
                                       className={styles.batchEditInput}
                                       value={editingBatchJob.endpoint_url || ''}
                                       onChange={(e) => setEditingBatchJob({ ...editingBatchJob, endpoint_url: e.target.value })}
-                                      placeholder="https://..."
+                                      placeholder="예: /api/batch/sync-agents"
                                     />
                                   </div>
                                   <div className={styles.batchEditActions}>
@@ -3139,14 +3256,39 @@ export default function Header() {
                                     <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0' }}>{job.last_message}</p>
                                   )}
                                 </div>
+                                {runningBatchJobId === job.id && (
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px 12px',
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    borderRadius: '8px',
+                                    margin: '8px 0',
+                                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                                  }}>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      width: '14px',
+                                      height: '14px',
+                                      border: '2px solid rgba(59, 130, 246, 0.3)',
+                                      borderTopColor: '#3b82f6',
+                                      borderRadius: '50%',
+                                      animation: 'spin 1s linear infinite',
+                                    }} />
+                                    <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 600 }}>
+                                      API 실행 중... ({batchRunElapsed}초 경과)
+                                    </span>
+                                  </div>
+                                )}
                                 <div className={styles.adminBatchActions}>
                                   <button
                                     className={styles.adminBatchRunBtn}
                                     type="button"
                                     onClick={() => runBatchJobManually(job)}
-                                    disabled={job.last_status === 'RUNNING'}
+                                    disabled={job.last_status === 'RUNNING' || runningBatchJobId !== null}
                                   >
-                                    {job.last_status === 'RUNNING' ? '실행 중...' : '수동 실행'}
+                                    {runningBatchJobId === job.id ? `실행 중 (${batchRunElapsed}초)` : job.last_status === 'RUNNING' ? '실행 중...' : '수동 실행'}
                                   </button>
                                   <button
                                     className={styles.adminBatchLogBtn}
@@ -3316,7 +3458,7 @@ export default function Header() {
                                   className={styles.batchEditInput}
                                   value={newBatchJob.endpoint_url}
                                   onChange={(e) => setNewBatchJob({ ...newBatchJob, endpoint_url: e.target.value })}
-                                  placeholder="https://..."
+                                  placeholder="예: /api/batch/sync-agents"
                                 />
                               </div>
                               <div className={styles.batchEditActions}>
@@ -3365,148 +3507,200 @@ export default function Header() {
                     사용자가 접수한 광고/제휴 문의를 관리합니다.
                   </p>
 
-                  {/* 상태 필터 */}
-                  <div className={styles.adminFilters}>
-                    <select
-                      className={styles.adminSelect}
-                      value={partnershipStatusFilter}
-                      onChange={(e) => setPartnershipStatusFilter(e.target.value)}
-                    >
-                      <option value="">전체 상태</option>
-                      <option value="pending">대기중</option>
-                      <option value="in_progress">처리중</option>
-                      <option value="completed">완료</option>
-                      <option value="rejected">거절</option>
-                    </select>
+                  {/* 상태 필터 - pill 버튼 */}
+                  <div className={styles.partnerFilterBar}>
+                    {[
+                      { value: '', label: '전체' },
+                      { value: 'pending', label: '대기중' },
+                      { value: 'in_progress', label: '처리중' },
+                      { value: 'completed', label: '완료' },
+                      { value: 'rejected', label: '거절' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        className={`${styles.partnerFilterBtn} ${partnershipStatusFilter === opt.value ? styles.partnerFilterBtnActive : ''}`}
+                        onClick={() => setPartnershipStatusFilter(opt.value)}
+                      >
+                        {opt.label}
+                        <span className={styles.partnerFilterCount}>
+                          {opt.value === ''
+                            ? partnershipList.length
+                            : partnershipList.filter(i => i.status === opt.value).length}
+                        </span>
+                      </button>
+                    ))}
                   </div>
 
-                  {/* 문의 목록 */}
-                  <div className={styles.adminTableContainer}>
-                    {isPartnershipLoading ? (
-                      <div className={styles.adminLoadingOverlay}>로딩 중...</div>
-                    ) : (
-                      <table className={styles.adminTable}>
-                        <thead>
-                          <tr>
-                            <th>ID</th>
-                            <th>문의유형</th>
-                            <th>제목</th>
-                            <th>이름</th>
-                            <th>회사명</th>
-                            <th>연락처</th>
-                            <th>상태</th>
-                            <th>등록일</th>
-                            <th>관리</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {partnershipList
-                            .filter((item: any) => 
-                              partnershipStatusFilter === '' || item.status === partnershipStatusFilter
-                            )
-                            .map((inquiry: any) => (
-                            <tr key={inquiry.id}>
-                              <td>{inquiry.id}</td>
-                              <td>
-                                <span className={styles.typeBadge}>{inquiry.inquiry_type}</span>
-                              </td>
-                              <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {inquiry.title}
-                              </td>
-                              <td>{inquiry.user_name}</td>
-                              <td>{inquiry.company_name || '-'}</td>
-                              <td>{inquiry.contact_phone}</td>
-                              <td>
-                                <span className={`${styles.statusBadge} ${
-                                  inquiry.status === 'pending' ? styles.statusPending :
-                                  inquiry.status === 'in_progress' ? styles.statusInProgress :
-                                  inquiry.status === 'completed' ? styles.statusCompleted :
-                                  styles.statusRejected
-                                }`}>
-                                  {inquiry.status === 'pending' ? '대기중' :
-                                   inquiry.status === 'in_progress' ? '처리중' :
-                                   inquiry.status === 'completed' ? '완료' : '거절'}
-                                </span>
-                              </td>
-                              <td>{formatDate(inquiry.created_at)}</td>
-                              <td>
-                                <button
-                                  className={styles.adminTableBtn}
-                                  onClick={() => {
-                                    setSelectedInquiry(inquiry)
-                                    setReplyText(inquiry.admin_reply || '')
-                                  }}
-                                >
-                                  상세
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
+                  {/* 문의 카드 목록 */}
+                  {isPartnershipLoading ? (
+                    <div className={styles.partnerLoading}>
+                      <div className={styles.partnerSpinner} />
+                      <span>문의 목록을 불러오는 중...</span>
+                    </div>
+                  ) : (
+                    <div className={styles.partnerCardList}>
+                      {partnershipList
+                        .filter((item: any) =>
+                          partnershipStatusFilter === '' || item.status === partnershipStatusFilter
+                        )
+                        .map((inquiry: any) => (
+                          <div
+                            key={inquiry.id}
+                            className={`${styles.partnerCard} ${selectedInquiry?.id === inquiry.id ? styles.partnerCardSelected : ''}`}
+                            onClick={() => {
+                              setSelectedInquiry(inquiry)
+                              setReplyText(inquiry.admin_reply || '')
+                            }}
+                          >
+                            <div className={styles.partnerCardTop}>
+                              <span className={styles.typeBadge}>{inquiry.inquiry_type}</span>
+                              <span className={`${styles.statusBadge} ${
+                                inquiry.status === 'pending' ? styles.statusPending :
+                                inquiry.status === 'in_progress' ? styles.statusInProgress :
+                                inquiry.status === 'completed' ? styles.statusCompleted :
+                                styles.statusRejected
+                              }`}>
+                                {inquiry.status === 'pending' ? '대기중' :
+                                 inquiry.status === 'in_progress' ? '처리중' :
+                                 inquiry.status === 'completed' ? '완료' : '거절'}
+                              </span>
+                            </div>
+
+                            <h4 className={styles.partnerCardTitle}>{inquiry.title}</h4>
+
+                            <div className={styles.partnerCardMeta}>
+                              <div className={styles.partnerCardMetaRow}>
+                                <span className={styles.partnerCardIcon}>👤</span>
+                                <span>{inquiry.user_name || '-'}</span>
+                                {inquiry.company_name && (
+                                  <>
+                                    <span className={styles.partnerCardDivider}>·</span>
+                                    <span>{inquiry.company_name}</span>
+                                  </>
+                                )}
+                              </div>
+                              <div className={styles.partnerCardMetaRow}>
+                                <span className={styles.partnerCardIcon}>📞</span>
+                                <span>{inquiry.contact_phone || '-'}</span>
+                                <span className={styles.partnerCardDivider}>·</span>
+                                <span className={styles.partnerCardIcon}>📅</span>
+                                <span>{formatDate(inquiry.created_at)}</span>
+                              </div>
+                            </div>
+
+                            {inquiry.content && (
+                              <p className={styles.partnerCardPreview}>
+                                {inquiry.content.length > 80 ? inquiry.content.slice(0, 80) + '...' : inquiry.content}
+                              </p>
+                            )}
+
+                            {inquiry.admin_reply && (
+                              <div className={styles.partnerCardReply}>
+                                <span className={styles.partnerCardReplyIcon}>💬</span>
+                                <span>답변 완료</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                      {partnershipList.filter((item: any) =>
+                        partnershipStatusFilter === '' || item.status === partnershipStatusFilter
+                      ).length === 0 && (
+                        <div className={styles.partnerEmpty}>
+                          <div className={styles.partnerEmptyIcon}>📭</div>
+                          <p>문의 내역이 없습니다.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* 문의 상세 모달 */}
                   {selectedInquiry && (
                     <div className={styles.overlay} onClick={() => setSelectedInquiry(null)}>
-                      <div className={styles.adminModal} onClick={(e) => e.stopPropagation()}>
-                        <div className={styles.adminModalHeader}>
-                          <h3>문의 상세</h3>
+                      <div className={styles.partnerDetailModal} onClick={(e) => e.stopPropagation()}>
+                        {/* 헤더 */}
+                        <div className={styles.partnerDetailHeader}>
+                          <div className={styles.partnerDetailHeaderLeft}>
+                            <span className={styles.typeBadge}>{selectedInquiry.inquiry_type}</span>
+                            <span className={`${styles.statusBadge} ${
+                              selectedInquiry.status === 'pending' ? styles.statusPending :
+                              selectedInquiry.status === 'in_progress' ? styles.statusInProgress :
+                              selectedInquiry.status === 'completed' ? styles.statusCompleted :
+                              styles.statusRejected
+                            }`}>
+                              {selectedInquiry.status === 'pending' ? '대기중' :
+                               selectedInquiry.status === 'in_progress' ? '처리중' :
+                               selectedInquiry.status === 'completed' ? '완료' : '거절'}
+                            </span>
+                          </div>
                           <button
-                            className={styles.modalCloseBtn}
+                            className={styles.partnerDetailClose}
                             onClick={() => setSelectedInquiry(null)}
                           >
-                            ×
+                            ✕
                           </button>
                         </div>
-                        <div className={styles.adminModalBody}>
-                          <div className={styles.inquiryDetail}>
-                            <div className={styles.inquiryField}>
-                              <label>문의 유형</label>
-                              <span>{selectedInquiry.inquiry_type}</span>
+
+                        {/* 제목 */}
+                        <div className={styles.partnerDetailTitle}>
+                          <h3>{selectedInquiry.title}</h3>
+                          <span className={styles.partnerDetailDate}>
+                            {new Date(selectedInquiry.created_at).toLocaleDateString('ko-KR')} {new Date(selectedInquiry.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* 본문 스크롤 영역 */}
+                        <div className={styles.partnerDetailBody}>
+                          {/* 문의자 정보 카드 */}
+                          <div className={styles.partnerInfoCard}>
+                            <div className={styles.partnerInfoCardTitle}>문의자 정보</div>
+                            <div className={styles.partnerInfoGrid}>
+                              <div className={styles.partnerInfoItem}>
+                                <span className={styles.partnerInfoLabel}>이름</span>
+                                <span className={styles.partnerInfoValue}>{selectedInquiry.user_name || '-'}</span>
+                              </div>
+                              <div className={styles.partnerInfoItem}>
+                                <span className={styles.partnerInfoLabel}>이메일</span>
+                                <span className={styles.partnerInfoValue}>{selectedInquiry.user_email || '-'}</span>
+                              </div>
+                              <div className={styles.partnerInfoItem}>
+                                <span className={styles.partnerInfoLabel}>회사명</span>
+                                <span className={styles.partnerInfoValue}>{selectedInquiry.company_name || '-'}</span>
+                              </div>
+                              <div className={styles.partnerInfoItem}>
+                                <span className={styles.partnerInfoLabel}>연락처</span>
+                                <span className={styles.partnerInfoValue}>{selectedInquiry.contact_phone || '-'}</span>
+                              </div>
                             </div>
-                            <div className={styles.inquiryField}>
-                              <label>제목</label>
-                              <span>{selectedInquiry.title}</span>
+                          </div>
+
+                          {/* 문의 내용 */}
+                          <div className={styles.partnerInfoCard}>
+                            <div className={styles.partnerInfoCardTitle}>문의 내용</div>
+                            <p className={styles.partnerContentText}>{selectedInquiry.content}</p>
+                          </div>
+
+                          {/* 처리 영역 */}
+                          <div className={styles.partnerInfoCard}>
+                            <div className={styles.partnerInfoCardTitle}>처리</div>
+                            <div className={styles.partnerProcessRow}>
+                              <label className={styles.partnerProcessLabel}>상태 변경</label>
+                              <div className={styles.partnerStatusSelect}>
+                                {['pending', 'in_progress', 'completed', 'rejected'].map((st) => (
+                                  <button
+                                    key={st}
+                                    className={`${styles.partnerStatusOption} ${selectedInquiry.status === st ? styles.partnerStatusOptionActive : ''}`}
+                                    onClick={() => setSelectedInquiry({...selectedInquiry, status: st})}
+                                  >
+                                    {st === 'pending' ? '대기중' : st === 'in_progress' ? '처리중' : st === 'completed' ? '완료' : '거절'}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                            <div className={styles.inquiryField}>
-                              <label>이름</label>
-                              <span>{selectedInquiry.user_name}</span>
-                            </div>
-                            <div className={styles.inquiryField}>
-                              <label>이메일</label>
-                              <span>{selectedInquiry.user_email}</span>
-                            </div>
-                            <div className={styles.inquiryField}>
-                              <label>회사명</label>
-                              <span>{selectedInquiry.company_name || '-'}</span>
-                            </div>
-                            <div className={styles.inquiryField}>
-                              <label>연락처</label>
-                              <span>{selectedInquiry.contact_phone}</span>
-                            </div>
-                            <div className={styles.inquiryField}>
-                              <label>문의 내용</label>
-                              <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{selectedInquiry.content}</p>
-                            </div>
-                            <div className={styles.inquiryField}>
-                              <label>상태</label>
-                              <select
-                                className={styles.adminSelect}
-                                value={selectedInquiry.status}
-                                onChange={(e) => setSelectedInquiry({...selectedInquiry, status: e.target.value})}
-                              >
-                                <option value="pending">대기중</option>
-                                <option value="in_progress">처리중</option>
-                                <option value="completed">완료</option>
-                                <option value="rejected">거절</option>
-                              </select>
-                            </div>
-                            <div className={styles.inquiryField}>
-                              <label>관리자 답변</label>
+                            <div className={styles.partnerProcessRow}>
+                              <label className={styles.partnerProcessLabel}>관리자 답변</label>
                               <textarea
-                                className={styles.adminTextarea}
+                                className={styles.partnerReplyTextarea}
                                 rows={4}
                                 value={replyText}
                                 onChange={(e) => setReplyText(e.target.value)}
@@ -3515,15 +3709,17 @@ export default function Header() {
                             </div>
                           </div>
                         </div>
-                        <div className={styles.adminModalFooter}>
+
+                        {/* 하단 버튼 */}
+                        <div className={styles.partnerDetailFooter}>
                           <button
-                            className={styles.adminBtnSecondary}
+                            className={styles.partnerBtnCancel}
                             onClick={() => setSelectedInquiry(null)}
                           >
                             취소
                           </button>
                           <button
-                            className={styles.adminBtnPrimary}
+                            className={styles.partnerBtnSave}
                             onClick={() => updateInquiryStatus(selectedInquiry.id, selectedInquiry.status, replyText)}
                           >
                             저장
@@ -3748,43 +3944,26 @@ export default function Header() {
 
                     {/* 월별 리뷰 추이 */}
                     <div className={styles.analyticsPanel}>
-                      <h3 className={styles.analyticsPanelTitle}>📈 월별 리뷰 추이</h3>
+                      <h3 className={styles.analyticsPanelTitle}>📈 월별 리뷰 추이 (최근 6개월)</h3>
                       <div className={styles.monthlyTrend}>
-                        <div className={styles.trendRow}>
-                          <span className={styles.trendMonth}>2025.01</span>
-                          <div className={styles.trendBarWrap}>
-                            <div className={styles.trendBar} style={{ width: '100%' }}></div>
-                          </div>
-                          <span className={styles.trendValue}>542</span>
-                        </div>
-                        <div className={styles.trendRow}>
-                          <span className={styles.trendMonth}>2024.12</span>
-                          <div className={styles.trendBarWrap}>
-                            <div className={styles.trendBar} style={{ width: '89%' }}></div>
-                          </div>
-                          <span className={styles.trendValue}>482</span>
-                        </div>
-                        <div className={styles.trendRow}>
-                          <span className={styles.trendMonth}>2024.11</span>
-                          <div className={styles.trendBarWrap}>
-                            <div className={styles.trendBar} style={{ width: '76%' }}></div>
-                          </div>
-                          <span className={styles.trendValue}>412</span>
-                        </div>
-                        <div className={styles.trendRow}>
-                          <span className={styles.trendMonth}>2024.10</span>
-                          <div className={styles.trendBarWrap}>
-                            <div className={styles.trendBar} style={{ width: '82%' }}></div>
-                          </div>
-                          <span className={styles.trendValue}>445</span>
-                        </div>
-                        <div className={styles.trendRow}>
-                          <span className={styles.trendMonth}>2024.09</span>
-                          <div className={styles.trendBarWrap}>
-                            <div className={styles.trendBar} style={{ width: '68%' }}></div>
-                          </div>
-                          <span className={styles.trendValue}>369</span>
-                        </div>
+                        {analyticsData.monthlyTrend && analyticsData.monthlyTrend.length > 0 ? (
+                          (() => {
+                            const maxCount = Math.max(...analyticsData.monthlyTrend.map((t: any) => t.count), 1)
+                            // 시간순 정렬 (오래된 → 최신)
+                            const sorted = [...analyticsData.monthlyTrend].sort((a: any, b: any) => a.month.localeCompare(b.month))
+                            return sorted.map((trend: any) => (
+                              <div key={trend.month} className={styles.trendRow}>
+                                <span className={styles.trendMonth}>{trend.month}</span>
+                                <div className={styles.trendBarWrap}>
+                                  <div className={styles.trendBar} style={{ width: `${(trend.count / maxCount) * 100}%` }}></div>
+                                </div>
+                                <span className={styles.trendValue}>{trend.count}건</span>
+                              </div>
+                            ))
+                          })()
+                        ) : (
+                          <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px', padding: '20px 0' }}>최근 6개월간 리뷰 데이터가 없습니다.</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3799,178 +3978,218 @@ export default function Header() {
                     사용자가 신고한 리뷰를 확인하고 처리 상태를 관리합니다.
                   </p>
 
-                  {/* 상태 필터 */}
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  {/* 상태 필터 - pill 버튼 */}
+                  <div className={styles.partnerFilterBar}>
                     {['ALL', 'RECEIVED', 'PROCESSING', 'COMPLETED', 'DISMISSED'].map((st) => (
                       <button
                         key={st}
+                        className={`${styles.partnerFilterBtn} ${reportStatusFilter === st ? styles.partnerFilterBtnActive : ''}`}
                         onClick={() => setReportStatusFilter(st)}
-                        style={{
-                          padding: '6px 14px',
-                          borderRadius: '20px',
-                          border: reportStatusFilter === st ? '2px solid #7c3aed' : '1px solid #e2e8f0',
-                          background: reportStatusFilter === st ? '#7c3aed' : '#fff',
-                          color: reportStatusFilter === st ? '#fff' : '#475569',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
                       >
                         {st === 'ALL' ? '전체' : getReportStatusLabel(st)}
+                        <span className={styles.partnerFilterCount}>
+                          {st === 'ALL'
+                            ? reports.length
+                            : reports.filter(r => r.status === st).length}
+                        </span>
                       </button>
                     ))}
                   </div>
 
                   {isReportsLoading ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>로딩 중...</div>
+                    <div className={styles.partnerLoading}>
+                      <div className={styles.partnerSpinner} />
+                      <span>신고 목록을 불러오는 중...</span>
+                    </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className={styles.reportCardList}>
                       {reports
                         .filter((r) => reportStatusFilter === 'ALL' || r.status === reportStatusFilter)
-                        .map((report) => (
-                          <div
-                            key={report.id}
-                            style={{
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '12px',
-                              padding: '16px',
-                              background: '#fff',
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                              <span
-                                style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '12px',
-                                  fontWeight: 700,
-                                  ...getReportStatusStyle(report.status),
-                                }}
-                              >
-                                {getReportStatusLabel(report.status)}
-                              </span>
-                              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                {new Date(report.created_at).toLocaleDateString('ko-KR')} {new Date(report.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
+                        .map((report) => {
+                          const review = report.review
+                          const agent = review?.agent
+                          const ratings = [review?.fee_satisfaction, review?.expertise, review?.kindness, review?.property_reliability, review?.response_speed].filter((r): r is number => r != null)
+                          const avgRating = ratings.length > 0 ? (ratings.reduce((s, r) => s + r, 0) / ratings.length) : null
 
-                            <div style={{ display: 'grid', gap: '6px', fontSize: '13px', marginBottom: '10px' }}>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>신고 사유:</span>
-                                <span style={{ color: '#1e293b' }}>{getReportReasonLabel(report.reason)}</span>
+                          return (
+                            <div key={report.id} className={styles.reportCard}>
+                              {/* 카드 헤더: 상태 + 날짜 */}
+                              <div className={styles.reportCardHeader}>
+                                <span
+                                  className={styles.statusBadge}
+                                  style={getReportStatusStyle(report.status)}
+                                >
+                                  {getReportStatusLabel(report.status)}
+                                </span>
+                                <span className={styles.reportCardDate}>
+                                  {new Date(report.created_at).toLocaleDateString('ko-KR')} {new Date(report.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
                               </div>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>상세 내용:</span>
-                                <span style={{ color: '#1e293b', wordBreak: 'break-word' }}>{report.detail || '-'}</span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>신고자:</span>
-                                <span style={{ color: '#1e293b' }}>{report.reporter?.nickname || report.reporter?.email || report.reporter_user_id.slice(0, 8)}</span>
-                              </div>
-                              {report.review?.review_text && (
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                  <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>리뷰 내용:</span>
-                                  <span style={{ color: '#1e293b', wordBreak: 'break-word' }}>
-                                    {report.review.review_text.length > 100 ? report.review.review_text.slice(0, 100) + '...' : report.review.review_text}
+
+                              {/* 숨김 상태 배지 */}
+                              {review?.is_hidden && (
+                                <div className={styles.reportHiddenBadge}>
+                                  <span>🚫</span> 이 리뷰는 숨김 처리되었습니다
+                                </div>
+                              )}
+
+                              {/* 부동산 정보 섹션 */}
+                              {agent && (
+                                <div className={styles.reportAgentCard}>
+                                  <div className={styles.reportAgentIcon}>🏢</div>
+                                  <div className={styles.reportAgentInfo}>
+                                    <span className={styles.reportAgentName}>{agent.agent_name || '알 수 없음'}</span>
+                                    <span className={styles.reportAgentAddr}>{agent.road_address || '-'}</span>
+                                    {agent.agent_number && (
+                                      <span className={styles.reportAgentNum}>등록번호: {agent.agent_number}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 리뷰 정보 섹션 */}
+                              {review && (
+                                <div className={styles.reportReviewCard}>
+                                  <div className={styles.reportReviewHeader}>
+                                    <span className={styles.reportReviewLabel}>📝 신고된 리뷰</span>
+                                    {avgRating !== null && (
+                                      <span className={styles.reportReviewRating}>
+                                        {'★'.repeat(Math.round(avgRating))}{'☆'.repeat(5 - Math.round(avgRating))}
+                                        <span className={styles.reportReviewRatingNum}>{avgRating.toFixed(1)}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  {review.transaction_tag && (
+                                    <div className={styles.reportReviewTags}>
+                                      <span className={styles.reportTransactionTag}>{review.transaction_tag}</span>
+                                      {review.contract_date && (
+                                        <span className={styles.reportContractDate}>계약일: {review.contract_date}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {review.review_text && (
+                                    <p className={styles.reportReviewText}>
+                                      {review.review_text.length > 150 ? review.review_text.slice(0, 150) + '...' : review.review_text}
+                                    </p>
+                                  )}
+                                  {/* 상세 평가 바 */}
+                                  {ratings.length > 0 && (
+                                    <div className={styles.reportRatingBars}>
+                                      {[
+                                        { label: '수수료', val: review.fee_satisfaction },
+                                        { label: '전문성', val: review.expertise },
+                                        { label: '친절도', val: review.kindness },
+                                        { label: '매물신뢰', val: review.property_reliability },
+                                        { label: '응답속도', val: review.response_speed },
+                                      ].filter(r => r.val != null).map((item) => (
+                                        <div key={item.label} className={styles.reportRatingBarRow}>
+                                          <span className={styles.reportRatingBarLabel}>{item.label}</span>
+                                          <div className={styles.reportRatingBarTrack}>
+                                            <div className={styles.reportRatingBarFill} style={{ width: `${((item.val || 0) / 5) * 100}%` }} />
+                                          </div>
+                                          <span className={styles.reportRatingBarValue}>{item.val}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* 태그 표시 */}
+                                  {(review.praise_tags?.length || review.regret_tags?.length) ? (
+                                    <div className={styles.reportTagsRow}>
+                                      {review.praise_tags?.map((tag, i) => (
+                                        <span key={`p-${i}`} className={styles.reportPraiseTag}>👍 {tag}</span>
+                                      ))}
+                                      {review.regret_tags?.map((tag, i) => (
+                                        <span key={`r-${i}`} className={styles.reportRegretTag}>👎 {tag}</span>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
+
+                              {/* 신고 사유 섹션 */}
+                              <div className={styles.reportReasonCard}>
+                                <div className={styles.reportReasonRow}>
+                                  <span className={styles.reportReasonLabel}>🚨 신고 사유</span>
+                                  <span className={styles.reportReasonValue}>{getReportReasonLabel(report.reason)}</span>
+                                </div>
+                                {report.detail && (
+                                  <p className={styles.reportReasonDetail}>{report.detail}</p>
+                                )}
+                                <div className={styles.reportReasonRow}>
+                                  <span className={styles.reportReasonLabel}>👤 신고자</span>
+                                  <span className={styles.reportReasonValue}>
+                                    {report.reporter?.nickname || report.reporter?.email || report.reporter_user_id.slice(0, 8)}
                                   </span>
                                 </div>
-                              )}
+                              </div>
+
+                              {/* 관리자 메모 */}
                               {report.admin_note && (
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                  <span style={{ color: '#64748b', fontWeight: 600, minWidth: '70px' }}>관리자 메모:</span>
-                                  <span style={{ color: '#1e293b', wordBreak: 'break-word' }}>{report.admin_note}</span>
+                                <div className={styles.reportAdminNote}>
+                                  <span className={styles.reportAdminNoteLabel}>💬 관리자 메모</span>
+                                  <p className={styles.reportAdminNoteText}>{report.admin_note}</p>
+                                </div>
+                              )}
+
+                              {/* 상태 변경 영역 */}
+                              {editingReport?.id === report.id ? (
+                                <div className={styles.reportEditArea}>
+                                  <div className={styles.partnerStatusSelect}>
+                                    {['RECEIVED', 'PROCESSING', 'COMPLETED', 'DISMISSED'].map((st) => (
+                                      <button
+                                        key={st}
+                                        className={`${styles.partnerStatusOption} ${editReportStatus === st ? styles.partnerStatusOptionActive : ''}`}
+                                        onClick={() => setEditReportStatus(st)}
+                                      >
+                                        {getReportStatusLabel(st)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    className={styles.partnerReplyTextarea}
+                                    value={editReportNote}
+                                    onChange={(e) => setEditReportNote(e.target.value)}
+                                    placeholder="관리자 메모 (선택)"
+                                    rows={3}
+                                  />
+                                  <div className={styles.reportEditBtnRow}>
+                                    <button className={styles.partnerBtnCancel} onClick={() => setEditingReport(null)}>
+                                      취소
+                                    </button>
+                                    <button className={styles.partnerBtnSave} onClick={() => updateReportStatus(report.id, editReportStatus, editReportNote)}>
+                                      저장
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={styles.reportBtnGroup}>
+                                  <button
+                                    className={styles.reportActionBtn}
+                                    onClick={() => {
+                                      setEditingReport(report)
+                                      setEditReportStatus(report.status)
+                                      setEditReportNote(report.admin_note || '')
+                                    }}
+                                  >
+                                    상태 변경
+                                  </button>
+                                  {review?.id && (
+                                    <button
+                                      className={`${styles.reportHideBtn} ${review.is_hidden ? styles.reportHideBtnActive : ''}`}
+                                      onClick={() => toggleReviewHidden(review.id, !!review.is_hidden)}
+                                    >
+                                      {review.is_hidden ? '🔓 숨김 해제' : '🚫 리뷰 숨김'}
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
-
-                            {editingReport?.id === report.id ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-                                <select
-                                  value={editReportStatus}
-                                  onChange={(e) => setEditReportStatus(e.target.value)}
-                                  style={{
-                                    padding: '8px 12px',
-                                    border: '1px solid #e2e8f0',
-                                    borderRadius: '8px',
-                                    fontSize: '13px',
-                                  }}
-                                >
-                                  <option value="RECEIVED">접수</option>
-                                  <option value="PROCESSING">처리중</option>
-                                  <option value="COMPLETED">처리완료</option>
-                                  <option value="DISMISSED">기각</option>
-                                </select>
-                                <textarea
-                                  value={editReportNote}
-                                  onChange={(e) => setEditReportNote(e.target.value)}
-                                  placeholder="관리자 메모 (선택)"
-                                  style={{
-                                    padding: '8px 12px',
-                                    border: '1px solid #e2e8f0',
-                                    borderRadius: '8px',
-                                    fontSize: '13px',
-                                    resize: 'vertical',
-                                    minHeight: '60px',
-                                  }}
-                                />
-                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                  <button
-                                    onClick={() => setEditingReport(null)}
-                                    style={{
-                                      padding: '6px 14px',
-                                      border: '1px solid #e2e8f0',
-                                      borderRadius: '8px',
-                                      background: '#fff',
-                                      fontSize: '13px',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    취소
-                                  </button>
-                                  <button
-                                    onClick={() => updateReportStatus(report.id, editReportStatus, editReportNote)}
-                                    style={{
-                                      padding: '6px 14px',
-                                      border: 'none',
-                                      borderRadius: '8px',
-                                      background: '#7c3aed',
-                                      color: '#fff',
-                                      fontSize: '13px',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    저장
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setEditingReport(report)
-                                  setEditReportStatus(report.status)
-                                  setEditReportNote(report.admin_note || '')
-                                }}
-                                style={{
-                                  padding: '6px 14px',
-                                  border: '1px solid #e2e8f0',
-                                  borderRadius: '8px',
-                                  background: '#f8fafc',
-                                  fontSize: '13px',
-                                  fontWeight: 600,
-                                  color: '#475569',
-                                  cursor: 'pointer',
-                                  width: '100%',
-                                }}
-                              >
-                                상태 변경
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                          )
+                        })}
                       {reports.filter((r) => reportStatusFilter === 'ALL' || r.status === reportStatusFilter).length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontSize: '14px' }}>
-                          신고 내역이 없습니다.
+                        <div className={styles.partnerEmpty}>
+                          <div className={styles.partnerEmptyIcon}>🔍</div>
+                          <p>신고 내역이 없습니다.</p>
                         </div>
                       )}
                     </div>
@@ -4051,7 +4270,7 @@ export default function Header() {
                                 .eq('code_value', 'ADVERTISEMENT_VISIBLE')
 
                               if (error) {
-                                alert('설정 저장에 실패했습니다: ' + error.message)
+                                showError('설정 저장에 실패했습니다: ' + error.message)
                               } else {
                                 setSaveSuccessMessage('광고 노출 설정이 저장되었습니다.')
                                 setShowSaveSuccessToast(true)
@@ -4061,7 +4280,7 @@ export default function Header() {
                                 window.dispatchEvent(new Event('visibility:changed'))
                               }
                             } catch (error) {
-                              alert('설정 저장 중 오류가 발생했습니다.')
+                              showError('설정 저장 중 오류가 발생했습니다.')
                             }
                           }}
                         >
@@ -4130,7 +4349,7 @@ export default function Header() {
                                 .eq('code_value', 'SURVEY_VISIBLE')
 
                               if (error) {
-                                alert('설정 저장에 실패했습니다: ' + error.message)
+                                showError('설정 저장에 실패했습니다: ' + error.message)
                               } else {
                                 setSaveSuccessMessage('서베이 노출 설정이 저장되었습니다.')
                                 setShowSaveSuccessToast(true)
@@ -4140,7 +4359,7 @@ export default function Header() {
                                 window.dispatchEvent(new Event('visibility:changed'))
                               }
                             } catch (error) {
-                              alert('설정 저장 중 오류가 발생했습니다.')
+                              showError('설정 저장 중 오류가 발생했습니다.')
                             }
                           }}
                         >
@@ -4626,6 +4845,67 @@ export default function Header() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 배치 실행 중 풀스크린 오버레이 */}
+      {runningBatchJobId !== null && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 100000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '20px',
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '40px 48px',
+            textAlign: 'center',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            maxWidth: '360px',
+            width: '90%',
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              border: '4px solid #e2e8f0',
+              borderTopColor: '#3b82f6',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 20px',
+            }} />
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>
+              배치 실행 중
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '14px', color: '#64748b' }}>
+              API를 호출하고 있습니다. 잠시만 기다려주세요.
+            </p>
+            <div style={{
+              display: 'inline-block',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '8px 20px',
+              fontSize: '20px',
+              fontWeight: 700,
+              color: '#2563eb',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {Math.floor(batchRunElapsed / 60) > 0 && `${Math.floor(batchRunElapsed / 60)}분 `}{batchRunElapsed % 60}초
+            </div>
+            <p style={{ margin: '12px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+              화면을 닫지 마세요
+            </p>
           </div>
         </div>
       )}

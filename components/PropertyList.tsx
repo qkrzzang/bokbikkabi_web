@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import PropertyDetailModal from './PropertyDetailModal'
 import styles from './PropertyList.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAlert } from '@/contexts/AlertContext'
 
 interface Property {
   id: string
@@ -239,6 +240,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
   const [hasSearched, setHasSearched] = useState(false) // 검색 실행 여부 추적
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const { showError } = useAlert()
 
   // 관심 부동산에서 클릭 시 상세 모달 열기
   // ID로 부동산 상세 정보 로드 (관심 부동산에서 호출)
@@ -253,7 +255,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
 
       if (agentError || !agentData) {
         console.error('[관심 부동산] 부동산 정보 조회 오류:', agentError)
-        alert('부동산 정보를 불러올 수 없습니다.')
+        showError('부동산 정보를 불러올 수 없습니다.')
         return
       }
 
@@ -269,7 +271,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
       await handlePropertyClick(property)
     } catch (error) {
       console.error('[관심 부동산] 오류:', error)
-      alert('부동산 정보를 불러오는 중 오류가 발생했습니다.')
+      showError('부동산 정보를 불러오는 중 오류가 발생했습니다.')
     }
   }
 
@@ -304,6 +306,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
           user:users!supabase_user_id(email, user_grade)
         `)
         .eq('agent_id', parseInt(property.id))
+        .or('is_hidden.is.null,is_hidden.eq.false')
         .order('created_at', { ascending: false })
 
       // 리뷰가 없어도 팝업 표시 (빈 리뷰로)
@@ -428,7 +431,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
       setIsModalOpen(true)
     } catch (error) {
       console.error('[상세 정보] 조회 오류:', error)
-      alert('부동산 정보를 불러오는 중 오류가 발생했습니다.')
+      showError('부동산 정보를 불러오는 중 오류가 발생했습니다.')
     }
   }
 
@@ -500,6 +503,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
               .from('agent_reviews')
               .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
               .in('agent_id', agentIds)
+              .or('is_hidden.is.null,is_hidden.eq.false')
             
             if (!reviewsError && reviewsData) {
               // 각 중개사무소별 평균 별점 계산

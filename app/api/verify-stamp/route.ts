@@ -64,37 +64,39 @@ export async function POST(request: Request) {
       }
     }
 
-    // Gemini 2.5 Flash API 호출
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`
+   // 1. 엔드포인트를 v1beta로 설정 (기능 지원이 가장 확실합니다)
+   // 1. URL 수정: 모델명 뒤에 :generateContent가 붙는 구조 확인
+const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`
 
-    const response = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
+const response = await fetch(geminiUrl, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    contents: [
+      {
+        parts: [
           {
-            parts: [
-              {
-                text: PROMPT + '\n\n이 부동산 계약서 이미지에서 개업공인중개사의 도장(인장)이 있는지 확인해주세요.',
-              },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: base64Data,
-                },
-              },
-            ],
+            text: PROMPT + '\n\n이 부동산 계약서 이미지에서 개업공인중개사의 도장(인장)이 있는지 확인해주세요.',
+          },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Data.replace(/^data:image\/\w+;base64,/, ""),
+            },
           },
         ],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 200,
-          responseMimeType: 'application/json',
-        },
-      }),
-    })
+      },
+    ],
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: 500,
+      // response_mime_type 대신 responseMimeType (v1beta fetch 기준)
+      responseMimeType: "application/json" 
+    },
+  }),
+})
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))

@@ -1,16 +1,20 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { AlertProvider } from '@/contexts/AlertContext'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 import './globals.css'
 
+export const viewport: Viewport = {
+  themeColor: '#F5A623',
+}
+
 export const metadata: Metadata = {
   title: '복비까비 - 부동산 평가',
   description: '부동산 정보를 검색하고 평가해보세요',
   manifest: '/manifest.json',
-  themeColor: '#F5A623',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -49,10 +53,12 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning>
         <AuthProvider>
-          <Header />
-          {children}
-          <Footer />
-          <PWAInstallPrompt />
+          <AlertProvider>
+            <Header />
+            {children}
+            <Footer />
+            <PWAInstallPrompt />
+          </AlertProvider>
         </AuthProvider>
         {/* 실제 모바일 뷰포트 높이 계산 */}
         <Script
