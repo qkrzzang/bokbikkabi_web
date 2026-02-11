@@ -1,0 +1,24 @@
+{
+  "name": "복비까비 - 부동산 평가",
+  "short_name": "복비까비",
+  "description": "부동산 정보를 검색하고 평가해보세요",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#F5A623",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/bokbikkabi_icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/bokbikkabi_icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
