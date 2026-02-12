@@ -150,9 +150,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
+    // ===== 세션 유지 전략 =====
+
+    // 1) 탭 전환(visibility change) 시 세션 자동 복구
+    //    사용자가 탭을 떠났다가 돌아올 때 세션이 만료되었으면 자동 갱신
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && mounted) {
+        try {
+          const { data: { session: currentSession } } = await supabase.auth.getSession()
+          if (currentSession) {
+            // 토큰 만료가 임박하면(5분 이내) 미리 갱신
+            const expiresAt = currentSession.expires_at
+            const now = Math.floor(Date.now() / 1000)
+            if (expiresAt && expiresAt - now < 300) {
+              console.log('[AuthContext] 토큰 만료 임박, 갱신 시도...')
+              const { data } = await supabase.auth.refreshSession()
+              if (data.session) {
+                setSession(data.session)
+                setUser(data.session.user)
+              }
+            } else {
+              setSession(currentSession)
+              setUser(currentSession.user)
+            }
+          }
+        } catch (error: any) {
+          if (error?.name === 'AbortError') return
+          console.error('[AuthContext] 탭 복귀 시 세션 확인 오류:', error)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // 2) 주기적 heartbeat (4분마다)
+    //    Supabase JWT 기본 만료 3600초(1시간), 미리미리 갱신하여 끊김 방지
+    const heartbeatInterval = setInterval(async () => {
+      if (!mounted || document.visibilityState === 'hidden') return
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession()
+        if (currentSession) {
+          const expiresAt = currentSession.expires_at
+          const now = Math.floor(Date.now() / 1000)
+          // 만료 10분 전이면 갱신
+          if (expiresAt && expiresAt - now < 600) {
+            console.log('[AuthContext] Heartbeat: 토큰 갱신')
+            await supabase.auth.refreshSession()
+          }
+        }
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return
+        // 네트워크 오류 등은 무시 (다음 heartbeat에서 재시도)
+      }
+    }, 4 * 60 * 1000) // 4분
+
+    // 3) 온라인 복귀 시 즉시 세션 확인
+    const handleOnline = async () => {
+      if (!mounted) return
+      console.log('[AuthContext] 네트워크 복귀, 세션 확인...')
+      try {
+        const { data } = await supabase.auth.refreshSession()
+        if (data.session) {
+          setSession(data.session)
+          setUser(data.session.user)
+        }
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return
+        console.error('[AuthContext] 네트워크 복귀 시 세션 갱신 오류:', error)
+      }
+    }
+    window.addEventListener('online', handleOnline)
+
     return () => {
       mounted = false
       subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(heartbeatInterval)
+      window.removeEventListener('online', handleOnline)
     }
   }, [])
 

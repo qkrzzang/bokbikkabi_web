@@ -1,20 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const key = serviceKey || anonKey
-  if (!url || !key) {
-    throw new Error('Supabase URL 또는 API Key가 설정되지 않았습니다.')
-  }
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
 
 /**
  * Cron 트리거 API
@@ -37,6 +24,7 @@ export async function GET(request: Request) {
     }
 
     const db = getSupabaseAdmin()
+
 
     // 활성화된 배치 작업 조회
     const { data: jobs, error } = await db

@@ -1,23 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 최대 5분 (Vercel Pro 기준)
 
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  // Service Role Key가 있으면 사용, 없으면 Anon Key로 대체
-  const key = serviceKey || anonKey
-  if (!url || !key) {
-    throw new Error('Supabase URL 또는 API Key가 설정되지 않았습니다.')
-  }
-
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
+function getDb() {
+  return getSupabaseAdmin()
 }
 
 // 공공데이터 API 설정
@@ -41,7 +29,7 @@ export async function POST(request: Request) {
   let totalUpdated = 0
   let totalErrors = 0
   let totalApiCalls = 0
-  const db = getSupabaseAdmin()
+  const db = getDb()
 
   try {
     // 요청 바디에서 job_id 추출 (옵션)
