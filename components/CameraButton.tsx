@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAuthCheck } from '@/components/AuthGuard'
 import { useAlert } from '@/contexts/AlertContext'
 import confetti from 'canvas-confetti'
+import { trackOcrFail, trackOcrSuccess } from '@/lib/gtag'
 // heic2any는 window를 참조하므로 동적 import 사용 (SSR 방지)
 
 // ── HEIC 파일 감지 유틸리티 ──
@@ -1088,6 +1089,7 @@ export default function CameraButton() {
               setIsLoading(false)
             } else {
               setN8nResult(validContracts)
+              trackOcrSuccess(Array.isArray(validContracts) ? validContracts.length : 1)
 
               // 도장 검증이 아직 진행 중이면 완료될 때까지 대기
               await stampPromise
@@ -1285,13 +1287,13 @@ export default function CameraButton() {
       // 도장 검증이 진행 중이면 완료 대기 (에러 무시)
       await stampPromise.catch(() => {})
       setMode('result')
-      setOcrError(
-        error instanceof DOMException && error.name === 'AbortError'
-          ? 'OCR 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
-          : error instanceof Error
-            ? error.message
-            : 'OCR 처리 중 오류가 발생했습니다.'
-      )
+      const errMsg = error instanceof DOMException && error.name === 'AbortError'
+        ? 'OCR 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+        : error instanceof Error
+          ? error.message
+          : 'OCR 처리 중 오류가 발생했습니다.'
+      setOcrError(errMsg)
+      trackOcrFail(errMsg)
     } finally {
       setIsLoading(false)
     }
@@ -1648,7 +1650,7 @@ export default function CameraButton() {
                   개인정보 보호 권장
                 </div>
                 <div style={{ fontSize: '14px', color: '#78350f', lineHeight: '1.6' }}>
-                  <strong style={{ color: '#b45309' }}>민감한 정보는 가리고 업로드해 주세요.</strong><br />
+                  <strong style={{ color: '#b45309' }}>민감한 정보는 가리고 업로드해 주세요.<br />(주소, 전화번호, 주민등록번호 등)</strong><br />
                   
                 </div>
               </div>
@@ -1731,7 +1733,10 @@ export default function CameraButton() {
                     marginBottom: '20px'
                   }}>
                     <div style={{ fontSize: '14px', color: '#78350f', lineHeight: '1.6' }}>
-                      💡 <b>개인정보 등 민감한 정보는 가리고 업로드해 주세요.</b> <br></br>가려진 계약서도 AI가 정보를 안전하게 분석합니다.
+                      💡 <b>개인정보 등 민감한 정보는 가리고 업로드해 주세요.</b>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#92400e', marginTop: '8px', lineHeight: '1.5' }}>
+                      🔒 공인중개사 정보 확인 후 계약서 원본 이미지는 즉시 삭제되며, 서버에 저장되지 않습니다.
                     </div>
                   </div>
 
@@ -1991,9 +1996,47 @@ export default function CameraButton() {
                                 <>
                                   <div className={styles.contractField}>
                                     <span className={styles.fieldLabel}>중개사무소:</span>
-                                    <span className={styles.fieldValue} style={{ color: '#64748b' }}>
-                                      미확인
+                                    <span className={styles.fieldValue} style={{ color: '#ef4444', fontWeight: 600 }}>
+                                      정보 없음
                                     </span>
+                                  </div>
+                                  {(() => {
+                                    const nums = getContractAgentNumbers(contract)
+                                    return nums.length > 0 ? (
+                                      <>
+                                        <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                          <span className={styles.fieldLabel}>등록번호:</span>
+                                          <span className={styles.fieldValue} style={{ color: '#475569' }}>
+                                            <strong>{nums.join(', ')}</strong>
+                                            <span style={{ color: '#64748b', fontSize: '11px' }}>(으)로 인식되었습니다.</span>
+                                          </span>
+                                        </div>
+                                        <div style={{ marginTop: '4px', fontSize: '12px' }}>
+                                          <a
+                                            href="https://www.vworld.kr/dtld/broker/dtld_list_s001.do"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#7C3AED', fontWeight: 600, textDecoration: 'underline' }}
+                                          >
+                                            부동산 중개업소 조회 (공간정보 오픈플랫폼)
+                                          </a>
+                                        </div>
+                                      </>
+                                    ) : null
+                                  })()}
+                                  <div style={{
+                                    marginTop: '8px',
+                                    padding: '10px 12px',
+                                    background: '#fffbeb',
+                                    border: '1px solid #fde68a',
+                                    borderRadius: '8px',
+                                    fontSize: '12px',
+                                    color: '#92400e',
+                                    lineHeight: '1.8',
+                                  }}>
+                                    <div>📸 사진이 흔들리거나 어둡나요? (빛 반사 주의)</div>
+                                    <div>📄 계약서 전체가 다 보이나요? (중개사 인감/직인 포함)</div>
+                                    <div>🔍 폐업한 중개소인가요? (최신 정보가 아닐 수 있음)</div>
                                   </div>
                                 </>
                               )}

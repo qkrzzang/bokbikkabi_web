@@ -4449,16 +4449,16 @@
 }
 
 .reportActionBtn {
-  width: 100%;
-  padding: 10px 0;
+  padding: 6px 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: 6px;
   background: #f8fafc;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   color: #475569;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .reportActionBtn:hover {
@@ -4470,20 +4470,21 @@
 /* 신고 카드 버튼 그룹 */
 .reportBtnGroup {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .reportHideBtn {
-  flex: 1;
-  padding: 10px 0;
+  padding: 6px 14px;
   border: 1px solid #fca5a5;
-  border-radius: 10px;
+  border-radius: 6px;
   background: #fff;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   color: #dc2626;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .reportHideBtn:hover {

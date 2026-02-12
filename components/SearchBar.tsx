@@ -27,9 +27,10 @@ const REGIONS = [
 interface SearchBarProps {
   onSearch: (query: string, region?: string) => void
   value?: string
+  regionValue?: string
 }
 
-export default function SearchBar({ onSearch, value }: SearchBarProps) {
+export default function SearchBar({ onSearch, value, regionValue }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [region, setRegion] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -40,6 +41,13 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
       setQuery(value)
     }
   }, [value])
+
+  // 외부에서 지역 값이 변경되었을 때 업데이트
+  useEffect(() => {
+    if (typeof regionValue === 'string') {
+      setRegion(regionValue)
+    }
+  }, [regionValue])
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -94,7 +102,7 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
           type="text"
           value={query}
           onChange={handleChange}
-          placeholder="공인중개사사무소명을 검색해보세요"
+          placeholder="부동산명 또는 주소를 검색해보세요"
           className={styles.searchInput}
           autoComplete="off"
         />

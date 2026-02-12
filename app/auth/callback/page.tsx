@@ -1,274 +1,148 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { logAccess } from '@/lib/accessLog'
 
 function CallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [isProcessing, setIsProcessing] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const redirected = useRef(false)
+
+  const goHome = () => {
+    if (!redirected.current) {
+      redirected.current = true
+      window.location.href = '/'
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
-    
-    const handleCallback = async () => {
-      try {
-        console.log('[콜백] ===== 카카오 OAuth 콜백 처리 시작 =====')
-        console.log('[콜백] 1. 현재 URL:', window.location.href)
-        console.log('[콜백] 2. Hash:', window.location.hash.substring(0, 100))
-        console.log('[콜백] 3. Search:', window.location.search)
-        console.log('[콜백] 4. Origin:', window.location.origin)
-        
-        // 오류 확인
-        const errorParam = searchParams.get('error')
-        const errorDescription = searchParams.get('error_description')
-        
-        if (errorParam) {
-          console.error('[콜백] ❌ OAuth 오류:', errorParam)
-          console.error('[콜백] 오류 설명:', errorDescription)
-          if (isMounted) {
-            setError(`인증 오류: ${errorDescription || errorParam}`)
-            setTimeout(() => router.replace('/'), 3000)
-          }
-          return
-        }
 
-        // Hash에 access_token이 있는지 확인
-        const hasAccessToken = window.location.hash.includes('access_token')
-        const hasCode = searchParams.get('code')
-        
-        console.log('[콜백] 5. 인증 데이터 확인:', { 
-          hasAccessToken, 
-          hasCode: !!hasCode,
-          codeLength: hasCode?.length || 0
-        })
-        
-        if (!hasAccessToken && !hasCode) {
-          console.error('[콜백] ❌ 인증 데이터 없음 - 홈으로 리다이렉트')
-          if (isMounted) {
-            router.replace('/')
-          }
-          return
-        }
-
-        // Supabase 자동 처리 대기
-        console.log('[콜백] 6. Supabase 세션 처리 대기...')
-        
-        // 먼저 즉시 세션 확인 (코드 교환 완료 여부)
-        const { data: { session: immediateSession } } = await supabase.auth.getSession()
-          .catch((err: any) => {
-            console.error('[콜백] getSession 오류:', err)
-            return { data: { session: null } }
-          })
-        
-        if (immediateSession) {
-          console.log('[콜백] ✅ 즉시 세션 확인 성공!')
-          console.log('[콜백] User ID:', immediateSession.user.id)
-          console.log('[콜백] Email:', immediateSession.user.email)
-          console.log('[콜백] Provider:', immediateSession.user.app_metadata?.provider)
-          
-          // Users 테이블 Upsert
-          try {
-            const { upsertUserToUsersTable } = await import('@/lib/auth-check')
-            await upsertUserToUsersTable(immediateSession.user)
-            console.log('[콜백] Users 테이블 Upsert 완료')
-          } catch (upsertError) {
-            console.error('[콜백] Users 테이블 Upsert 실패:', upsertError)
-          }
-          
-          // 메인으로 리다이렉트
-          if (isMounted) {
-            console.log('[콜백] 7. 메인 페이지로 이동')
-            setIsProcessing(false)
-            router.replace('/')
-          }
-          return
-        }
-        
-        console.log('[콜백] 세션 없음 - onAuthStateChange 대기')
-        
-        // onAuthStateChange로 실시간 감지
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
-          console.log('[콜백] 인증 이벤트:', event)
-          console.log('[콜백] 세션:', session ? 'O' : 'X')
-          
-          if (event === 'SIGNED_IN' && session && isMounted) {
-            console.log('[콜백] ✅ SIGNED_IN 이벤트 수신!')
-            console.log('[콜백] User ID:', session.user.id)
-            
-            // Users 테이블 Upsert
-            try {
-              const { upsertUserToUsersTable } = await import('@/lib/auth-check')
-              await upsertUserToUsersTable(session.user)
-              console.log('[콜백] Users 테이블 Upsert 완료')
-            } catch (upsertError) {
-              console.error('[콜백] Users 테이블 Upsert 실패:', upsertError)
-            }
-            
-            // 리다이렉트
-            setTimeout(() => {
-              if (isMounted) {
-                console.log('[콜백] 메인 페이지로 이동')
-                setIsProcessing(false)
-                router.replace('/')
-              }
-            }, 500)
-            
-            subscription.unsubscribe()
-          }
-        })
-        
-        // 백업: 5초 후 직접 세션 확인
-        setTimeout(async () => {
-          if (!isMounted) {
-            subscription.unsubscribe()
-            return
-          }
-          
-          console.log('[콜백] 8. 백업 세션 확인 (5초 경과)')
-          const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
-          
-          if (session) {
-            console.log('[콜백] ✅ 백업 확인: 세션 있음! 메인 이동')
-            console.log('[콜백] User:', session.user.email)
-            
-            try {
-              const { upsertUserToUsersTable } = await import('@/lib/auth-check')
-              await upsertUserToUsersTable(session.user)
-            } catch (upsertError) {
-              console.error('[콜백] Upsert 실패:', upsertError)
-            }
-            
-            setIsProcessing(false)
-            router.replace('/')
-          } else {
-            console.error('[콜백] ❌ 백업 확인: 세션 없음 - 로그인 실패')
-            console.error('[콜백] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-            console.error('[콜백] 가능한 원인:')
-            console.error('  1. Supabase 프로젝트의 Redirect URL 설정 확인')
-            console.error('  2. 카카오 Developers의 Redirect URI 설정 확인')
-            console.error('  3. Site URL 설정 확인')
-            setError('로그인 처리 실패 - 설정을 확인해주세요')
-            setTimeout(() => router.replace('/'), 3000)
-          }
-          
-          subscription.unsubscribe()
-        }, 5000)
-      } catch (err) {
-        console.error('[콜백] 예외 발생:', err)
-        if (isMounted) {
-          setError('로그인 처리 중 오류 발생')
-          setTimeout(() => router.replace('/'), 2000)
-        }
-      }
+    // 오류 확인
+    const errorParam = searchParams.get('error')
+    if (errorParam) {
+      setError(`인증 오류: ${searchParams.get('error_description') || errorParam}`)
+      setTimeout(goHome, 3000)
+      return
     }
 
-    handleCallback()
-    
+    const code = searchParams.get('code')
+    const hasAccessToken = window.location.hash.includes('access_token')
+
+    if (!code && !hasAccessToken) {
+      goHome()
+      return
+    }
+
+    // Supabase 클라이언트가 detectSessionInUrl로 자동 코드 교환을 수행함
+    // onAuthStateChange로 완료를 감지하여 리디렉트
+    console.log('[콜백] 세션 처리 대기...')
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
+      if (!isMounted || redirected.current) return
+
+      console.log('[콜백] 인증 이벤트:', event, session ? 'O' : 'X')
+
+      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
+        console.log('[콜백] 로그인 성공! User:', session.user.email)
+        subscription.unsubscribe()
+        // upsert는 AuthContext에서 처리하므로 여기서는 기다리지 않고 즉시 이동
+        upsertUser(session.user).catch(() => {})
+        goHome()
+      }
+    })
+
+    // 안전장치: 1초 간격으로 세션 확인 (최대 5회)
+    let checkCount = 0
+    const checkInterval = setInterval(async () => {
+      if (redirected.current || !isMounted) {
+        clearInterval(checkInterval)
+        return
+      }
+      checkCount++
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('[콜백] 폴링으로 세션 감지! User:', session.user.email)
+          clearInterval(checkInterval)
+          subscription.unsubscribe()
+          upsertUser(session.user).catch(() => {})
+          goHome()
+        } else if (checkCount >= 5) {
+          console.log('[콜백] 타임아웃 - 홈으로 이동')
+          clearInterval(checkInterval)
+          subscription.unsubscribe()
+          goHome()
+        }
+      } catch {
+        // 네트워크 오류 등 무시, 다음 폴링에서 재시도
+      }
+    }, 1000)
+
     return () => {
       isMounted = false
+      subscription.unsubscribe()
+      clearInterval(checkInterval)
     }
   }, [router, searchParams])
 
   if (error) {
     return (
       <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        padding: '20px',
-        textAlign: 'center'
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', minHeight: '100vh', padding: '20px', textAlign: 'center'
       }}>
         <h2 style={{ color: '#dc2626', marginBottom: '16px' }}>오류 발생</h2>
         <p style={{ color: '#64748b', marginBottom: '24px' }}>{error}</p>
-        <button
-          onClick={() => router.push('/')}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#7C3AED',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 600
-          }}
-        >
-          홈으로 이동
-        </button>
+        <button onClick={() => { window.location.href = '/' }} style={{
+          padding: '10px 20px', backgroundColor: '#7C3AED', color: '#fff',
+          border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 600
+        }}>홈으로 이동</button>
       </div>
     )
   }
 
   return (
     <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      padding: '20px',
-      textAlign: 'center'
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', minHeight: '100vh', padding: '20px', textAlign: 'center'
     }}>
       <div style={{
-        width: '48px',
-        height: '48px',
-        border: '4px solid #e1e8f0',
-        borderTopColor: '#7C3AED',
-        borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-        marginBottom: '24px'
+        width: '48px', height: '48px', border: '4px solid #e1e8f0',
+        borderTopColor: '#7C3AED', borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite', marginBottom: '24px'
       }} />
-      <p style={{ color: '#64748b', fontSize: '16px' }}>
-        로그인 처리 중...
-      </p>
-      <style jsx>{`
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
+      <p style={{ color: '#64748b', fontSize: '16px' }}>로그인 처리 중...</p>
+      <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
+}
+
+async function upsertUser(user: any) {
+  try {
+    const { upsertUserToUsersTable } = await import('@/lib/auth-check')
+    await upsertUserToUsersTable(user)
+  } catch (err) {
+    console.error('[콜백] Users Upsert 실패:', err)
+  }
 }
 
 export default function CallbackPage() {
   return (
     <Suspense fallback={
       <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        padding: '20px',
-        textAlign: 'center'
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', minHeight: '100vh', padding: '20px', textAlign: 'center'
       }}>
         <div style={{
-          width: '48px',
-          height: '48px',
-          border: '4px solid #e1e8f0',
-          borderTopColor: '#7C3AED',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-          marginBottom: '24px'
+          width: '48px', height: '48px', border: '4px solid #e1e8f0',
+          borderTopColor: '#7C3AED', borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite', marginBottom: '24px'
         }} />
-        <p style={{ color: '#64748b', fontSize: '16px' }}>
-          로딩 중...
-        </p>
-        <style jsx>{`
-          @keyframes spin {
-            to {
-              transform: rotate(360deg);
-            }
-          }
-        `}</style>
+        <p style={{ color: '#64748b', fontSize: '16px' }}>로딩 중...</p>
+        <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     }>
       <CallbackContent />

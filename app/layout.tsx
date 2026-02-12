@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import Script from 'next/script'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { AlertProvider } from '@/contexts/AlertContext'
 import Header from '@/components/Header'
@@ -28,6 +29,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
+  const gaId = process.env.NEXT_PUBLIC_GA_ID
 
   return (
     <html lang="ko" suppressHydrationWarning>
@@ -115,6 +117,8 @@ export default function RootLayout({
             `
           }}
         />
+        {/* Google Analytics (GA4) */}
+        {gaId && <GoogleAnalytics gaId={gaId} />}
       </body>
     </html>
   )

@@ -8,6 +8,33 @@ import CameraButton from '@/components/CameraButton'
 import styles from './page.module.css'
 import { supabase } from '@/lib/supabase/client'
 
+const REGION_VALUES = [
+  '서울특별시', '경기도', '인천광역시', '부산광역시', '대구광역시',
+  '광주광역시', '대전광역시', '울산광역시', '세종특별자치시',
+  '강원특별자치도', '충청북도', '충청남도', '전북특별자치도',
+  '전라남도', '경상북도', '경상남도', '제주특별자치도',
+]
+
+function extractRegion(address: string): string {
+  if (!address) return ''
+  for (const region of REGION_VALUES) {
+    if (address.includes(region)) return region
+  }
+  // 축약형 매칭 (예: "경기 성남시" → "경기도")
+  const shortMap: Record<string, string> = {
+    '서울': '서울특별시', '경기': '경기도', '인천': '인천광역시',
+    '부산': '부산광역시', '대구': '대구광역시', '광주': '광주광역시',
+    '대전': '대전광역시', '울산': '울산광역시', '세종': '세종특별자치시',
+    '강원': '강원특별자치도', '충북': '충청북도', '충남': '충청남도',
+    '전북': '전북특별자치도', '전남': '전라남도', '경북': '경상북도',
+    '경남': '경상남도', '제주': '제주특별자치도',
+  }
+  for (const [short, full] of Object.entries(shortMap)) {
+    if (address.startsWith(short)) return full
+  }
+  return ''
+}
+
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchRegion, setSearchRegion] = useState('')
@@ -36,6 +63,11 @@ export default function Home() {
       if (detail?.searchQuery && detail?.agentId) {
         setSearchQuery(detail.searchQuery)
         setAutoOpenAgentId(detail.agentId)
+        // 주소에서 지역 자동 선택
+        if (detail.roadAddress) {
+          const region = extractRegion(detail.roadAddress)
+          setSearchRegion(region)
+        }
       }
     }
 
@@ -131,7 +163,7 @@ export default function Home() {
   return (
     <main className={styles.main}>
       <div className={styles.container}>
-        <SearchBar onSearch={handleSearch} value={searchQuery} />
+        <SearchBar onSearch={handleSearch} value={searchQuery} regionValue={searchRegion} />
         {!searchQuery.trim() && <CopyBanner />}
         <PropertyList 
           searchQuery={searchQuery}

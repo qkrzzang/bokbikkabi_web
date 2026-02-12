@@ -1244,16 +1244,18 @@
 
 @media (max-width: 768px) {
   .gradeTooltip {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
     min-width: 260px;
-    left: auto;
-    right: 0;
-    transform: none;
+    right: auto;
   }
 
   .gradeTooltipArrow {
-    left: auto;
-    right: 20px;
-    transform: rotate(45deg);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) rotate(45deg);
   }
 }
 

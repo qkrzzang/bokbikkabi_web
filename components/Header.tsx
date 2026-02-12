@@ -135,7 +135,8 @@ export default function Header() {
     userGrades: [],
     avgRatings: {},
     surveyResponses: [],
-    monthlyTrend: []
+    monthlyTrend: [],
+    monthlySignups: [] as Array<{ month: string; kakao: number; google: number; total: number }>
   })
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false)
 
@@ -1264,7 +1265,8 @@ export default function Header() {
         { data: usersData },
         { data: surveyData },
         { data: surveyQuestions },
-        { data: monthlyReviews }
+        { data: monthlyReviews },
+        { data: monthlyUsers }
       ] = await Promise.all([
         supabase.from('users').select('*', { count: 'exact', head: true }),
         supabase.from('agent_reviews').select('*', { count: 'exact', head: true }).or('is_hidden.is.null,is_hidden.eq.false'),
@@ -1274,7 +1276,8 @@ export default function Header() {
         supabase.from('users').select('user_grade'),
         supabase.from('survey_responses').select('question_code, response_value'),
         supabase.from('common_code_detail').select('*').eq('code_group', 'SURVEY').eq('use_yn', 'Y').order('sort_order'),
-        supabase.from('agent_reviews').select('created_at').gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()).or('is_hidden.is.null,is_hidden.eq.false')
+        supabase.from('agent_reviews').select('created_at').gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()).or('is_hidden.is.null,is_hidden.eq.false'),
+        supabase.from('users').select('created_at, provider').gte('created_at', new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString())
       ])
 
       // 평균 평점 계산
@@ -1377,6 +1380,22 @@ export default function Header() {
         .slice(0, 6)
         .map(([month, count]) => ({ month, count }))
 
+      // 월별 가입자 현황 (최근 6개월)
+      const signupData: Record<string, { kakao: number; google: number; total: number }> = {}
+      monthlyUsers?.forEach((u: any) => {
+        const date = new Date(u.created_at)
+        const monthKey = `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}`
+        if (!signupData[monthKey]) signupData[monthKey] = { kakao: 0, google: 0, total: 0 }
+        signupData[monthKey].total++
+        const p = (u.provider || '').toLowerCase()
+        if (p.includes('kakao')) signupData[monthKey].kakao++
+        else if (p.includes('google')) signupData[monthKey].google++
+      })
+      const monthlySignups = Object.entries(signupData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-6)
+        .map(([month, data]) => ({ month, ...data }))
+
       setAnalyticsData({
         totalUsers: usersCount || 0,
         totalReviews: reviewsCount || 0,
@@ -1388,7 +1407,8 @@ export default function Header() {
         userGrades,
         avgRatings,
         surveyResponses: surveyResponsesArray,
-        monthlyTrend
+        monthlyTrend,
+        monthlySignups
       })
     } catch (error) {
       console.error('[데이터 분석] 로드 오류:', error)
@@ -4188,7 +4208,7 @@ export default function Header() {
                               {review.agent_stamp !== null && (
                                 <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>
                                   도장: {review.agent_stamp ? '✅ 확인됨' : '❌ 미확인'} 
-                                  {review.agent_stamp_confidence != null && ` (신뢰도: ${(review.agent_stamp_confidence * 100).toFixed(0)}%)`}
+                                  {review.agent_stamp_confidence != null && ` (신뢰도: ${review.agent_stamp_confidence})`}
                                 </div>
                               )}
 
@@ -4543,6 +4563,55 @@ export default function Header() {
                           <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
                             데이터가 없습니다
                           </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 월별 가입자 현황 */}
+                    <div className={styles.analyticsPanel}>
+                      <h3 className={styles.analyticsPanelTitle}>👤 월별 가입자 현황 (최근 6개월)</h3>
+                      <div className={styles.monthlyTrend}>
+                        {analyticsData.monthlySignups && analyticsData.monthlySignups.length > 0 ? (
+                          (() => {
+                            const maxCount = Math.max(...analyticsData.monthlySignups.map((t: any) => t.total), 1)
+                            return (
+                              <>
+                                {/* 범례 */}
+                                <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', marginBottom: '8px', fontSize: '11px', color: '#64748b' }}>
+                                  <span><span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#facc15', borderRadius: '2px', marginRight: '4px' }}></span>카카오</span>
+                                  <span><span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#4285f4', borderRadius: '2px', marginRight: '4px' }}></span>구글</span>
+                                  <span><span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#94a3b8', borderRadius: '2px', marginRight: '4px' }}></span>합계</span>
+                                </div>
+                                {analyticsData.monthlySignups.map((item: any) => (
+                                  <div key={item.month} className={styles.trendRow}>
+                                    <span className={styles.trendMonth}>{item.month}</span>
+                                    <div className={styles.trendBarWrap} style={{ position: 'relative' }}>
+                                      <div style={{
+                                        position: 'absolute', top: 0, left: 0, height: '100%',
+                                        width: `${(item.total / maxCount) * 100}%`,
+                                        background: '#e2e8f0', borderRadius: '4px',
+                                      }} />
+                                      <div style={{
+                                        position: 'absolute', top: 0, left: 0, height: '50%',
+                                        width: `${(item.kakao / maxCount) * 100}%`,
+                                        background: '#facc15', borderRadius: '4px 4px 0 0',
+                                      }} />
+                                      <div style={{
+                                        position: 'absolute', bottom: 0, left: 0, height: '50%',
+                                        width: `${(item.google / maxCount) * 100}%`,
+                                        background: '#4285f4', borderRadius: '0 0 4px 4px',
+                                      }} />
+                                    </div>
+                                    <span className={styles.trendValue} style={{ minWidth: '90px', fontSize: '11px' }}>
+                                      {item.total}명 <span style={{ color: '#ca8a04' }}>K{item.kakao}</span> <span style={{ color: '#4285f4' }}>G{item.google}</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </>
+                            )
+                          })()
+                        ) : (
+                          <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px', padding: '20px 0' }}>최근 6개월간 가입 데이터가 없습니다.</p>
                         )}
                       </div>
                     </div>

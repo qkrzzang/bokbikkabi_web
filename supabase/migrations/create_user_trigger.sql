@@ -30,7 +30,9 @@ BEGIN
     nickname,
     profile_image_url,
     provider,
-    provider_user_id
+    provider_user_id,
+    user_type,
+    user_grade
   )
   VALUES (
     new.id,
@@ -38,7 +40,9 @@ BEGIN
     v_name,
     v_avatar,
     v_provider,
-    new.raw_user_meta_data->>'sub'
+    new.raw_user_meta_data->>'sub',
+    'USER',
+    'IMJANG'
   )
   ON CONFLICT (supabase_user_id) DO UPDATE
   SET

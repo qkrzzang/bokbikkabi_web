@@ -6,7 +6,7 @@
 -- 0. 기존 테이블 및 관련 객체 삭제 (타입 불일치 문제 방지)
 DROP TRIGGER IF EXISTS trigger_update_helpful_count_insert ON public.review_helpful;
 DROP TRIGGER IF EXISTS trigger_update_helpful_count_delete ON public.review_helpful;
-DROP TABLE IF EXISTS public.review_helpful;
+DROP TABLE IF EXISTS public.review_helpful CASCADE;
 
 -- 1. 테이블 생성
 CREATE TABLE public.review_helpful (

@@ -37,7 +37,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const router = useRouter()
   const { user: authUser } = useAuth()
-  const { showAlert, showSuccess, showError, showWarning } = useAlert()
+  const { showAlert, showSuccess, showError, showWarning, showConfirm } = useAlert()
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('menu')
   const [myContracts, setMyContracts] = useState<any[]>([])
   const [selectedContract, setSelectedContract] = useState<any>(null)
@@ -59,6 +59,7 @@ export default function Sidebar({
   const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
   const [transactionLimit, setTransactionLimit] = useState(10) // 포인트 내역 표시 개수
   const [isGradeTooltipVisible, setIsGradeTooltipVisible] = useState(false) // 등급 툴팁 표시 여부
+  const [userGrade, setUserGrade] = useState<string>('IMJANG') // 사용자 등급
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null) // PWA 설치 프롬프트
   const [isStandalone, setIsStandalone] = useState(false) // PWA standalone 모드 여부
   const [showIOSGuide, setShowIOSGuide] = useState(false) // iOS 설치 가이드
@@ -88,7 +89,10 @@ export default function Sidebar({
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
+      // 모바일에서만 설치 프롬프트 저장 (PC에서는 차단)
+      if (window.innerWidth <= 768) {
+        setDeferredPrompt(e as BeforeInstallPromptEvent)
+      }
     }
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
 
@@ -105,6 +109,7 @@ export default function Sidebar({
       setSelectedContract(null)
       setDecryptedImageUrl(null)
       setShowIOSGuide(false)
+      setIsGradeTooltipVisible(false)
     }
   }, [isOpen])
 
@@ -144,6 +149,15 @@ export default function Sidebar({
     if (isOpen && user) {
       loadUserPoints()
       loadVisibilitySettings()
+      // 사용자 등급 로드
+      supabase
+        .from('users')
+        .select('user_grade')
+        .eq('supabase_user_id', user.id)
+        .single()
+        .then(({ data }: { data: any }) => {
+          if (data?.user_grade) setUserGrade(data.user_grade)
+        })
     }
   }, [isOpen, user])
 
@@ -473,7 +487,7 @@ export default function Sidebar({
   }
 
   // 관심 부동산 클릭 시 메인 화면에서 검색 및 상세 모달 열기
-  const handleFavoriteClick = (agentName: string, agentId: number) => {
+  const handleFavoriteClick = (agentName: string, agentId: number, roadAddress?: string) => {
     // 1. 사이드바 닫기
     onClose()
     
@@ -481,7 +495,8 @@ export default function Sidebar({
     window.dispatchEvent(new CustomEvent('search:and-open-detail', { 
       detail: { 
         searchQuery: agentName,
-        agentId: agentId 
+        agentId: agentId,
+        roadAddress: roadAddress || '',
       } 
     }))
   }
@@ -586,7 +601,7 @@ export default function Sidebar({
                   '사용자'}
               </h4>
               <div className={styles.gradeBadge} style={{ margin: 0, position: 'relative' }}>
-                <span>갓까비</span>
+                <span>{({ IMJANG: '임장까비', INJU: '인주까비', DONGNE: '동네까비', GOD: '갓까비' } as Record<string, string>)[userGrade] || '임장까비'}</span>
                 <button
                   className={styles.gradeInfoButton}
                   onClick={(e) => {
@@ -997,7 +1012,14 @@ export default function Sidebar({
                 <div className={styles.reviewSection}>
                   <div className={styles.reviewField}>
                     <span className={styles.reviewLabel}>등록일:</span>
-                    <span className={styles.reviewValue}>{new Date(selectedContract.created_at).toLocaleString('ko-KR')}</span>
+                    <span className={styles.reviewValue} style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.5' }}>
+                      {(() => {
+                        const d = new Date(selectedContract.created_at)
+                        const date = d.toLocaleDateString('ko-KR')
+                        const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+                        return <>{date}<br />{time}</>
+                      })()}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1021,7 +1043,7 @@ export default function Sidebar({
                     <div key={fav.id} className={styles.favoriteCard}>
                       <div 
                         className={styles.favoriteCardContent}
-                        onClick={() => handleFavoriteClick(fav.agent?.agent_name || '알 수 없음', fav.agent?.id)}
+                        onClick={() => handleFavoriteClick(fav.agent?.agent_name || '알 수 없음', fav.agent?.id, fav.agent?.road_address)}
                       >
                         <h4 className={styles.favoriteName}>{fav.agent?.agent_name || '알 수 없음'}</h4>
                         <div className={styles.favoriteFooter}>
@@ -1171,6 +1193,18 @@ export default function Sidebar({
                           <div className={styles.policyPoints}>+{policy.code_name} {policy.extra_value1}P</div>
                         </div>
                       ))}
+                      <div style={{
+                        marginTop: '10px',
+                        padding: '10px 12px',
+                        background: 'linear-gradient(135deg, #f3e8ff, #ede9fe)',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: '#6b21a8',
+                        lineHeight: '1.6',
+                      }}>
+                        <div style={{ fontWeight: 700, marginBottom: '2px' }}>🎁 포인트 사용처</div>
+                        <div>적립된 포인트는 럭키드로우(추첨권) 응모에 활용됩니다. <strong>Coming Soon!!</strong></div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1223,7 +1257,8 @@ export default function Sidebar({
             <div className={styles.screenContent}>
               <form className={styles.partnershipForm} onSubmit={async (e) => {
                 e.preventDefault()
-                const formData = new FormData(e.currentTarget)
+                const form = e.currentTarget
+                const formData = new FormData(form)
                 
                 if (!authUser) {
                   showWarning('로그인이 필요합니다.')
@@ -1231,30 +1266,32 @@ export default function Sidebar({
                 }
 
                 try {
-                  const { error } = await apiRequest(
-                    () => supabase
-                      .from('partnership_inquiries')
-                      .insert({
-                        supabase_user_id: authUser.id,
-                        user_email: formData.get('email'),
-                        user_name: formData.get('name'),
-                        company_name: formData.get('company'),
-                        contact_phone: formData.get('phone'),
-                        inquiry_type: formData.get('type'),
-                        title: formData.get('title'),
-                        content: formData.get('content'),
-                      }),
-                    { requireAuth: true }
-                  )
+                  const res = await fetch('/api/partnership-inquiry', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      supabase_user_id: authUser.id,
+                      user_email: formData.get('email'),
+                      user_name: formData.get('name'),
+                      company_name: formData.get('company'),
+                      contact_phone: formData.get('phone'),
+                      inquiry_type: formData.get('type'),
+                      title: formData.get('title'),
+                      content: formData.get('content'),
+                    }),
+                  })
+                  const result = await res.json()
 
-                  if (!error) {
+                  if (res.ok && result.success) {
                     showSuccess('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
-                    e.currentTarget.reset()
+                    form.reset()
                     setCurrentScreen('menu')
                   } else {
-                    showError('문의 접수 중 오류가 발생했습니다.')
+                    console.error('[광고/제휴문의] 오류:', result.error)
+                    showError(`문의 접수 중 오류가 발생했습니다.\n(${result.error || '알 수 없는 오류'})`)
                   }
                 } catch (error: any) {
+                  console.error('[광고/제휴문의] 예외:', error)
                   showError('문의 접수 중 오류가 발생했습니다.')
                 }
               }}>
@@ -1344,40 +1381,44 @@ export default function Sidebar({
                       <button
                         className={styles.nicknameSaveBtn}
                         disabled={isNicknameSaving || !editNickname.trim()}
-                        onClick={async () => {
+                        onClick={() => {
                           const userId = authUser?.id || user?.id
                           if (!userId || !editNickname.trim()) return
 
-                          setIsNicknameSaving(true)
-                          try {
-                            const trimmed = editNickname.trim()
-                            const now = new Date().toISOString()
+                          showConfirm(
+                            `닉네임을 "${editNickname.trim()}"(으)로 변경하시겠습니까?\n(닉네임은 한 달에 한 번만 변경 가능합니다.)`,
+                            async () => {
+                              setIsNicknameSaving(true)
+                              try {
+                                const trimmed = editNickname.trim()
+                                const now = new Date().toISOString()
 
-                            // 1. public.users 테이블 업데이트 (핵심)
-                            const { error: dbError } = await supabase
-                              .from('users')
-                              .update({ nickname: trimmed, nickname_changed_at: now, updated_at: now })
-                              .eq('supabase_user_id', userId)
+                                const { error: dbError } = await supabase
+                                  .from('users')
+                                  .update({ nickname: trimmed, nickname_changed_at: now, updated_at: now })
+                                  .eq('supabase_user_id', userId)
 
-                            if (dbError) {
-                              showError('닉네임 변경에 실패했습니다: ' + dbError.message)
-                              return
-                            }
+                                if (dbError) {
+                                  showError('닉네임 변경에 실패했습니다: ' + dbError.message)
+                                  return
+                                }
 
-                            // 2. auth.users 메타데이터 업데이트 (fire-and-forget, 기다리지 않음)
-                            supabase.auth.updateUser({
-                              data: { name: trimmed, nickname: trimmed }
-                            }).catch(() => {})
+                                supabase.auth.updateUser({
+                                  data: { name: trimmed, nickname: trimmed }
+                                }).catch(() => {})
 
-                            setNicknameChangedAt(now)
-                            setIsNicknameEditing(false)
-                            showSuccess('닉네임이 변경되었습니다.')
-                          } catch (err) {
-                            console.error('[닉네임] 저장 오류:', err)
-                            showError('닉네임 변경 중 오류가 발생했습니다.')
-                          } finally {
-                            setIsNicknameSaving(false)
-                          }
+                                setNicknameChangedAt(now)
+                                setIsNicknameEditing(false)
+                                showSuccess('닉네임이 변경되었습니다.')
+                              } catch (err) {
+                                console.error('[닉네임] 저장 오류:', err)
+                                showError('닉네임 변경 중 오류가 발생했습니다.')
+                              } finally {
+                                setIsNicknameSaving(false)
+                              }
+                            },
+                            { title: '닉네임 변경', confirmText: '변경', cancelText: '취소' }
+                          )
                         }}
                       >
                         {isNicknameSaving ? '저장 중' : '저장'}

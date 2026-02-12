@@ -477,7 +477,7 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         let query = supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address, latitude, longitude')
-          .ilike('agent_name', `%${searchQuery}%`)
+          .or(`agent_name.ilike.%${searchQuery}%,road_address.ilike.%${searchQuery}%,lot_address.ilike.%${searchQuery}%`)
         
         // 지역 필터 적용
         if (searchRegion) {
@@ -610,7 +610,7 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
       <div className={styles.emptyState}>
         <div className={styles.emptyIcon}>🔍</div>
         <p className={styles.emptyText}>
-          '{searchQuery}'으로 검색 된 공인중개사사무소가 없어요.
+          '{searchQuery}'으로 검색된 공인중개사사무소가 없어요.
         </p>
       </div>
     )
