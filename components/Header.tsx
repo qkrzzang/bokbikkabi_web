@@ -1110,6 +1110,11 @@ export default function Header() {
   const loadReviewMgmt = async (page = 0) => {
     try {
       setIsReviewMgmtLoading(true)
+      // 이전 Blob URL 메모리 해제
+      Object.values(reviewMgmtDecryptedImages).forEach(url => {
+        if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
+      })
+      setReviewMgmtDecryptedImages({})
       const pageSize = 20
       const from = page * pageSize
       const to = from + pageSize - 1
@@ -1226,16 +1231,16 @@ export default function Header() {
     if (reviewMgmtDecryptedImages[reviewId]) return // 이미 복호화됨
     setReviewMgmtImageLoading(prev => ({ ...prev, [reviewId]: true }))
     try {
+      // 바이너리 방식으로 요청 (모바일 호환 - Blob URL 사용)
       const res = await fetch('/api/decrypt-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encrypted, iv }),
+        body: JSON.stringify({ encrypted, iv, returnType: 'binary' }),
       })
       if (res.ok) {
-        const data = await res.json()
-        if (data.success) {
-          setReviewMgmtDecryptedImages(prev => ({ ...prev, [reviewId]: data.imageUrl }))
-        }
+        const blob = await res.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        setReviewMgmtDecryptedImages(prev => ({ ...prev, [reviewId]: blobUrl }))
       }
     } catch (err) {
       console.error('[리뷰 관리] 이미지 복호화 실패:', err)

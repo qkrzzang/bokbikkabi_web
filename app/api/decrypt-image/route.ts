@@ -7,7 +7,7 @@ const ENCRYPTION_KEY = process.env.CONTRACT_ENCRYPTION_KEY || process.env.NEXT_P
 
 export async function POST(request: NextRequest) {
   try {
-    const { encrypted, iv } = await request.json()
+    const { encrypted, iv, returnType } = await request.json()
 
     if (!encrypted || !iv) {
       return NextResponse.json({ error: '암호화 데이터가 필요합니다.' }, { status: 400 })
@@ -21,9 +21,20 @@ export async function POST(request: NextRequest) {
       decipher.final(),
     ])
 
-    // JPEG 이미지를 data URL로 반환
-    const base64Image = `data:image/jpeg;base64,${decrypted.toString('base64')}`
+    // returnType === 'binary' → 이미지 바이너리 직접 반환 (모바일 호환)
+    if (returnType === 'binary') {
+      return new NextResponse(decrypted, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Content-Length': String(decrypted.length),
+          'Cache-Control': 'private, max-age=300',
+        },
+      })
+    }
 
+    // 기본: data URL로 반환 (기존 호환)
+    const base64Image = `data:image/jpeg;base64,${decrypted.toString('base64')}`
     return NextResponse.json({ success: true, imageUrl: base64Image })
   } catch (error: any) {
     console.error('[decrypt] 오류:', error.message)
