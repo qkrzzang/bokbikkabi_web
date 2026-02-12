@@ -3,13 +3,35 @@
 import { useEffect, useState, useRef, FormEvent } from 'react'
 import styles from './SearchBar.module.css'
 
+const REGIONS = [
+  { value: '', label: '전체' },
+  { value: '서울특별시', label: '서울' },
+  { value: '경기도', label: '경기' },
+  { value: '인천광역시', label: '인천' },
+  { value: '부산광역시', label: '부산' },
+  { value: '대구광역시', label: '대구' },
+  { value: '광주광역시', label: '광주' },
+  { value: '대전광역시', label: '대전' },
+  { value: '울산광역시', label: '울산' },
+  { value: '세종특별자치시', label: '세종' },
+  { value: '강원특별자치도', label: '강원' },
+  { value: '충청북도', label: '충북' },
+  { value: '충청남도', label: '충남' },
+  { value: '전북특별자치도', label: '전북' },
+  { value: '전라남도', label: '전남' },
+  { value: '경상북도', label: '경북' },
+  { value: '경상남도', label: '경남' },
+  { value: '제주특별자치도', label: '제주' },
+]
+
 interface SearchBarProps {
-  onSearch: (query: string) => void
+  onSearch: (query: string, region?: string) => void
   value?: string
 }
 
 export default function SearchBar({ onSearch, value }: SearchBarProps) {
   const [query, setQuery] = useState('')
+  const [region, setRegion] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   // value prop이 변경되었을 때만 내부 상태 업데이트
@@ -23,15 +45,13 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
     e.preventDefault()
     const trimmedQuery = query.trim()
     if (trimmedQuery) {
-      onSearch(trimmedQuery)
-      // 검색 후 포커스 해제하여 모바일에서 확대된 화면을 원래대로 복구
+      onSearch(trimmedQuery, region)
       if (inputRef.current) {
         inputRef.current.blur()
       }
     } else {
-      // 공백 또는 빈 검색어인 경우 logo 클릭과 동일한 이벤트 발생
       setQuery('')
-      onSearch('')
+      onSearch('', region)
       window.dispatchEvent(new Event('logo:click'))
       if (inputRef.current) {
         inputRef.current.blur()
@@ -45,12 +65,30 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
 
   const handleClear = () => {
     setQuery('')
-    onSearch('')
+    onSearch('', region)
+  }
+
+  const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRegion = e.target.value
+    setRegion(newRegion)
+    // 검색어가 있으면 지역 변경 시 자동 재검색
+    if (query.trim()) {
+      onSearch(query.trim(), newRegion)
+    }
   }
 
   return (
     <div className={styles.searchContainer}>
       <form onSubmit={handleSubmit} className={styles.searchForm}>
+        <select
+          value={region}
+          onChange={handleRegionChange}
+          className={styles.regionSelect}
+        >
+          {REGIONS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
+        </select>
         <input
           ref={inputRef}
           type="text"
@@ -130,4 +168,3 @@ export default function SearchBar({ onSearch, value }: SearchBarProps) {
     </div>
   )
 }
-

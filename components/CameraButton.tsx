@@ -170,6 +170,8 @@ export default function CameraButton() {
   // 도장 검증 결과
   const [stampResult, setStampResult] = useState<{ agent_stamp: boolean; agent_stamp_confidence: number } | null>(null)
   const [isStampVerifying, setIsStampVerifying] = useState(false)
+  // 크롭 이미지 암호화 결과
+  const [cropResult, setCropResult] = useState<{ encrypted: string; iv: string } | null>(null)
   const [agentAddresses, setAgentAddresses] = useState<Record<string, { road_address: string; lot_address: string }>>({})
   const [selectedAgents, setSelectedAgents] = useState<Record<string, { agent_id: number; agent_number: string; agent_name: string; road_address: string; lot_address: string; representative_name?: string }>>({})
   const [showAgentSelection, setShowAgentSelection] = useState(false)
@@ -797,6 +799,7 @@ export default function CameraButton() {
     setN8nError(null)
     setN8nResult(null)
     setStampResult(null)
+    setCropResult(null)
     // 이전 업로드 데이터 초기화 (stale data 방지)
     setSelectedAgents({})
     setAgentAddresses({})
@@ -867,6 +870,8 @@ export default function CameraButton() {
           setIsStampVerifying(false)
         })
 
+      // ── 이미지 크롭은 OCR 결과 수신 후 실행 (아래 참조) ──
+
       // OCR 요청 타임아웃 (60초)
       const ocrController = new AbortController()
       const ocrTimeoutId = window.setTimeout(() => ocrController.abort(), 60_000)
@@ -892,6 +897,38 @@ export default function CameraButton() {
 
       const data = await response.json()
       setOcrResult(data)
+
+      // ── 이미지 크롭 + 암호화 (OCR 결과 재사용, fire-and-forget) ──
+      try {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const base64Full = reader.result as string
+          const base64Data = base64Full.split(',')[1] // data:image/...;base64, 제거
+          fetch('/api/crop-contract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Data, ocrResult: data }),
+          })
+            .then(async (res) => {
+              if (res.ok) {
+                const cropData = await res.json()
+                console.log('[이미지 크롭] 결과:', { cropped: cropData.cropped, croppedSize: cropData.croppedSize })
+                if (cropData.success) {
+                  setCropResult({ encrypted: cropData.encrypted, iv: cropData.iv })
+                }
+              } else {
+                console.warn('[이미지 크롭] API 오류:', res.status)
+              }
+            })
+            .catch((err) => {
+              console.warn('[이미지 크롭] 호출 실패 (리뷰 등록에는 영향 없음):', err.message)
+            })
+        }
+        reader.readAsDataURL(fileToUpload)
+      } catch (cropErr) {
+        console.warn('[이미지 크롭] 준비 실패:', cropErr)
+      }
+
       // OCR이 끝났지만 n8n 요청이 완료될 때까지 로딩 유지
       
       // OCR 결과에서 text 필드만 추출 (여러 가능한 경로 확인)
@@ -1470,6 +1507,8 @@ export default function CameraButton() {
           contract_date: contractData?.contract_date || null,
           agent_stamp: stampResult?.agent_stamp ?? null,
           agent_stamp_confidence: stampResult?.agent_stamp_confidence ?? null,
+          contract_image_encrypted: cropResult?.encrypted ?? null,
+          contract_image_iv: cropResult?.iv ?? null,
         })
 
       if (error) {

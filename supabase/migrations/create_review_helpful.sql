@@ -3,8 +3,13 @@
 -- 리뷰 "도움돼요" 기능을 위한 테이블
 -- =====================================================
 
+-- 0. 기존 테이블 및 관련 객체 삭제 (타입 불일치 문제 방지)
+DROP TRIGGER IF EXISTS trigger_update_helpful_count_insert ON public.review_helpful;
+DROP TRIGGER IF EXISTS trigger_update_helpful_count_delete ON public.review_helpful;
+DROP TABLE IF EXISTS public.review_helpful;
+
 -- 1. 테이블 생성
-CREATE TABLE IF NOT EXISTS public.review_helpful (
+CREATE TABLE public.review_helpful (
   id BIGSERIAL PRIMARY KEY,
   review_id UUID NOT NULL,
   supabase_user_id UUID NOT NULL,

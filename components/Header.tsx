@@ -26,7 +26,7 @@ export default function Header() {
   const [isImageLoading, setIsImageLoading] = useState(false)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
   const [isAdminScreenOpen, setIsAdminScreenOpen] = useState(false)
-  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'survey' | 'partnership' | 'content-visibility' | 'analytics' | 'reports'>('common-code')
+  const [adminMenu, setAdminMenu] = useState<'common-code' | 'account' | 'batch' | 'survey' | 'partnership' | 'content-visibility' | 'analytics' | 'reports' | 'review-mgmt'>('common-code')
   const [isMobileAdminMenuOpen, setIsMobileAdminMenuOpen] = useState(false)
   const [selectedCodeGroup, setSelectedCodeGroup] = useState<string | null>(null)
   const [showSaveSuccessToast, setShowSaveSuccessToast] = useState(false)
@@ -138,6 +138,14 @@ export default function Header() {
     monthlyTrend: []
   })
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false)
+
+  // 리뷰 관리 State
+  const [reviewMgmtList, setReviewMgmtList] = useState<any[]>([])
+  const [isReviewMgmtLoading, setIsReviewMgmtLoading] = useState(false)
+  const [reviewMgmtPage, setReviewMgmtPage] = useState(0)
+  const [reviewMgmtDecryptedImages, setReviewMgmtDecryptedImages] = useState<Record<string, string>>({})
+  const [reviewMgmtImageLoading, setReviewMgmtImageLoading] = useState<Record<string, boolean>>({})
+
   const [codeMasterList, setCodeMasterList] = useState<Array<{
     code_group: string
     code_group_name: string
@@ -204,6 +212,7 @@ export default function Header() {
     user_grade: string | null
     created_at: string
     last_login_at: string | null
+    review_count: number
   }>>([])
   const [isUserLoading, setIsUserLoading] = useState(false)
   const [userSearchTerm, setUserSearchTerm] = useState('')
@@ -215,6 +224,22 @@ export default function Header() {
     user_type: string | null
     user_grade: string | null
   } | null>(null)
+  // 사용자별 리뷰 리스트 팝업
+  const [userReviewPopup, setUserReviewPopup] = useState<{
+    userId: string
+    nickname: string
+    reviews: Array<{
+      id: string
+      agent_name: string
+      agent_road_address: string
+      contract_date: string
+      transaction_tag: string
+      avg_rating: string
+      review_text: string
+      created_at: string
+    }>
+  } | null>(null)
+  const [isUserReviewLoading, setIsUserReviewLoading] = useState(false)
   
   // 광고/제휴 문의 관리 상태
   const [partnershipList, setPartnershipList] = useState<Array<{
@@ -242,7 +267,7 @@ export default function Header() {
   
   // useAuth Hook으로 중앙화된 인증 상태 관리
   const { user, userType, isLoading, signOut } = useAuth()
-  const { showAlert, showSuccess, showError, showWarning } = useAlert()
+  const { showAlert, showSuccess, showError, showWarning, showConfirm } = useAlert()
 
   // TODO: Supabase 연동 전까지 목 데이터 사용
   const mockFavoriteAgents: Array<{
@@ -483,11 +508,83 @@ export default function Header() {
         return
       }
 
-      setUserList(data || [])
+      // 각 사용자의 리뷰 수 조회
+      const userIds = (data || []).map((u: any) => u.supabase_user_id).filter(Boolean)
+      let reviewCountMap: Record<string, number> = {}
+      if (userIds.length > 0) {
+        const { data: reviews } = await supabase
+          .from('agent_reviews')
+          .select('supabase_user_id')
+          .in('supabase_user_id', userIds)
+        if (reviews) {
+          reviews.forEach((r: any) => {
+            reviewCountMap[r.supabase_user_id] = (reviewCountMap[r.supabase_user_id] || 0) + 1
+          })
+        }
+      }
+
+      const enriched = (data || []).map((u: any) => ({
+        ...u,
+        review_count: reviewCountMap[u.supabase_user_id] || 0,
+      }))
+      setUserList(enriched)
     } catch (error) {
       // 모든 오류 조용히 처리
     } finally {
       setIsUserLoading(false)
+    }
+  }
+
+  // 사용자별 리뷰 조회
+  const loadUserReviews = async (userId: string, nickname: string) => {
+    setIsUserReviewLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('agent_reviews')
+        .select(`
+          id, agent_name, contract_date, transaction_tag, review_text, created_at,
+          fee_satisfaction, expertise, kindness, property_reliability, response_speed,
+          agent:agent_master(agent_name, road_address)
+        `)
+        .eq('supabase_user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        // fallback: agent join 없이 재시도
+        const { data: fallback } = await supabase
+          .from('agent_reviews')
+          .select('id, agent_name, contract_date, transaction_tag, review_text, created_at, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
+          .eq('supabase_user_id', userId)
+          .order('created_at', { ascending: false })
+
+        const reviews = (fallback || []).map((r: any) => {
+          const fields = [r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed].filter(Boolean)
+          const avg = fields.length > 0 ? (fields.reduce((a: number, b: number) => a + b, 0) / fields.length).toFixed(1) : '-'
+          return { ...r, agent_road_address: '', avg_rating: avg }
+        })
+        setUserReviewPopup({ userId, nickname, reviews })
+      } else {
+        const reviews = (data || []).map((r: any) => {
+          const agent = r.agent || {}
+          const fields = [r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed].filter(Boolean)
+          const avg = fields.length > 0 ? (fields.reduce((a: number, b: number) => a + b, 0) / fields.length).toFixed(1) : '-'
+          return {
+            id: r.id,
+            agent_name: agent.agent_name || r.agent_name || '-',
+            agent_road_address: agent.road_address || '',
+            contract_date: r.contract_date || '-',
+            transaction_tag: r.transaction_tag || '-',
+            avg_rating: avg,
+            review_text: r.review_text || '',
+            created_at: r.created_at,
+          }
+        })
+        setUserReviewPopup({ userId, nickname, reviews })
+      }
+    } catch (err) {
+      console.error('[계정관리] 리뷰 조회 오류:', err)
+    } finally {
+      setIsUserReviewLoading(false)
     }
   }
 
@@ -530,10 +627,13 @@ export default function Header() {
       setIsReportsLoading(true)
 
       // 1) reports + review(agent_reviews -> agent_master) 조회
+      //    주의: '*' 사용 시 PostgREST가 reporter_user_id FK(auth.users)를 자동 해석하려 해서 오류 발생
+      //    → 필요한 컬럼만 명시적으로 지정
       const { data, error } = await supabase
         .from('reports')
         .select(`
-          *,
+          id, review_id, reporter_user_id, reason, detail,
+          status, admin_note, processed_at, processed_by, created_at, updated_at,
           review:agent_reviews!reports_review_id_fkey(
             id, review_text, agent_id, transaction_tag,
             fee_satisfaction, expertise, kindness, property_reliability, response_speed,
@@ -1006,6 +1106,144 @@ export default function Header() {
     }
   }
 
+  // 리뷰 관리 로드
+  const loadReviewMgmt = async (page = 0) => {
+    try {
+      setIsReviewMgmtLoading(true)
+      const pageSize = 20
+      const from = page * pageSize
+      const to = from + pageSize - 1
+
+      const { data, error } = await supabase
+        .from('agent_reviews')
+        .select(`
+          id, agent_id, supabase_user_id, transaction_tag, agent_name,
+          fee_satisfaction, expertise, kindness, property_reliability, response_speed,
+          review_text, contract_date, created_at, is_hidden,
+          agent_stamp, agent_stamp_confidence,
+          contract_image_encrypted, contract_image_iv,
+          agent:agent_master(id, agent_name, road_address, agent_number)
+        `)
+        .order('created_at', { ascending: false })
+        .range(from, to)
+
+      if (error) {
+        console.error('[리뷰 관리] 조회 오류:', error)
+        // fallback
+        const { data: fallback } = await supabase
+          .from('agent_reviews')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, to)
+        setReviewMgmtList(fallback || [])
+      } else {
+        // 작성자 닉네임 조회
+        const userIds = Array.from(new Set((data || []).map((r: any) => r.supabase_user_id).filter(Boolean))) as string[]
+        let userMap: Record<string, string> = {}
+        if (userIds.length > 0) {
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('supabase_user_id, nickname')
+            .in('supabase_user_id', userIds)
+          if (usersData) {
+            usersData.forEach((u: any) => { userMap[u.supabase_user_id] = u.nickname || '(미설정)' })
+          }
+        }
+        const enriched = (data || []).map((r: any) => ({
+          ...r,
+          reviewer_nickname: userMap[r.supabase_user_id] || '(알수없음)',
+        }))
+        setReviewMgmtList(enriched)
+      }
+      setReviewMgmtPage(page)
+    } catch (err) {
+      console.error('[리뷰 관리] 오류:', err)
+    } finally {
+      setIsReviewMgmtLoading(false)
+    }
+  }
+
+  // 리뷰 이미지 다운로드 (관리자)
+  const downloadReviewImage = (reviewId: string, agentName?: string) => {
+    const dataUrl = reviewMgmtDecryptedImages[reviewId]
+    if (!dataUrl) return
+    const link = document.createElement('a')
+    link.href = dataUrl
+    const safeName = (agentName || '계약서').replace(/[^가-힣a-zA-Z0-9]/g, '_')
+    link.download = `review_${reviewId}_${safeName}.jpg`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // 리뷰 이미지 수정(재업로드) (관리자)
+  const replaceReviewImage = async (reviewId: string, file: File) => {
+    setReviewMgmtImageLoading(prev => ({ ...prev, [reviewId]: true }))
+    try {
+      // 파일 → base64 변환
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const result = reader.result as string
+          // data:image/...;base64, 접두어 제거
+          const base64Data = result.split(',')[1]
+          resolve(base64Data)
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const res = await fetch('/api/admin/review-image', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewId, imageBase64: base64 }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        showSuccess('이미지가 수정되었습니다. "이미지 보기"를 다시 클릭하여 확인하세요.')
+        // 이전 복호화 캐시 제거 (새 이미지를 다시 복호화하도록)
+        setReviewMgmtDecryptedImages(prev => {
+          const next = { ...prev }
+          delete next[reviewId]
+          return next
+        })
+        // 리스트 새로고침
+        await loadReviewMgmt(reviewMgmtPage)
+      } else {
+        showError(`이미지 수정 실패: ${data.error}`)
+      }
+    } catch (err) {
+      console.error('[리뷰 관리] 이미지 수정 오류:', err)
+      showError('이미지 수정 중 오류가 발생했습니다.')
+    } finally {
+      setReviewMgmtImageLoading(prev => ({ ...prev, [reviewId]: false }))
+    }
+  }
+
+  // 리뷰 이미지 복호화
+  const decryptReviewImage = async (reviewId: string, encrypted: string, iv: string) => {
+    if (reviewMgmtDecryptedImages[reviewId]) return // 이미 복호화됨
+    setReviewMgmtImageLoading(prev => ({ ...prev, [reviewId]: true }))
+    try {
+      const res = await fetch('/api/decrypt-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted, iv }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success) {
+          setReviewMgmtDecryptedImages(prev => ({ ...prev, [reviewId]: data.imageUrl }))
+        }
+      }
+    } catch (err) {
+      console.error('[리뷰 관리] 이미지 복호화 실패:', err)
+    } finally {
+      setReviewMgmtImageLoading(prev => ({ ...prev, [reviewId]: false }))
+    }
+  }
+
   // 데이터 분석 로드 (병렬 쿼리로 최적화)
   const loadAnalytics = async () => {
     try {
@@ -1236,6 +1474,8 @@ export default function Header() {
           await Promise.all([fetchCodeMaster(), fetchCodeDetail()])
         } else if (adminMenu === 'analytics') {
           await loadAnalytics()
+        } else if (adminMenu === 'review-mgmt') {
+          await loadReviewMgmt(0)
         }
       }
     }
@@ -2366,6 +2606,16 @@ export default function Header() {
                       <span className={styles.mobileAdminMenuLabel}>신고 관리</span>
                     </button>
                     <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'review-mgmt' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('review-mgmt')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>📋</span>
+                      <span className={styles.mobileAdminMenuLabel}>리뷰 관리</span>
+                    </button>
+                    <button
                       className={`${styles.mobileAdminMenuItem} ${adminMenu === 'analytics' ? styles.mobileAdminMenuItemActive : ''}`}
                       onClick={() => {
                         setAdminMenu('analytics')
@@ -2431,6 +2681,13 @@ export default function Header() {
                 >
                   <span className={styles.adminSidebarIcon}>🚨</span>
                   <span className={styles.adminSidebarLabel}>신고 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'review-mgmt' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('review-mgmt')}
+                >
+                  <span className={styles.adminSidebarIcon}>📋</span>
+                  <span className={styles.adminSidebarLabel}>리뷰 관리</span>
                 </button>
                 <button
                   className={`${styles.adminSidebarItem} ${adminMenu === 'analytics' ? styles.adminSidebarItemActive : ''}`}
@@ -2995,6 +3252,7 @@ export default function Header() {
                           <th>닉네임</th>
                           <th>유형</th>
                           <th>등급</th>
+                          <th>리뷰</th>
                           <th>가입일</th>
                           <th>최근 로그인</th>
                           <th>관리</th>
@@ -3003,11 +3261,11 @@ export default function Header() {
                       <tbody>
                         {isUserLoading ? (
                           <tr>
-                            <td colSpan={7} className={styles.loadingCell}>계정 정보를 불러오는 중...</td>
+                            <td colSpan={8} className={styles.loadingCell}>계정 정보를 불러오는 중...</td>
                           </tr>
                         ) : filteredUsers.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className={styles.emptyCell}>조회된 계정이 없습니다.</td>
+                            <td colSpan={8} className={styles.emptyCell}>조회된 계정이 없습니다.</td>
                           </tr>
                         ) : (
                           filteredUsers.map((account) => {
@@ -3060,6 +3318,29 @@ export default function Header() {
                                     <span className={styles.userGradeBadge}>{account.user_grade || '-'}</span>
                                   )}
                                 </td>
+                                <td>
+                                  {account.review_count > 0 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => loadUserReviews(account.supabase_user_id, account.nickname || account.email || '사용자')}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#7C3AED',
+                                        fontWeight: 700,
+                                        fontSize: '13px',
+                                        cursor: 'pointer',
+                                        textDecoration: 'underline',
+                                        padding: '2px 4px',
+                                      }}
+                                      title="클릭하여 리뷰 목록 보기"
+                                    >
+                                      {account.review_count}건
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '13px' }}>0건</span>
+                                  )}
+                                </td>
                                 <td>{formatDate(account.created_at)}</td>
                                 <td>{formatDate(account.last_login_at)}</td>
                                 <td>
@@ -3098,6 +3379,100 @@ export default function Header() {
                     <span className={styles.adminPageInfo}>1 / 1</span>
                     <button className={styles.adminPageBtn} disabled>다음</button>
                   </div>
+
+                  {/* 사용자 리뷰 목록 팝업 */}
+                  {userReviewPopup && (
+                    <div
+                      style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', zIndex: 10001,
+                      }}
+                      onClick={() => setUserReviewPopup(null)}
+                    >
+                      <div
+                        style={{
+                          background: '#fff', borderRadius: '16px', width: '90%', maxWidth: '640px',
+                          maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* 헤더 */}
+                        <div style={{
+                          padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        }}>
+                          <div>
+                            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>
+                              {userReviewPopup.nickname}님의 리뷰 목록
+                            </h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                              총 {userReviewPopup.reviews.length}건의 리뷰
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setUserReviewPopup(null)}
+                            style={{
+                              background: 'none', border: 'none', fontSize: '20px',
+                              cursor: 'pointer', color: '#94a3b8', padding: '4px',
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* 리뷰 리스트 */}
+                        <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
+                          {isUserReviewLoading ? (
+                            <p style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>리뷰 불러오는 중...</p>
+                          ) : userReviewPopup.reviews.length === 0 ? (
+                            <p style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>등록된 리뷰가 없습니다.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {userReviewPopup.reviews.map((rv, idx) => (
+                                <div key={rv.id || idx} style={{
+                                  background: '#f8fafc', border: '1px solid #e2e8f0',
+                                  borderRadius: '10px', padding: '14px 16px',
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b', marginBottom: '2px' }}>
+                                        {rv.agent_name}
+                                      </div>
+                                      {rv.agent_road_address && (
+                                        <div style={{ fontSize: '12px', color: '#64748b' }}>
+                                          {rv.agent_road_address}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#f59e0b', whiteSpace: 'nowrap', marginLeft: '8px' }}>
+                                      ⭐ {rv.avg_rating}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#64748b', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                    <span>거래: {rv.transaction_tag}</span>
+                                    <span>계약일: {rv.contract_date}</span>
+                                    <span>작성: {new Date(rv.created_at).toLocaleDateString('ko-KR')}</span>
+                                  </div>
+                                  {rv.review_text && (
+                                    <p style={{
+                                      fontSize: '13px', color: '#334155', margin: 0,
+                                      lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                                      overflow: 'hidden', textOverflow: 'ellipsis',
+                                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any,
+                                    }}>
+                                      {rv.review_text}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3727,6 +4102,231 @@ export default function Header() {
                         </div>
                       </div>
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* 리뷰 관리 */}
+              {adminMenu === 'review-mgmt' && (
+                <div className={styles.adminSection}>
+                  <h2 className={styles.adminSectionTitle}>리뷰 관리</h2>
+                  <p className={styles.adminSectionDesc}>
+                    등록된 리뷰 정보와 크롭된 계약서 이미지를 확인합니다.
+                  </p>
+
+                  {isReviewMgmtLoading ? (
+                    <div className={styles.adminLoadingOverlay}>리뷰 데이터 로딩 중...</div>
+                  ) : reviewMgmtList.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 0' }}>등록된 리뷰가 없습니다.</p>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {reviewMgmtList.map((review: any) => {
+                          const avgRating = (() => {
+                            const fields = [review.fee_satisfaction, review.expertise, review.kindness, review.property_reliability, review.response_speed].filter(Boolean)
+                            return fields.length > 0 ? (fields.reduce((a: number, b: number) => a + b, 0) / fields.length).toFixed(1) : '-'
+                          })()
+                          const agentInfo = review.agent || {}
+                          const hasImage = review.contract_image_encrypted && review.contract_image_iv
+                          const decryptedUrl = reviewMgmtDecryptedImages[review.id]
+                          const isImgLoading = reviewMgmtImageLoading[review.id]
+
+                          return (
+                            <div key={review.id} style={{
+                              background: '#fff',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '16px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                            }}>
+                              {/* 헤더: 작성자 + 날짜 + 상태 */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                                    {review.reviewer_nickname}
+                                  </span>
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                    {new Date(review.created_at).toLocaleDateString('ko-KR')}
+                                  </span>
+                                  {review.is_hidden && (
+                                    <span style={{ fontSize: '11px', background: '#fee2e2', color: '#dc2626', padding: '2px 6px', borderRadius: '4px' }}>숨김</span>
+                                  )}
+                                </div>
+                                <span style={{ fontSize: '13px', fontWeight: 600, color: '#f59e0b' }}>
+                                  ⭐ {avgRating}
+                                </span>
+                              </div>
+
+                              {/* 중개사 정보 */}
+                              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', marginBottom: '10px', fontSize: '13px' }}>
+                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                  <span><strong>중개사:</strong> {agentInfo.agent_name || review.agent_name || '-'}</span>
+                                  <span><strong>등록번호:</strong> {agentInfo.agent_number || '-'}</span>
+                                  <span><strong>거래구분:</strong> {review.transaction_tag || '-'}</span>
+                                  <span><strong>계약일:</strong> {review.contract_date || '-'}</span>
+                                </div>
+                                {agentInfo.road_address && (
+                                  <div style={{ marginTop: '4px', color: '#64748b' }}>
+                                    <strong>주소:</strong> {agentInfo.road_address}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 리뷰 텍스트 */}
+                              {review.review_text && (
+                                <p style={{ fontSize: '13px', color: '#334155', margin: '0 0 10px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                                  {review.review_text}
+                                </p>
+                              )}
+
+                              {/* 도장 검증 */}
+                              {review.agent_stamp !== null && (
+                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>
+                                  도장: {review.agent_stamp ? '✅ 확인됨' : '❌ 미확인'} 
+                                  {review.agent_stamp_confidence != null && ` (신뢰도: ${(review.agent_stamp_confidence * 100).toFixed(0)}%)`}
+                                </div>
+                              )}
+
+                              {/* 크롭 이미지 영역 */}
+                              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
+                                {hasImage ? (
+                                  <>
+                                    {decryptedUrl ? (
+                                      <div>
+                                        <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>📎 크롭된 계약서 이미지</p>
+                                        <img
+                                          src={decryptedUrl}
+                                          alt="크롭된 계약서"
+                                          style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '10px' }}
+                                        />
+                                        {/* 관리자 이미지 관리 버튼 */}
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                          <label style={{
+                                            padding: '6px 14px',
+                                            background: '#f59e0b',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            fontSize: '12px',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                          }}>
+                                            ✏️ 이미지 수정
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              style={{ display: 'none' }}
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0]
+                                                if (file) replaceReviewImage(review.id, file)
+                                                e.target.value = ''
+                                              }}
+                                            />
+                                          </label>
+                                          <button
+                                            onClick={() => downloadReviewImage(review.id, agentInfo.agent_name || review.agent_name)}
+                                            style={{
+                                              padding: '6px 14px',
+                                              background: '#3b82f6',
+                                              color: '#fff',
+                                              border: 'none',
+                                              borderRadius: '6px',
+                                              fontSize: '12px',
+                                              cursor: 'pointer',
+                                            }}
+                                          >
+                                            💾 이미지 다운로드
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <button
+                                          onClick={() => decryptReviewImage(review.id, review.contract_image_encrypted, review.contract_image_iv)}
+                                          disabled={isImgLoading}
+                                          style={{
+                                            padding: '8px 16px',
+                                            background: isImgLoading ? '#cbd5e1' : '#3b82f6',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            fontSize: '12px',
+                                            cursor: isImgLoading ? 'not-allowed' : 'pointer',
+                                          }}
+                                        >
+                                          {isImgLoading ? '처리 중...' : '🔓 계약서 이미지 보기'}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div>
+                                    <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>계약서 이미지 없음</p>
+                                    <label style={{
+                                      padding: '6px 14px',
+                                      background: '#10b981',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      cursor: isImgLoading ? 'not-allowed' : 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      opacity: isImgLoading ? 0.6 : 1,
+                                    }}>
+                                      {isImgLoading ? '업로드 중...' : '📤 이미지 업로드'}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        disabled={isImgLoading}
+                                        style={{ display: 'none' }}
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0]
+                                          if (file) replaceReviewImage(review.id, file)
+                                          e.target.value = ''
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* 페이지네이션 */}
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '20px' }}>
+                        <button
+                          onClick={() => loadReviewMgmt(reviewMgmtPage - 1)}
+                          disabled={reviewMgmtPage === 0}
+                          style={{
+                            padding: '8px 16px', border: '1px solid #d1d5db', borderRadius: '6px',
+                            background: reviewMgmtPage === 0 ? '#f1f5f9' : '#fff', cursor: reviewMgmtPage === 0 ? 'not-allowed' : 'pointer',
+                            fontSize: '13px',
+                          }}
+                        >
+                          ← 이전
+                        </button>
+                        <span style={{ padding: '8px 12px', fontSize: '13px', color: '#64748b' }}>
+                          {reviewMgmtPage + 1} 페이지
+                        </span>
+                        <button
+                          onClick={() => loadReviewMgmt(reviewMgmtPage + 1)}
+                          disabled={reviewMgmtList.length < 20}
+                          style={{
+                            padding: '8px 16px', border: '1px solid #d1d5db', borderRadius: '6px',
+                            background: reviewMgmtList.length < 20 ? '#f1f5f9' : '#fff', cursor: reviewMgmtList.length < 20 ? 'not-allowed' : 'pointer',
+                            fontSize: '13px',
+                          }}
+                        >
+                          다음 →
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               )}

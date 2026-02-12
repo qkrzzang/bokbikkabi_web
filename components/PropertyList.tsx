@@ -57,6 +57,7 @@ interface PropertyDetail {
 
 interface PropertyListProps {
   searchQuery: string
+  searchRegion?: string
   autoOpenAgentId?: number | null
   onAutoOpenComplete?: () => void
 }
@@ -234,7 +235,7 @@ const getPropertyDetail = (id: string): PropertyDetail | null => {
   return details[id] || null
 }
 
-export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenComplete }: PropertyListProps) {
+export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentId, onAutoOpenComplete }: PropertyListProps) {
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false) // 검색 실행 여부 추적
@@ -473,11 +474,17 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
       setLoading(true)
       
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address, latitude, longitude')
           .ilike('agent_name', `%${searchQuery}%`)
-          .limit(50)
+        
+        // 지역 필터 적용
+        if (searchRegion) {
+          query = query.or(`road_address.ilike.%${searchRegion}%,lot_address.ilike.%${searchRegion}%`)
+        }
+
+        const { data, error } = await query.limit(50)
 
         if (error) {
           console.error('[검색] DB 조회 오류:', error.message)
@@ -582,7 +589,7 @@ export default function PropertyList({ searchQuery, autoOpenAgentId, onAutoOpenC
     return () => {
       clearTimeout(timeoutId)
     }
-  }, [searchQuery])
+  }, [searchQuery, searchRegion])
 
   // 검색어가 없을 때는 아무것도 표시하지 않음
   if (!searchQuery.trim()) {

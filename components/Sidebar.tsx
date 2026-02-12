@@ -64,6 +64,7 @@ export default function Sidebar({
   const [showIOSGuide, setShowIOSGuide] = useState(false) // iOS 설치 가이드
   const [isMobile, setIsMobile] = useState(false) // 모바일 여부
   const [editNickname, setEditNickname] = useState('') // 닉네임 수정용
+  const [isNicknameEditing, setIsNicknameEditing] = useState(false) // 닉네임 수정 모드
   const [isNicknameSaving, setIsNicknameSaving] = useState(false) // 닉네임 저장 중
   const [nicknameChangedAt, setNicknameChangedAt] = useState<string | null>(null) // 닉네임 마지막 변경일
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false) // 회원탈퇴 확인
@@ -763,22 +764,30 @@ export default function Sidebar({
 
               <button 
                 className={styles.navItem} 
-                onClick={async () => {
-                  const nickname = user.user_metadata?.name ||
+                onClick={() => {
+                  setIsNicknameEditing(false)
+                  setShowDeleteConfirm(false)
+
+                  // fallback 닉네임으로 먼저 표시하고 화면 즉시 전환
+                  const fallbackNickname = user.user_metadata?.name ||
                     user.user_metadata?.kakao_account?.profile?.nickname ||
                     user.user_metadata?.properties?.nickname ||
                     user.user_metadata?.nickname || ''
-                  setEditNickname(nickname)
-                  setShowDeleteConfirm(false)
+                  setEditNickname(fallbackNickname)
                   setCurrentScreen('profile')
-                  // 닉네임 마지막 변경일 조회
-                  if (authUser) {
-                    const { data } = await supabase
+
+                  // DB에서 정확한 닉네임 + 변경일 비동기 조회 (화면 전환 후)
+                  const userId = authUser?.id || user?.id
+                  if (userId) {
+                    supabase
                       .from('users')
-                      .select('nickname_changed_at')
-                      .eq('supabase_user_id', authUser.id)
+                      .select('nickname, nickname_changed_at')
+                      .eq('supabase_user_id', userId)
                       .single()
-                    setNicknameChangedAt(data?.nickname_changed_at || null)
+                      .then(({ data }: { data: any }) => {
+                        if (data?.nickname) setEditNickname(data.nickname)
+                        setNicknameChangedAt(data?.nickname_changed_at || null)
+                      })
                   }
                 }}
               >
@@ -1308,70 +1317,86 @@ export default function Sidebar({
                       onChange={(e) => setEditNickname(e.target.value)}
                       placeholder="닉네임을 입력하세요"
                       maxLength={20}
+                      readOnly={!isNicknameEditing}
+                      style={!isNicknameEditing ? { background: '#f1f5f9', color: '#64748b', cursor: 'default' } : {}}
                     />
-                    <button
-                      className={styles.nicknameSaveBtn}
-                      disabled={isNicknameSaving || !editNickname.trim()}
-                      onClick={async () => {
-                        if (!authUser || !editNickname.trim()) return
-
-                        // 월 1회 제한 체크
-                        if (nicknameChangedAt) {
-                          const lastChanged = new Date(nicknameChangedAt)
-                          const now = new Date()
-                          const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
-                          if (diffDays < 30) {
-                            const remainDays = 30 - diffDays
-                            showWarning(`닉네임은 한 달에 1회만 변경할 수 있습니다.\n${remainDays}일 후에 다시 시도해주세요.`)
-                            return
+                    {!isNicknameEditing ? (
+                      <button
+                        className={styles.nicknameSaveBtn}
+                        onClick={() => {
+                          // 수정 버튼 클릭 시 한달 제한 체크
+                          if (nicknameChangedAt) {
+                            const lastChanged = new Date(nicknameChangedAt)
+                            const now = new Date()
+                            const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
+                            if (diffDays < 30) {
+                              const remainDays = 30 - diffDays
+                              showWarning(`닉네임은 한 달에 1회만 변경할 수 있습니다.\n${remainDays}일 후에 다시 시도해주세요.`)
+                              return
+                            }
                           }
-                        }
+                          setIsNicknameEditing(true)
+                        }}
+                      >
+                        수정
+                      </button>
+                    ) : (
+                      <button
+                        className={styles.nicknameSaveBtn}
+                        disabled={isNicknameSaving || !editNickname.trim()}
+                        onClick={async () => {
+                          const userId = authUser?.id || user?.id
+                          if (!userId || !editNickname.trim()) return
 
-                        setIsNicknameSaving(true)
-                        try {
-                          const trimmed = editNickname.trim()
-                          const now = new Date().toISOString()
+                          setIsNicknameSaving(true)
+                          try {
+                            const trimmed = editNickname.trim()
+                            const now = new Date().toISOString()
 
-                          // 1. auth.users 메타데이터 업데이트
-                          const { error: authError } = await supabase.auth.updateUser({
-                            data: { name: trimmed, nickname: trimmed }
-                          })
+                            // 1. public.users 테이블 업데이트 (핵심)
+                            const { error: dbError } = await supabase
+                              .from('users')
+                              .update({ nickname: trimmed, nickname_changed_at: now, updated_at: now })
+                              .eq('supabase_user_id', userId)
 
-                          // 2. public.users 테이블 업데이트 (nickname_changed_at 포함)
-                          const { error: dbError } = await supabase
-                            .from('users')
-                            .update({ nickname: trimmed, nickname_changed_at: now, updated_at: now })
-                            .eq('supabase_user_id', authUser.id)
+                            if (dbError) {
+                              showError('닉네임 변경에 실패했습니다: ' + dbError.message)
+                              return
+                            }
 
-                          if (authError && dbError) {
-                            showError('닉네임 변경에 실패했습니다.')
-                          } else {
+                            // 2. auth.users 메타데이터 업데이트 (fire-and-forget, 기다리지 않음)
+                            supabase.auth.updateUser({
+                              data: { name: trimmed, nickname: trimmed }
+                            }).catch(() => {})
+
                             setNicknameChangedAt(now)
+                            setIsNicknameEditing(false)
                             showSuccess('닉네임이 변경되었습니다.')
+                          } catch (err) {
+                            console.error('[닉네임] 저장 오류:', err)
+                            showError('닉네임 변경 중 오류가 발생했습니다.')
+                          } finally {
+                            setIsNicknameSaving(false)
                           }
-                        } catch {
-                          showError('닉네임 변경 중 오류가 발생했습니다.')
-                        } finally {
-                          setIsNicknameSaving(false)
-                        }
-                      }}
-                    >
-                      {isNicknameSaving ? '저장 중' : '저장'}
-                    </button>
-                    {nicknameChangedAt && (() => {
-                      const lastChanged = new Date(nicknameChangedAt)
-                      const now = new Date()
-                      const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
-                      if (diffDays < 30) {
-                        return (
-                          <p className={styles.nicknameNotice}>
-                            닉네임은 한 달에 1회만 변경 가능합니다. ({30 - diffDays}일 후 변경 가능)
-                          </p>
-                        )
-                      }
-                      return null
-                    })()}
+                        }}
+                      >
+                        {isNicknameSaving ? '저장 중' : '저장'}
+                      </button>
+                    )}
                   </div>
+                  {nicknameChangedAt && (() => {
+                    const lastChanged = new Date(nicknameChangedAt)
+                    const now = new Date()
+                    const diffDays = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24))
+                    if (diffDays < 30) {
+                      return (
+                        <p className={styles.nicknameNotice}>
+                          닉네임은 한 달에 1회만 변경 가능합니다. ({30 - diffDays}일 후 변경 가능)
+                        </p>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
 
                 <div className={styles.profileSettingsSection}>

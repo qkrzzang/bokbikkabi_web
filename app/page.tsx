@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase/client'
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchRegion, setSearchRegion] = useState('')
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -122,8 +123,9 @@ export default function Home() {
     }
   }, [])
 
-  const handleSearch = (query: string) => {
+  const handleSearch = (query: string, region?: string) => {
     setSearchQuery(query)
+    if (region !== undefined) setSearchRegion(region)
   }
 
   return (
@@ -132,7 +134,8 @@ export default function Home() {
         <SearchBar onSearch={handleSearch} value={searchQuery} />
         {!searchQuery.trim() && <CopyBanner />}
         <PropertyList 
-          searchQuery={searchQuery} 
+          searchQuery={searchQuery}
+          searchRegion={searchRegion}
           autoOpenAgentId={autoOpenAgentId}
           onAutoOpenComplete={() => setAutoOpenAgentId(null)}
         />
