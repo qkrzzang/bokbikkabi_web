@@ -56,8 +56,15 @@ export default function Home() {
     }
 
     const handleLogout = () => {
+      console.log('[page.tsx] 🚪 로그아웃 이벤트, 화면 초기화')
       setSearchQuery('')
+      setSearchRegion('')
       setAutoOpenAgentId(null)
+      
+      // 완전한 초기화를 위해 페이지 새로고침
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 100)
     }
 
     const handleSearchAndOpenDetail = (event: Event) => {

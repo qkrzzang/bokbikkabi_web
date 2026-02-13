@@ -1762,6 +1762,9 @@ export default function Header() {
             await signOut()
             setIsSidebarOpen(false)
             logAccess({ action: 'logout' })
+            
+            // 로그아웃 시 화면 초기화 이벤트 발생
+            window.dispatchEvent(new CustomEvent('user:logout'))
           } catch (error) {
             showError('로그아웃 중 오류가 발생했습니다.')
           }

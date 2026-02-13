@@ -189,6 +189,7 @@ SELECT
   ar.id,
   ar.review_text,
   ar.helpful_count,
+
   COUNT(rh.id) as actual_count
 FROM agent_reviews ar
 LEFT JOIN review_helpful rh ON rh.review_id = ar.id

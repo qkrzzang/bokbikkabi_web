@@ -21,6 +21,7 @@ const globalForSupabase = globalThis as unknown as { __supabase?: any }
  * 재시도 가능한 fetch wrapper
  * - 네트워크 오류, 5xx 서버 오류 시 자동 재시도
  * - 지수 백오프(Exponential Backoff) 적용
+ * - 요청별 타임아웃 적용 (20초)
  */
 function createRetryFetch(maxRetries = 3, baseDelay = 1000) {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -28,13 +29,23 @@ function createRetryFetch(maxRetries = 3, baseDelay = 1000) {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await fetch(input, init)
+        // ★ 각 요청에 20초 타임아웃 적용
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 20000)
+        
+        const fetchInit = {
+          ...init,
+          signal: controller.signal
+        }
+        
+        const response = await fetch(input, fetchInit)
+        clearTimeout(timeoutId)
 
         // 5xx 서버 오류는 재시도 (429 Too Many Requests 포함)
         if (response.status >= 500 || response.status === 429) {
           if (attempt < maxRetries) {
             const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500
-            console.warn(`[Supabase] HTTP ${response.status}, ${attempt + 1}/${maxRetries} 재시도 (${Math.round(delay)}ms 후)`)
+            console.warn(`[Supabase Fetch] HTTP ${response.status}, ${attempt + 1}/${maxRetries + 1} 재시도 (${Math.round(delay)}ms 후)`)
             await new Promise(resolve => setTimeout(resolve, delay))
             continue
           }
@@ -44,12 +55,24 @@ function createRetryFetch(maxRetries = 3, baseDelay = 1000) {
       } catch (error: any) {
         lastError = error
 
-        // AbortError는 재시도하지 않음
-        if (error?.name === 'AbortError') throw error
+        // AbortError는 타임아웃 또는 사용자 취소
+        if (error?.name === 'AbortError') {
+          // init에 이미 signal이 있었다면 (사용자 취소) → 즉시 throw
+          if (init?.signal) throw error
+          
+          // 타임아웃이라면 재시도 가능
+          if (attempt < maxRetries) {
+            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500
+            console.warn(`[Supabase Fetch] 타임아웃 (20초), ${attempt + 1}/${maxRetries + 1} 재시도 (${Math.round(delay)}ms 후)`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+          throw error
+        }
 
         if (attempt < maxRetries) {
           const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500
-          console.warn(`[Supabase] 네트워크 오류, ${attempt + 1}/${maxRetries} 재시도 (${Math.round(delay)}ms 후):`, error?.message)
+          console.warn(`[Supabase Fetch] 네트워크 오류, ${attempt + 1}/${maxRetries + 1} 재시도 (${Math.round(delay)}ms 후):`, error?.message)
           await new Promise(resolve => setTimeout(resolve, delay))
         }
       }
@@ -79,6 +102,41 @@ async function noOpLock<R>(
   return await fn()
 }
 
+/**
+ * 안전한 localStorage 래퍼
+ * - 시크릿/프라이빗 모드에서 localStorage 접근 제한 대응
+ * - 브라우저 정책으로 인한 저장 실패 처리
+ * ★ 성능: 정상 동작 시 로깅 없음 (에러만 로깅)
+ *   Supabase가 매우 빈번하게 storage를 호출하므로 로깅은 성능 저하 원인
+ */
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return null
+      return localStorage.getItem(key)
+    } catch (error) {
+      console.error('[SafeStorage] getItem 오류:', key, error)
+      return null
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return
+      localStorage.setItem(key, value)
+    } catch (error) {
+      console.error('[SafeStorage] setItem 오류:', key, error)
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return
+      localStorage.removeItem(key)
+    } catch (error) {
+      console.error('[SafeStorage] removeItem 오류:', key, error)
+    }
+  }
+}
+
 function createSupabaseClient() {
   return createClient(supabaseUrl!, supabaseAnonKey!, {
     auth: {
@@ -91,7 +149,11 @@ function createSupabaseClient() {
       flowType: 'pkce',
       // ★ navigator.locks 완전 비활성화 (no-op lock)
       //   lock이 없으므로 자동 코드 교환도 즉시 완료됨
-      ...(isServer ? {} : { lock: noOpLock }),
+      ...(isServer ? {} : { 
+        lock: noOpLock,
+        // 모든 브라우저에서 안전한 storage 사용 (Edge 전용 → 전체 적용)
+        storage: safeStorage
+      }),
     },
     global: {
       headers: {

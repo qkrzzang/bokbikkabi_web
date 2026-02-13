@@ -492,7 +492,8 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
       setLoading(true)
       
       try {
-        console.log('[PropertyList] 🗄️ Supabase 쿼리 생성 중...')
+        // ★ 부동산 검색은 로그인 여부와 관계없이 동작 (anon key로 agent_master 조회 가능)
+        console.log('[PropertyList] 🔍 Supabase 쿼리 생성 중...')
         let query = supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address, latitude, longitude')
@@ -504,13 +505,13 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
           query = query.or(`road_address.ilike.%${searchRegion}%,lot_address.ilike.%${searchRegion}%`)
         }
 
-        // 타임아웃 적용: 10초 내 응답 없으면 AbortController로 취소
-        console.log('[PropertyList] ⏱️ 타임아웃 설정 (10초), DB 쿼리 실행 중...')
+        // 타임아웃 적용: 15초 내 응답 없으면 AbortController로 취소
+        console.log('[PropertyList] ⏱️ 타임아웃 설정 (15초), DB 쿼리 실행 중...')
         const controller = new AbortController()
         const timeoutId = setTimeout(() => {
-          console.log('[PropertyList] ⏰ 타임아웃! 쿼리 중단')
+          console.log('[PropertyList] ⏰ 타임아웃 (15초)! 쿼리 중단')
           controller.abort()
-        }, 10000)
+        }, 15000)
 
         const queryStartTime = Date.now()
         const { data, error } = await query.limit(50).abortSignal(controller.signal)
@@ -621,17 +622,21 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         }
         setHasSearched(true)
       } catch (error: any) {
-        // AbortError(타임아웃)는 별도 처리
-        if (error?.name === 'AbortError') {
-          console.warn('[PropertyList] ⏰ 타임아웃 (10초 초과) - 목업 데이터로 대체')
+        // 에러 타입별 처리
+        if (error?.message === 'Session check timeout') {
+          console.error('[PropertyList] ⏰ 세션 검증 타임아웃 (3초) - DB 연결 불가')
+        } else if (error?.name === 'AbortError') {
+          console.warn('[PropertyList] ⏰ DB 쿼리 타임아웃 (15초)')
         } else {
           console.error('[PropertyList] 💥 예외 발생:', error?.message, error)
         }
+        
+        console.log('[PropertyList] 🔄 목업 데이터로 폴백')
         const q = searchQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
           (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
         )
-        console.log('[PropertyList] 📦 예외 발생, 목업 데이터 사용:', mockMatches.length, '건')
+        console.log('[PropertyList] 📦 목업 데이터 사용:', mockMatches.length, '건')
         setProperties(mockMatches)
         setHasSearched(true)
       } finally {
