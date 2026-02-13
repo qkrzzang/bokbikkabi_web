@@ -98,31 +98,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true
+    console.log('[AuthContext] 🚀 useEffect 시작')
+
+    /**
+     * URL에서 OAuth code 파라미터를 깨끗이 제거
+     * - 인증 코드가 남아 있으면 Supabase가 중복 교환을 시도하여 에러 발생
+     */
+    const cleanUrlParams = () => {
+      if (typeof window === 'undefined') return
+      const url = new URL(window.location.href)
+      const hasAuthParams = url.searchParams.has('code') || url.hash.includes('access_token')
+      if (hasAuthParams) {
+        url.searchParams.delete('code')
+        url.hash = ''
+        window.history.replaceState({}, '', url.pathname)
+        console.log('[AuthContext] ✅ URL 인증 파라미터 정리 완료')
+      }
+    }
 
     // 초기 세션 로드
     const initializeAuth = async () => {
+      console.log('[AuthContext] 📝 initializeAuth 시작')
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession()
+        const urlCode = typeof window !== 'undefined'
+          ? new URL(window.location.href).searchParams.get('code')
+          : null
 
-        if (!mounted) return
+        if (urlCode) {
+          console.log('[AuthContext] 🔑 URL에 인증 코드 있음, detectSessionInUrl이 자동 교환 수행 중...')
+          // detectSessionInUrl: true 설정으로 Supabase가 자동 코드 교환 수행
+          // getSession()이 교환 완료까지 대기함
+        }
 
-        if (initialSession) {
-          setSession(initialSession)
-          setUser(initialSession.user)
-          await upsertUser(initialSession.user)
-          await fetchUserType(initialSession.user.id)
+        console.log('[AuthContext] 🔍 getSession() 호출 (detectSessionInUrl 완료 대기)...')
+        const sessionStartTime = Date.now()
+        const { data: { session: existingSession } } = await supabase.auth.getSession()
+        const sessionElapsed = Date.now() - sessionStartTime
+        console.log('[AuthContext] ⚡ getSession() 완료 (' + sessionElapsed + 'ms)')
+
+        if (!mounted) {
+          console.log('[AuthContext] ⚠️ 컴포넌트 언마운트됨, 중단')
+          return
+        }
+
+        if (existingSession) {
+          console.log('[AuthContext] ✅ 기존 세션 확인:', existingSession.user.email)
+          console.log('[AuthContext] 📊 세션 상태 설정 중...')
+          setSession(existingSession)
+          setUser(existingSession.user)
+          console.log('[AuthContext] 💾 사용자 DB upsert 시작 (비동기)...')
+          upsertUser(existingSession.user).catch(() => {})
+          console.log('[AuthContext] 👤 사용자 타입 조회 시작...')
+          await fetchUserType(existingSession.user.id)
+          console.log('[AuthContext] ✅ 초기화 완료 (기존 세션 경로)')
+        } else {
+          console.log('[AuthContext] ℹ️ 세션 없음')
         }
       } catch (error: any) {
-        // AbortError는 무시 (Next.js 빌드/SSR 환경에서 발생하는 정상 동작)
-        if (error?.name === 'AbortError') return
-        console.error('[AuthContext] 초기화 오류:', error)
+        if (error?.name === 'AbortError') {
+          console.log('[AuthContext] ⚠️ AbortError 무시')
+          return
+        }
+        console.error('[AuthContext] 💥 초기화 오류:', error)
+        cleanUrlParams()
       } finally {
         if (mounted) {
+          console.log('[AuthContext] 🏁 isLoading = false 설정')
           setIsLoading(false)
         }
       }
     }
 
+    console.log('[AuthContext] 🎬 initializeAuth() 호출')
     initializeAuth()
 
     // 인증 상태 변경 감지
@@ -131,6 +178,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return
 
         console.log('[AuthContext] 인증 이벤트:', event)
+
+        // 인증 이벤트 발생 시 URL 정리
+        cleanUrlParams()
 
         if (newSession) {
           setSession(newSession)

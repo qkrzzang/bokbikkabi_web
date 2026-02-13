@@ -3,33 +3,55 @@
 -- 리뷰 "도움돼요" 기능을 위한 테이블
 -- =====================================================
 
--- 0. 기존 테이블 및 관련 객체 삭제 (타입 불일치 문제 방지)
+-- 0. 기존 테이블 및 관련 객체 완전 삭제 (타입 불일치 문제 방지)
 DROP TRIGGER IF EXISTS trigger_update_helpful_count_insert ON public.review_helpful;
 DROP TRIGGER IF EXISTS trigger_update_helpful_count_delete ON public.review_helpful;
+DROP FUNCTION IF EXISTS update_review_helpful_count() CASCADE;
+
+-- RLS 정책도 명시적으로 삭제
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Anyone can view helpful counts" ON public.review_helpful;
+  DROP POLICY IF EXISTS "Authenticated users can add helpful" ON public.review_helpful;
+  DROP POLICY IF EXISTS "Users can remove their own helpful" ON public.review_helpful;
+EXCEPTION WHEN undefined_table THEN
+  -- 테이블이 없으면 무시
+  NULL;
+END $$;
+
 DROP TABLE IF EXISTS public.review_helpful CASCADE;
 
+-- ★ agent_reviews.id 타입 확인 (디버깅용, 실행 시 결과 확인)
+-- SELECT column_name, data_type, udt_name
+-- FROM information_schema.columns
+-- WHERE table_schema = 'public' AND table_name = 'agent_reviews' AND column_name = 'id';
+
 -- 1. 테이블 생성
+-- ★ review_id 타입은 반드시 agent_reviews.id 타입과 일치해야 합니다.
+--   agent_reviews.id가 UUID이면 review_id도 UUID,
+--   agent_reviews.id가 BIGINT(BIGSERIAL)이면 review_id도 BIGINT으로 설정하세요.
 CREATE TABLE public.review_helpful (
   id BIGSERIAL PRIMARY KEY,
   review_id UUID NOT NULL,
   supabase_user_id UUID NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   
-  -- 외래 키 제약 조건
-  CONSTRAINT review_helpful_review_id_fkey 
-    FOREIGN KEY (review_id) 
-    REFERENCES public.agent_reviews(id) 
-    ON DELETE CASCADE,
-    
-  CONSTRAINT review_helpful_user_id_fkey 
-    FOREIGN KEY (supabase_user_id) 
-    REFERENCES auth.users(id) 
-    ON DELETE CASCADE,
-  
   -- 같은 사용자가 같은 리뷰에 중복으로 "도움돼요"를 누를 수 없도록
   CONSTRAINT unique_user_review 
     UNIQUE (review_id, supabase_user_id)
 );
+
+-- 외래 키를 별도로 추가 (오류 발생 시 원인 파악이 용이)
+ALTER TABLE public.review_helpful
+  ADD CONSTRAINT review_helpful_review_id_fkey
+    FOREIGN KEY (review_id)
+    REFERENCES public.agent_reviews(id)
+    ON DELETE CASCADE;
+
+ALTER TABLE public.review_helpful
+  ADD CONSTRAINT review_helpful_user_id_fkey
+    FOREIGN KEY (supabase_user_id)
+    REFERENCES auth.users(id)
+    ON DELETE CASCADE;
 
 -- 2. 인덱스 생성 (성능 최적화)
 CREATE INDEX IF NOT EXISTS idx_review_helpful_review_id 
@@ -172,12 +194,3 @@ FROM agent_reviews ar
 LEFT JOIN review_helpful rh ON rh.review_id = ar.id
 GROUP BY ar.id, ar.review_text, ar.helpful_count
 LIMIT 10;
-
--- 현재 사용자가 특정 리뷰에 "도움돼요"를 눌렀는지 확인
-SELECT EXISTS (
-  SELECT 1 
-  FROM review_helpful 
-  WHERE review_id = 1  -- 테스트용 리뷰 ID
-    AND supabase_user_id = auth.uid()
-) as is_helpful;
-

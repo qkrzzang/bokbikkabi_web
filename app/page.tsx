@@ -7,6 +7,7 @@ import CopyBanner from '@/components/CopyBanner'
 import CameraButton from '@/components/CameraButton'
 import styles from './page.module.css'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
 
 const REGION_VALUES = [
   '서울특별시', '경기도', '인천광역시', '부산광역시', '대구광역시',
@@ -36,6 +37,7 @@ function extractRegion(address: string): string {
 }
 
 export default function Home() {
+  const { user, isLoading } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchRegion, setSearchRegion] = useState('')
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
@@ -84,16 +86,16 @@ export default function Home() {
     }
   }, [])
 
-  // 접속 시 5P 적립 (하루 1회)
+  // 접속 시 5P 적립 (하루 1회) - 인증 완료 후 실행
   useEffect(() => {
+    // 인증 로딩 중이거나 사용자가 없으면 실행하지 않음
+    if (isLoading || !user) return
+
     const awardDailyLoginPoints = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
-
         // DB 함수를 통해 안전하게 일일 로그인 포인트 지급 확인 및 처리
         const { data, error } = await supabase.rpc('check_and_award_daily_login', {
-          p_user_id: session.user.id
+          p_user_id: user.id
         })
 
         if (error) {
@@ -112,9 +114,8 @@ export default function Home() {
       }
     }
 
-    // 컴포넌트 마운트 시 한 번만 실행
     awardDailyLoginPoints()
-  }, [])
+  }, [user, isLoading])
 
   // Chrome 확장 프로그램 오류 무시
   useEffect(() => {

@@ -59,13 +59,39 @@ function createRetryFetch(maxRetries = 3, baseDelay = 1000) {
   }
 }
 
+/**
+ * navigator.locks API를 완전히 비활성화하는 no-op lock
+ * 
+ * 문제 원인:
+ * 1. navigator.locks → AbortError 발생 → 모든 DB 쿼리 멈춤
+ * 2. 단순 Promise lock → Supabase 내부에서 lock 안에서 getSession()을 재호출하여
+ *    재귀적 교착(re-entrant deadlock) 발생
+ * 
+ * 해결: lock을 no-op으로 설정하여 함수를 즉시 실행
+ * - 단일 탭 웹앱이므로 cross-tab 동기화 lock이 불필요
+ * - Supabase의 내부 auth 플로우가 lock 없이도 정상 동작
+ */
+async function noOpLock<R>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<R>
+): Promise<R> {
+  return await fn()
+}
+
 function createSupabaseClient() {
   return createClient(supabaseUrl!, supabaseAnonKey!, {
     auth: {
       persistSession: !isServer,
       autoRefreshToken: !isServer,
+      // ★ detectSessionInUrl: true (자동 코드 교환 활성화)
+      //   URL의 ?code= 를 자동으로 감지하여 PKCE 교환 수행
+      //   lock을 no-op으로 설정했으므로 blocking 없음
       detectSessionInUrl: !isServer,
       flowType: 'pkce',
+      // ★ navigator.locks 완전 비활성화 (no-op lock)
+      //   lock이 없으므로 자동 코드 교환도 즉시 완료됨
+      ...(isServer ? {} : { lock: noOpLock }),
     },
     global: {
       headers: {

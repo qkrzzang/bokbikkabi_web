@@ -5,6 +5,7 @@ import PropertyDetailModal from './PropertyDetailModal'
 import styles from './PropertyList.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAlert } from '@/contexts/AlertContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Property {
   id: string
@@ -242,6 +243,7 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const { showError } = useAlert()
+  const { isLoading: authLoading } = useAuth()
 
   // 관심 부동산에서 클릭 시 상세 모달 열기
   // ID로 부동산 상세 정보 로드 (관심 부동산에서 호출)
@@ -463,17 +465,34 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
   }, [properties, loading, autoOpenAgentId])
 
   useEffect(() => {
+    console.log('[PropertyList] 🔄 useEffect 트리거:', {
+      searchQuery,
+      searchRegion,
+      authLoading
+    })
+
     if (!searchQuery.trim()) {
+      console.log('[PropertyList] ℹ️ 검색어 없음, 초기화')
       // 검색어가 없을 때는 부동산 정보를 표시하지 않음
       setProperties([])
       setHasSearched(false)
       return
     }
 
+    // 인증 로딩 중에는 검색하지 않음 (세션 확보 대기)
+    if (authLoading) {
+      console.log('[PropertyList] ⏳ 인증 로딩 중 (authLoading=true), 검색 대기...')
+      return
+    }
+
+    console.log('[PropertyList] ✅ 인증 완료 (authLoading=false), 검색 시작 준비...')
+
     const searchAgents = async () => {
+      console.log('[PropertyList] 🔍 searchAgents() 시작')
       setLoading(true)
       
       try {
+        console.log('[PropertyList] 🗄️ Supabase 쿼리 생성 중...')
         let query = supabase
           .from('agent_master')
           .select('id, agent_name, road_address, lot_address, latitude, longitude')
@@ -481,19 +500,40 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         
         // 지역 필터 적용
         if (searchRegion) {
+          console.log('[PropertyList] 📍 지역 필터 적용:', searchRegion)
           query = query.or(`road_address.ilike.%${searchRegion}%,lot_address.ilike.%${searchRegion}%`)
         }
 
-        const { data, error } = await query.limit(50)
+        // 타임아웃 적용: 10초 내 응답 없으면 AbortController로 취소
+        console.log('[PropertyList] ⏱️ 타임아웃 설정 (10초), DB 쿼리 실행 중...')
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => {
+          console.log('[PropertyList] ⏰ 타임아웃! 쿼리 중단')
+          controller.abort()
+        }, 10000)
+
+        const queryStartTime = Date.now()
+        const { data, error } = await query.limit(50).abortSignal(controller.signal)
+        const queryElapsed = Date.now() - queryStartTime
+        
+        clearTimeout(timeoutId)
+        console.log('[PropertyList] ⚡ DB 쿼리 완료 (' + queryElapsed + 'ms):', {
+          hasData: !!data,
+          dataLength: data?.length,
+          hasError: !!error,
+          errorMessage: error?.message
+        })
 
         if (error) {
-          console.error('[검색] DB 조회 오류:', error.message)
+          console.error('[PropertyList] ❌ DB 조회 오류:', error.message, error)
+          console.log('[PropertyList] 🔄 목업 데이터로 폴백')
           
           // DB 검색이 실패해도 목업 검색 결과는 보여주기
           const q = searchQuery.trim().toLowerCase()
           const mockMatches = mockProperties.filter(
             (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
           )
+          console.log('[PropertyList] 📦 목업 데이터 사용:', mockMatches.length, '건')
           setProperties(mockMatches)
           setHasSearched(true)
           setLoading(false)
@@ -504,13 +544,23 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         const agentIds = (data || []).map((agent: any) => agent.id)
         let ratingsMap = new Map<number, number>()
         
+        console.log('[PropertyList] 🏢 검색된 중개사무소:', agentIds.length, '개')
+        
         if (agentIds.length > 0) {
+          console.log('[PropertyList] ⭐ 리뷰 데이터 조회 중...')
           try {
+            const reviewStartTime = Date.now()
             const { data: reviewsData, error: reviewsError } = await supabase
               .from('agent_reviews')
               .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
               .in('agent_id', agentIds)
               .or('is_hidden.is.null,is_hidden.eq.false')
+            const reviewElapsed = Date.now() - reviewStartTime
+            console.log('[PropertyList] ⚡ 리뷰 조회 완료 (' + reviewElapsed + 'ms):', {
+              hasData: !!reviewsData,
+              reviewCount: reviewsData?.length,
+              hasError: !!reviewsError
+            })
             
             if (!reviewsError && reviewsData) {
               // 각 중개사무소별 평균 별점 계산
@@ -558,38 +608,49 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
 
         // DB에 결과가 있으면 DB 결과만 사용, 없으면 목업 데이터 사용
         if (propertiesData.length > 0) {
+          console.log('[PropertyList] ✅ DB 결과 사용:', propertiesData.length, '건')
           setProperties(propertiesData)
         } else {
+          console.log('[PropertyList] ℹ️ DB 결과 없음, 목업 데이터로 폴백')
           const q = searchQuery.trim().toLowerCase()
           const mockMatches = mockProperties.filter(
             (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
           )
+          console.log('[PropertyList] 📦 목업 데이터 사용:', mockMatches.length, '건')
           setProperties(mockMatches)
         }
         setHasSearched(true)
       } catch (error: any) {
-        console.error('[검색] ❌ 예외 발생:', error)
+        // AbortError(타임아웃)는 별도 처리
+        if (error?.name === 'AbortError') {
+          console.warn('[PropertyList] ⏰ 타임아웃 (10초 초과) - 목업 데이터로 대체')
+        } else {
+          console.error('[PropertyList] 💥 예외 발생:', error?.message, error)
+        }
         const q = searchQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
           (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
         )
-        console.log(`[검색] 예외 발생, 목업 데이터 사용: ${mockMatches.length}건`)
+        console.log('[PropertyList] 📦 예외 발생, 목업 데이터 사용:', mockMatches.length, '건')
         setProperties(mockMatches)
         setHasSearched(true)
       } finally {
+        console.log('[PropertyList] 🏁 setLoading(false)')
         setLoading(false)
       }
     }
 
     // 디바운싱: 300ms 후 검색 실행
-    const timeoutId = setTimeout(() => {
+    console.log('[PropertyList] ⏱️ 300ms 디바운싱 시작')
+    const debounceId = setTimeout(() => {
+      console.log('[PropertyList] ⏱️ 디바운싱 완료, searchAgents() 실행')
       searchAgents()
     }, 300)
 
     return () => {
-      clearTimeout(timeoutId)
+      clearTimeout(debounceId)
     }
-  }, [searchQuery, searchRegion])
+  }, [searchQuery, searchRegion, authLoading])
 
   // 검색어가 없을 때는 아무것도 표시하지 않음
   if (!searchQuery.trim()) {

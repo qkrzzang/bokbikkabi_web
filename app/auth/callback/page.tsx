@@ -10,19 +10,34 @@ function CallbackContent() {
   const [error, setError] = useState<string | null>(null)
   const redirected = useRef(false)
 
-  const goHome = () => {
-    if (!redirected.current) {
-      redirected.current = true
-      window.location.href = '/'
-    }
+  /**
+   * 홈으로 이동 (router.replace 사용 → 뒤로가기 시 콜백 페이지로 돌아가지 않음)
+   * 세션이 localStorage에 완전히 저장된 후 이동해야 AuthContext가 세션을 읽을 수 있음
+   */
+  const goHome = async () => {
+    if (redirected.current) return
+    redirected.current = true
+
+    // URL에서 code 파라미터 즉시 제거 (뒤로가기 방지)
+    try {
+      window.history.replaceState({}, '', '/auth/callback')
+    } catch {}
+
+    // 세션이 localStorage에 완전히 저장될 때까지 짧은 대기
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // SPA 내비게이션으로 이동 (전체 페이지 리로드 없이)
+    router.replace('/')
   }
 
   useEffect(() => {
     let isMounted = true
+    console.log('[콜백] 🚀 useEffect 시작')
 
     // 오류 확인
     const errorParam = searchParams.get('error')
     if (errorParam) {
+      console.log('[콜백] ❌ OAuth 오류:', errorParam)
       setError(`인증 오류: ${searchParams.get('error_description') || errorParam}`)
       setTimeout(goHome, 3000)
       return
@@ -32,29 +47,29 @@ function CallbackContent() {
     const hasAccessToken = window.location.hash.includes('access_token')
 
     if (!code && !hasAccessToken) {
+      console.log('[콜백] ℹ️ 인증 파라미터 없음, 홈으로 이동')
       goHome()
       return
     }
 
-    // Supabase 클라이언트가 detectSessionInUrl로 자동 코드 교환을 수행함
-    // onAuthStateChange로 완료를 감지하여 리디렉트
-    console.log('[콜백] 세션 처리 대기...')
+    // ★ detectSessionInUrl: true이므로 Supabase가 자동 코드 교환 수행
+    //   onAuthStateChange로 SIGNED_IN 이벤트 감지 후 리디렉트
+    console.log('[콜백] ✅ 인증 파라미터 있음, detectSessionInUrl 자동 교환 대기...')
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
       if (!isMounted || redirected.current) return
 
-      console.log('[콜백] 인증 이벤트:', event, session ? 'O' : 'X')
+      console.log('[콜백] 🔔 인증 이벤트:', event, session ? '세션 있음' : '세션 없음')
 
       if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
-        console.log('[콜백] 로그인 성공! User:', session.user.email)
+        console.log('[콜백] ✅ 로그인 성공! User:', session.user.email)
         subscription.unsubscribe()
-        // upsert는 AuthContext에서 처리하므로 여기서는 기다리지 않고 즉시 이동
-        upsertUser(session.user).catch(() => {})
+        clearInterval(checkInterval)
         goHome()
       }
     })
 
-    // 안전장치: 1초 간격으로 세션 확인 (최대 5회)
+    // 안전장치: 폴링 (최대 8초)
     let checkCount = 0
     const checkInterval = setInterval(async () => {
       if (redirected.current || !isMounted) {
@@ -62,22 +77,22 @@ function CallbackContent() {
         return
       }
       checkCount++
+      console.log('[콜백] 🔍 폴링', checkCount, '회차...')
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
-          console.log('[콜백] 폴링으로 세션 감지! User:', session.user.email)
+          console.log('[콜백] ✅ 폴링으로 세션 감지:', session.user.email)
           clearInterval(checkInterval)
           subscription.unsubscribe()
-          upsertUser(session.user).catch(() => {})
           goHome()
-        } else if (checkCount >= 5) {
-          console.log('[콜백] 타임아웃 - 홈으로 이동')
+        } else if (checkCount >= 8) {
+          console.log('[콜백] ⏰ 타임아웃 - 홈으로 이동')
           clearInterval(checkInterval)
           subscription.unsubscribe()
           goHome()
         }
-      } catch {
-        // 네트워크 오류 등 무시, 다음 폴링에서 재시도
+      } catch (err) {
+        console.log('[콜백] ❌ 폴링 오류:', err)
       }
     }, 1000)
 
