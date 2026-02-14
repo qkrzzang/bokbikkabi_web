@@ -1861,7 +1861,7 @@ export default function Header() {
               </div>
               <div className={styles.loginModalMessage}>
                 <p className={styles.loginMessageText}>
-                  내 복비가 아깝지 않도록, 검증된 중개사 찾기<br />
+                  내 복비가 아깝지 않도록, <br />검증된 중개사 찾기
                   복비까비에서 시작하세요
                 </p>
               </div>

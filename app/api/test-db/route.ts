@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ export async function GET() {
     console.log('[DB 테스트] Anon Key 존재:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
     
     // 1. 간단한 테이블 조회 테스트
-    const { data, error, status } = await supabase
+    const { data, error, status } = await supabaseAdmin
       .from('agent_master')
       .select('id, agent_name')
       .limit(1)

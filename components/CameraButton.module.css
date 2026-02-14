@@ -88,7 +88,7 @@
   border-radius: 20px;
   width: 90%;
   max-width: 500px;
-  max-height: 90vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -1025,15 +1025,15 @@
 
   .overlay {
     align-items: flex-start;
-    padding-top: 80px;
+    padding-top: 60px;
     overscroll-behavior: contain;
   }
 
   .modal {
     width: 92%;
     max-width: 425px;
-    height: calc(100vh - 100px);
-    height: calc(100dvh - 100px);
+    height: calc(100vh - 160px);
+    height: calc(100dvh - 160px);
     max-height: none;
     padding-bottom: env(safe-area-inset-bottom);
     border-radius: 16px 16px 0 0;

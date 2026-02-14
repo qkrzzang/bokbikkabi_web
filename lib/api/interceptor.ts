@@ -40,7 +40,7 @@ function parseSupabaseError(error: PostgrestError | Error | null): ApiError | nu
 
 // API 요청 래퍼 함수
 export async function apiRequest<T>(
-  requestFn: () => Promise<{ data: T | null; error: PostgrestError | null }>,
+  requestFn: () => PromiseLike<{ data: T | null; error: PostgrestError | null }>,
   options?: {
     requireAuth?: boolean
     onAuthError?: () => void
@@ -118,7 +118,7 @@ export async function rpcRequest<T>(
   }
 ): Promise<{ data: T | null; error: ApiError | null }> {
   return apiRequest<T>(
-    () => supabase.rpc(functionName, params),
+    () => supabase.rpc(functionName, params) as any,
     options
   )
 }
