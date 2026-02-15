@@ -14,6 +14,21 @@ import { NextResponse, type NextRequest } from 'next/server'
  *   다른 코드를 넣으면 세션이 랜덤하게 끊길 수 있습니다.
  */
 export async function middleware(request: NextRequest) {
+  // ── OAuth 콜백은 미들웨어 세션 처리를 완전히 건너뜀 ──
+  //
+  // /auth/callback 요청 시:
+  // - 아직 세션이 없음 (코드 교환 전)
+  // - PKCE code_verifier 쿠키가 반드시 보존되어야 함
+  // - getUser()가 내부적으로 setAll을 호출하면 request 쿠키가 변조되어
+  //   이후 route handler의 exchangeCodeForSession()이 실패할 수 있음
+  //
+  // callback route가 자체적으로 createServerClient를 만들어
+  // 코드 교환 + 세션 쿠키 설정을 처리하므로 미들웨어 개입이 불필요함
+  //
+  if (request.nextUrl.pathname.startsWith('/auth/callback')) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -64,32 +79,19 @@ export async function middleware(request: NextRequest) {
    * maxAge: 0으로 설정하여 브라우저가 쿠키를 즉시 삭제하도록 합니다.
    */
   if (!user) {
-    // ⚠️ OAuth 콜백 경로에서는 쿠키를 삭제하면 안 됩니다!
-    //
-    // PKCE 플로우:
-    //   signInWithOAuth() → sb-*-code-verifier 쿠키 생성
-    //   → OAuth 프로바이더 인증
-    //   → /auth/callback?code=xxx 로 리다이렉트
-    //   → exchangeCodeForSession(code) 시 code_verifier 쿠키 필요
-    //
-    // 이 시점에서 getUser()는 아직 세션이 없으므로 null을 반환하지만,
-    // sb-*-code-verifier 쿠키를 삭제하면 코드 교환이 실패합니다.
-    //
-    const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')
+    // 무효한 세션의 쿠키 정리
+    // (OAuth 콜백은 위에서 이미 early return 했으므로 여기까지 도달하지 않음)
+    const supabaseCookies = request.cookies
+      .getAll()
+      .filter((cookie) => cookie.name.startsWith('sb-'))
 
-    if (!isAuthCallback) {
-      const supabaseCookies = request.cookies
-        .getAll()
-        .filter((cookie) => cookie.name.startsWith('sb-'))
-
-      if (supabaseCookies.length > 0) {
-        supabaseCookies.forEach((cookie) => {
-          supabaseResponse.cookies.set(cookie.name, '', {
-            maxAge: 0,
-            path: '/',
-          })
+    if (supabaseCookies.length > 0) {
+      supabaseCookies.forEach((cookie) => {
+        supabaseResponse.cookies.set(cookie.name, '', {
+          maxAge: 0,
+          path: '/',
         })
-      }
+      })
     }
   }
 
