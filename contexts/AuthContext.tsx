@@ -179,7 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event: AuthChangeEvent, newSession: Session | null) => {
         if (!mounted) return
 
-        console.log('[Auth] 이벤트:', event)
+        // INITIAL_SESSION은 validateAndInitialize()에서 이미 처리하므로 무시.
+        // 그 외 이벤트만 로깅하여 불필요한 production 로그 방지.
+        if (event !== 'INITIAL_SESSION') {
+          console.log('[Auth] 이벤트:', event)
+        }
 
         switch (event) {
           case 'INITIAL_SESSION':

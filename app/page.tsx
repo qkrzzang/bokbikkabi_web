@@ -56,7 +56,6 @@ export default function Home() {
     }
 
     const handleLogout = () => {
-      console.log('[page.tsx] 🚪 로그아웃 이벤트, 화면 초기화')
       setSearchQuery('')
       setSearchRegion('')
       setAutoOpenAgentId(null)

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import PropertyDetailModal from './PropertyDetailModal'
 import styles from './PropertyList.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAlert } from '@/contexts/AlertContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface Property {
   id: string
@@ -243,7 +244,14 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
   const [selectedProperty, setSelectedProperty] = useState<PropertyDetail | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const { showError } = useAlert()
-  const { isLoading: authLoading } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
+
+  // ── Debounce & Stale-response 방어용 Ref ──
+  // searchQuery를 300ms 디바운스하여 빠른 연속 입력 시 API 호출 최소화
+  const debouncedQuery = useDebounce(searchQuery, 300)
+  // 최신 raw searchQuery를 ref로 유지 (비동기 응답 도착 시 stale 여부 판별)
+  const latestQueryRef = useRef(searchQuery)
+  latestQueryRef.current = searchQuery
 
   // 관심 부동산에서 클릭 시 상세 모달 열기
   // ID로 부동산 상세 정보 로드 (관심 부동산에서 호출)
@@ -464,48 +472,80 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
     }
   }, [properties, loading, autoOpenAgentId])
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Effect 1: 검색어 초기화 (즉시 실행)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // raw searchQuery에 의존 → 디바운스 없이 즉시 반응.
+  // authLoading 변경에 의한 중복 실행을 방지하기 위해 분리됨.
   useEffect(() => {
-    console.log('[PropertyList] 🔄 useEffect 트리거:', {
-      searchQuery,
-      searchRegion,
-      authLoading
-    })
-
     if (!searchQuery.trim()) {
-      console.log('[PropertyList] ℹ️ 검색어 없음, 초기화')
-      // 검색어가 없을 때는 부동산 정보를 표시하지 않음
       setProperties([])
       setHasSearched(false)
-      return
+      setLoading(false) // 진행 중이던 로딩 상태도 즉시 해제
     }
+  }, [searchQuery])
 
-    // 인증 로딩 중에는 검색하지 않음 (세션 확보 대기)
-    if (authLoading) {
-      console.log('[PropertyList] ⏳ 인증 로딩 중 (authLoading=true), 검색 대기...')
-      return
-    }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Effect 2: 검색 실행 (디바운스 + AbortController)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 의존성: debouncedQuery (300ms 디바운스 적용됨), searchRegion, authLoading
+  //
+  // [흐름]
+  // 1. 사용자 입력 → searchQuery 즉시 변경
+  // 2. 300ms 무입력 → debouncedQuery 업데이트 → 이 Effect 트리거
+  // 3. 의존성 변경 시 cleanup → 진행 중인 fetch abort + cancelled 플래그
+  // 4. 새 AbortController로 fresh request 시작
+  //
+  // [Race Condition 방어]
+  // - cleanup에서 controller.abort() → 이전 요청 즉시 취소
+  // - cancelled 플래그 → abort 후 상태 업데이트 차단
+  // - latestQueryRef → 응답 도착 시점에 검색어가 비워진 경우 무시
+  //
+  useEffect(() => {
+    // ── Guard 1: 검색어 없음 ──
+    if (!debouncedQuery.trim()) return
 
-    console.log('[PropertyList] ✅ 인증 완료 (authLoading=false), 검색 시작 준비...')
+    // ── Guard 2: 인증 초기화 대기 ──
+    // AuthProvider가 세션 검증을 완료할 때까지 API 호출 보류.
+    // authLoading이 false가 되면 user가 null(비로그인) 또는 User 객체(로그인)로 확정됨.
+    if (authLoading) return
+
+    // ── Guard 3: 비로그인 상태 명시적 분기 ──
+    // 검색 API(/api/search-agents)는 공개 엔드포인트로, 비로그인 사용자도 검색 가능.
+    // 인증이 필요한 기능(관심 등록, 리뷰 작성 등)은 각 모달/컴포넌트에서 별도 체크.
+    //
+    // ⚠️ 만약 향후 인증 필수로 변경 시 아래 주석을 해제:
+    // if (!user) {
+    //   setProperties([])
+    //   setHasSearched(true) // "결과 없음" 대신 로그인 유도 UI 표시 가능
+    //   return
+    // }
+
+    // ── AbortController: effect 레벨에서 관리 ──
+    let cancelled = false
+    const controller = new AbortController()
+
+    // 15초 타임아웃: 시간 초과 시 abort (네트워크 장애 방어)
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) controller.abort()
+    }, 15000)
 
     const searchAgents = async () => {
-      console.log('[PropertyList] searchAgents() 시작')
       setLoading(true)
-      
+
       try {
-        // ★ Transaction Pooler 기반 서버 API로 검색 (PostgREST 직접 호출 대신)
-        const params = new URLSearchParams({ q: searchQuery })
+        const params = new URLSearchParams({ q: debouncedQuery })
         if (searchRegion) params.set('region', searchRegion)
 
-        console.log('[PropertyList] API 호출: /api/search-agents?' + params.toString())
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 15000)
-
-        const queryStartTime = Date.now()
         const res = await fetch(`/api/search-agents?${params.toString()}`, {
           signal: controller.signal,
         })
         clearTimeout(timeoutId)
-        const queryElapsed = Date.now() - queryStartTime
+
+        // ── Stale response 방어 ──
+        // fetch 완료 시점에 effect가 이미 cleanup되었거나,
+        // 사용자가 검색어를 비운 경우 상태 업데이트를 차단.
+        if (cancelled || !latestQueryRef.current.trim()) return
 
         if (!res.ok) {
           const errBody = await res.json().catch(() => ({}))
@@ -513,7 +553,6 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         }
 
         const { data, reviews } = await res.json()
-        console.log('[PropertyList] API 응답 (' + queryElapsed + 'ms):', data?.length, '건')
 
         // 검색 결과를 Property 형식으로 변환
         const ratingsMap = reviews as Record<number, number>
@@ -528,11 +567,9 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
 
         // DB에 결과가 있으면 DB 결과만 사용, 없으면 목업 데이터 사용
         if (propertiesData.length > 0) {
-          console.log('[PropertyList] DB 결과 사용:', propertiesData.length, '건')
           setProperties(propertiesData)
         } else {
-          console.log('[PropertyList] DB 결과 없음, 목업 데이터로 폴백')
-          const q = searchQuery.trim().toLowerCase()
+          const q = debouncedQuery.trim().toLowerCase()
           const mockMatches = mockProperties.filter(
             (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
           )
@@ -540,36 +577,47 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         }
         setHasSearched(true)
       } catch (error: any) {
+        clearTimeout(timeoutId)
+
+        // cleanup에 의한 abort는 조용히 무시 (정상적인 취소)
+        if (cancelled || !latestQueryRef.current.trim()) return
+
         if (error?.name === 'AbortError') {
+          // cancelled가 false인데 AbortError → 15초 타임아웃에 의한 abort
           console.warn('[PropertyList] API 타임아웃 (15초)')
         } else {
           console.error('[PropertyList] 검색 오류:', error?.message)
         }
-        
-        console.log('[PropertyList] 목업 데이터로 폴백')
-        const q = searchQuery.trim().toLowerCase()
+
+        // 에러 시 목업 데이터로 폴백
+        const q = debouncedQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
           (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
         )
         setProperties(mockMatches)
         setHasSearched(true)
       } finally {
-        console.log('[PropertyList] 🏁 setLoading(false)')
-        setLoading(false)
+        // cancelled 또는 검색어가 비워진 경우 loading 해제하지 않음
+        // (Effect 1이 이미 setLoading(false)를 처리)
+        if (!cancelled && latestQueryRef.current.trim()) {
+          setLoading(false)
+        }
       }
     }
 
-    // 디바운싱: 300ms 후 검색 실행
-    console.log('[PropertyList] ⏱️ 300ms 디바운싱 시작')
-    const debounceId = setTimeout(() => {
-      console.log('[PropertyList] ⏱️ 디바운싱 완료, searchAgents() 실행')
-      searchAgents()
-    }, 300)
+    searchAgents()
 
+    // ── Cleanup ──
+    // 의존성 변경 또는 언마운트 시:
+    // 1. cancelled=true → 응답 도착해도 상태 업데이트 차단
+    // 2. controller.abort() → 진행 중인 fetch 즉시 취소
+    // 3. clearTimeout → 타임아웃 타이머 해제
     return () => {
-      clearTimeout(debounceId)
+      cancelled = true
+      controller.abort()
+      clearTimeout(timeoutId)
     }
-  }, [searchQuery, searchRegion, authLoading])
+  }, [debouncedQuery, searchRegion, authLoading])
 
   // 검색어가 없을 때는 아무것도 표시하지 않음
   if (!searchQuery.trim()) {

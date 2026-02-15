@@ -114,9 +114,11 @@ export default function Sidebar({
   }, [isOpen])
 
   // Load transaction tag options from common_code_detail
+  // ※ 이 데이터는 Auth 인증 불필요 (공개 테이블). isOpen 시에만 fetch.
   useEffect(() => {
+    if (!isOpen) return
+
     const fetchTransactionTags = async () => {
-      console.log('[Sidebar] Loading transaction tags...')
       const { data, error } = await supabase
         .from('common_code_detail')
         .select('code_value, code_name')
@@ -127,20 +129,12 @@ export default function Sidebar({
       if (error) {
         console.error('[Sidebar] Error loading transaction tags:', error)
       } else if (data) {
-        console.log('[Sidebar] Loaded transaction tags:', data)
         setTransactionTagOptions(data)
-      } else {
-        console.warn('[Sidebar] No transaction tags found')
       }
     }
 
-    if (isOpen) fetchTransactionTags()
+    fetchTransactionTags()
   }, [isOpen])
-
-  // Debug: Log transaction tag options
-  useEffect(() => {
-    console.log('[Sidebar] transactionTagOptions updated:', transactionTagOptions)
-  }, [transactionTagOptions])
 
 
 
@@ -945,15 +939,7 @@ export default function Sidebar({
                     <div className={styles.reviewField}>
                       <span className={styles.reviewLabel}>거래 구분:</span>
                       <span className={`${styles.reviewValue} ${styles.transactionBadge}`}>
-                        {(() => {
-                          const tagName = transactionTagOptions.find(tag => tag.code_value === selectedContract.transaction_tag)?.code_name || selectedContract.transaction_tag
-                          console.log('[Sidebar] Transaction tag display:', { 
-                            code_value: selectedContract.transaction_tag, 
-                            code_name: tagName,
-                            availableOptions: transactionTagOptions
-                          })
-                          return tagName
-                        })()}
+                        {transactionTagOptions.find(tag => tag.code_value === selectedContract.transaction_tag)?.code_name || selectedContract.transaction_tag}
                       </span>
                     </div>
                   )}
