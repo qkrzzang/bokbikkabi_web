@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import styles from './Header.module.css'
 import { signInWithKakao, signInWithGoogle, getCurrentUser } from '@/lib/auth'
 import { logAccess } from '@/lib/accessLog'
@@ -267,7 +267,7 @@ export default function Header() {
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
   
   // useAuth Hook으로 중앙화된 인증 상태 관리
-  const { user, userType, isLoading, signOut } = useAuth()
+  const { user, session, userType, isLoading, signOut } = useAuth()
   const { showAlert, showSuccess, showError, showWarning, showConfirm } = useAlert()
 
   // TODO: Supabase 연동 전까지 목 데이터 사용
@@ -311,6 +311,7 @@ export default function Header() {
         .order('sort_order', { ascending: true })
 
       if (masterError) {
+        console.warn('[Admin] 마스터 조회 실패:', masterError.message, masterError.code)
         setIsCodeLoading(false)
         return
       }
@@ -335,8 +336,8 @@ export default function Header() {
       }))
 
       setCodeMasterList(masterWithCount)
-    } catch (error) {
-      // 모든 오류 조용히 처리
+    } catch (error: any) {
+      console.warn('[Admin] 마스터 조회 예외:', error?.message)
     } finally {
       setIsCodeLoading(false)
     }
@@ -352,12 +353,13 @@ export default function Header() {
         .order('sort_order', { ascending: true })
 
       if (error) {
+        console.warn('[Admin] 상세 조회 실패:', error.message, error.code)
         return
       }
 
       setCodeDetailList(data || [])
-    } catch (error) {
-      // 모든 오류 조용히 처리
+    } catch (error: any) {
+      console.warn('[Admin] 상세 조회 예외:', error?.message)
     }
   }
 
@@ -1489,58 +1491,42 @@ export default function Header() {
     }
   }, [anyModalOpen])
 
-  // 관리자 화면 열릴 때 공통코드 데이터 로드
-  useEffect(() => {
-    let isMounted = true
+  // ── 관리자 데이터 로드 함수 (재사용 가능) ──
+  const loadAdminData = useCallback(async (menu: string) => {
+    if (!isAdminScreenOpen) return
     
-    const loadData = async () => {
-      if (isAdminScreenOpen && isMounted) {
-        if (adminMenu === 'common-code') {
-          await Promise.all([fetchCodeMaster(), fetchCodeDetail()])
-        } else if (adminMenu === 'analytics') {
-          await loadAnalytics()
-        } else if (adminMenu === 'review-mgmt') {
-          await loadReviewMgmt(0)
-        }
-      }
-    }
-    
-    loadData()
-    
-    return () => {
-      isMounted = false
-    }
-  }, [isAdminScreenOpen, adminMenu])
-
-  // 관리자 화면 열릴 때 계정 데이터 로드
-  useEffect(() => {
-    let isMounted = true
-    
-    const loadData = async () => {
-      if (isAdminScreenOpen && adminMenu === 'account' && isMounted) {
+    try {
+      if (menu === 'common-code') {
+        await Promise.all([fetchCodeMaster(), fetchCodeDetail()])
+      } else if (menu === 'analytics') {
+        await loadAnalytics()
+      } else if (menu === 'review-mgmt') {
+        await loadReviewMgmt(0)
+      } else if (menu === 'account') {
         await fetchUsers()
+      } else if (menu === 'batch') {
+        await loadBatchJobs()
       }
+    } catch (error) {
+      console.warn('[Admin] 데이터 로드 실패:', error)
     }
-    
-    loadData()
-    
-    return () => {
-      isMounted = false
-    }
-  }, [isAdminScreenOpen, adminMenu])
+  }, [isAdminScreenOpen])
 
-  // 관리자 화면 열릴 때 배치 데이터 로드
+  // 관리자 화면 데이터 로드
+  // session 의존성: 탭 복귀 시 useSessionSync가 세션을 갱신하면
+  // session 객체가 변경 → 이 effect가 재실행 → 데이터 자동 재조회
+  // (타이머나 visibilitychange 핸들러가 불필요)
   useEffect(() => {
     let isMounted = true
     
-    if (isAdminScreenOpen && adminMenu === 'batch' && isMounted) {
-      loadBatchJobs()
+    if (isAdminScreenOpen && isMounted) {
+      loadAdminData(adminMenu)
     }
     
     return () => {
       isMounted = false
     }
-  }, [isAdminScreenOpen, adminMenu])
+  }, [isAdminScreenOpen, adminMenu, session, loadAdminData])
 
   // 관리자 화면 열릴 때 광고/제휴 문의 데이터 로드
   useEffect(() => {
