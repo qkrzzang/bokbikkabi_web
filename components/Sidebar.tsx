@@ -173,6 +173,27 @@ export default function Sidebar({
     return () => window.removeEventListener('visibility:changed', handleVisibilityChanged)
   }, [isOpen])
 
+  // 탭 복귀 시 현재 화면 데이터 자동 재로드
+  // AuthContext가 세션 동기화를 완료한 후 'auth:session-synced' 이벤트를 발행
+  // → Sidebar는 이 이벤트를 받아 안전하게 데이터를 재로드
+  useEffect(() => {
+    const handleSessionSynced = (e: Event) => {
+      const { hasSession } = (e as CustomEvent).detail
+      if (!isOpen || !hasSession) return
+
+      console.log('[Sidebar] 세션 동기화 완료 → 현재 화면 데이터 재로드 (' + currentScreen + ')')
+
+      if (currentScreen === 'favorites') {
+        loadFavoriteAgents()
+      } else if (currentScreen === 'points') {
+        loadUserPoints()
+      }
+    }
+
+    window.addEventListener('auth:session-synced', handleSessionSynced)
+    return () => window.removeEventListener('auth:session-synced', handleSessionSynced)
+  }, [isOpen, currentScreen])
+
   // 광고/서베이 노출 설정 로드
   const loadVisibilitySettings = async () => {
     try {

@@ -488,155 +488,69 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
     console.log('[PropertyList] ✅ 인증 완료 (authLoading=false), 검색 시작 준비...')
 
     const searchAgents = async () => {
-      console.log('[PropertyList] 🔍 searchAgents() 시작')
+      console.log('[PropertyList] searchAgents() 시작')
       setLoading(true)
       
       try {
-        // ★ 부동산 검색은 로그인 여부와 관계없이 동작 (anon key로 agent_master 조회 가능)
-        console.log('[PropertyList] 🔍 Supabase 쿼리 생성 중...')
-        let query = supabase
-          .from('agent_master')
-          .select('id, agent_name, road_address, lot_address, latitude, longitude')
-          .or(`agent_name.ilike.%${searchQuery}%,road_address.ilike.%${searchQuery}%,lot_address.ilike.%${searchQuery}%`)
-        
-        // 지역 필터 적용
-        if (searchRegion) {
-          console.log('[PropertyList] 📍 지역 필터 적용:', searchRegion)
-          query = query.or(`road_address.ilike.%${searchRegion}%,lot_address.ilike.%${searchRegion}%`)
-        }
+        // ★ Transaction Pooler 기반 서버 API로 검색 (PostgREST 직접 호출 대신)
+        const params = new URLSearchParams({ q: searchQuery })
+        if (searchRegion) params.set('region', searchRegion)
 
-        // 타임아웃 적용: 15초 내 응답 없으면 AbortController로 취소
-        console.log('[PropertyList] ⏱️ 타임아웃 설정 (15초), DB 쿼리 실행 중...')
+        console.log('[PropertyList] API 호출: /api/search-agents?' + params.toString())
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => {
-          console.log('[PropertyList] ⏰ 타임아웃 (15초)! 쿼리 중단')
-          controller.abort()
-        }, 15000)
+        const timeoutId = setTimeout(() => controller.abort(), 15000)
 
         const queryStartTime = Date.now()
-        const { data, error } = await query.limit(50).abortSignal(controller.signal)
-        const queryElapsed = Date.now() - queryStartTime
-        
-        clearTimeout(timeoutId)
-        console.log('[PropertyList] ⚡ DB 쿼리 완료 (' + queryElapsed + 'ms):', {
-          hasData: !!data,
-          dataLength: data?.length,
-          hasError: !!error,
-          errorMessage: error?.message
+        const res = await fetch(`/api/search-agents?${params.toString()}`, {
+          signal: controller.signal,
         })
+        clearTimeout(timeoutId)
+        const queryElapsed = Date.now() - queryStartTime
 
-        if (error) {
-          console.error('[PropertyList] ❌ DB 조회 오류:', error.message, error)
-          console.log('[PropertyList] 🔄 목업 데이터로 폴백')
-          
-          // DB 검색이 실패해도 목업 검색 결과는 보여주기
-          const q = searchQuery.trim().toLowerCase()
-          const mockMatches = mockProperties.filter(
-            (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
-          )
-          console.log('[PropertyList] 📦 목업 데이터 사용:', mockMatches.length, '건')
-          setProperties(mockMatches)
-          setHasSearched(true)
-          setLoading(false)
-          return
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}))
+          throw new Error(errBody.error || `API ${res.status}`)
         }
 
-        // 각 중개사무소의 평균 별점 조회
-        const agentIds = (data || []).map((agent: any) => agent.id)
-        let ratingsMap = new Map<number, number>()
-        
-        console.log('[PropertyList] 🏢 검색된 중개사무소:', agentIds.length, '개')
-        
-        if (agentIds.length > 0) {
-          console.log('[PropertyList] ⭐ 리뷰 데이터 조회 중...')
-          try {
-            const reviewStartTime = Date.now()
-            const { data: reviewsData, error: reviewsError } = await supabase
-              .from('agent_reviews')
-              .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
-              .in('agent_id', agentIds)
-              .or('is_hidden.is.null,is_hidden.eq.false')
-            const reviewElapsed = Date.now() - reviewStartTime
-            console.log('[PropertyList] ⚡ 리뷰 조회 완료 (' + reviewElapsed + 'ms):', {
-              hasData: !!reviewsData,
-              reviewCount: reviewsData?.length,
-              hasError: !!reviewsError
-            })
-            
-            if (!reviewsError && reviewsData) {
-              // 각 중개사무소별 평균 별점 계산
-              const agentReviews = new Map<number, number[]>()
-              
-              reviewsData.forEach((review: any) => {
-                const ratings = [
-                  review.fee_satisfaction,
-                  review.expertise,
-                  review.kindness,
-                  review.property_reliability,
-                  review.response_speed
-                ].filter((r: any) => r !== null && r !== undefined) as number[]
-                
-                if (ratings.length > 0) {
-                  const avg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-                  if (!agentReviews.has(review.agent_id)) {
-                    agentReviews.set(review.agent_id, [])
-                  }
-                  agentReviews.get(review.agent_id)!.push(avg)
-                }
-              })
-              
-              // 각 중개사무소의 전체 평균 계산
-              agentReviews.forEach((ratings, agentId) => {
-                const overallAvg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-                ratingsMap.set(agentId, Math.round(overallAvg * 10) / 10)
-              })
-              
-            }
-          } catch (reviewsError) {
-            // 리뷰 조회 실패 시 조용히 무시
-          }
-        }
+        const { data, reviews } = await res.json()
+        console.log('[PropertyList] API 응답 (' + queryElapsed + 'ms):', data?.length, '건')
 
         // 검색 결과를 Property 형식으로 변환
+        const ratingsMap = reviews as Record<number, number>
         const propertiesData: Property[] = (data || []).map((agent: any) => ({
           id: agent.id.toString(),
           name: agent.agent_name || '',
           address: agent.road_address || agent.lot_address || '',
-          rating: ratingsMap.get(agent.id) || 0,
+          rating: ratingsMap[agent.id] || 0,
           latitude: agent.latitude,
           longitude: agent.longitude,
         }))
 
         // DB에 결과가 있으면 DB 결과만 사용, 없으면 목업 데이터 사용
         if (propertiesData.length > 0) {
-          console.log('[PropertyList] ✅ DB 결과 사용:', propertiesData.length, '건')
+          console.log('[PropertyList] DB 결과 사용:', propertiesData.length, '건')
           setProperties(propertiesData)
         } else {
-          console.log('[PropertyList] ℹ️ DB 결과 없음, 목업 데이터로 폴백')
+          console.log('[PropertyList] DB 결과 없음, 목업 데이터로 폴백')
           const q = searchQuery.trim().toLowerCase()
           const mockMatches = mockProperties.filter(
             (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
           )
-          console.log('[PropertyList] 📦 목업 데이터 사용:', mockMatches.length, '건')
           setProperties(mockMatches)
         }
         setHasSearched(true)
       } catch (error: any) {
-        // 에러 타입별 처리
-        if (error?.message === 'Session check timeout') {
-          console.error('[PropertyList] ⏰ 세션 검증 타임아웃 (3초) - DB 연결 불가')
-        } else if (error?.name === 'AbortError') {
-          console.warn('[PropertyList] ⏰ DB 쿼리 타임아웃 (15초)')
+        if (error?.name === 'AbortError') {
+          console.warn('[PropertyList] API 타임아웃 (15초)')
         } else {
-          console.error('[PropertyList] 💥 예외 발생:', error?.message, error)
+          console.error('[PropertyList] 검색 오류:', error?.message)
         }
         
-        console.log('[PropertyList] 🔄 목업 데이터로 폴백')
+        console.log('[PropertyList] 목업 데이터로 폴백')
         const q = searchQuery.trim().toLowerCase()
         const mockMatches = mockProperties.filter(
           (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)
         )
-        console.log('[PropertyList] 📦 목업 데이터 사용:', mockMatches.length, '건')
         setProperties(mockMatches)
         setHasSearched(true)
       } finally {

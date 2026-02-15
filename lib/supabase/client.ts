@@ -15,16 +15,16 @@ if (!supabaseAnonKey) {
  * 재시도 가능한 fetch wrapper
  * - 네트워크 오류, 5xx 서버 오류 시 자동 재시도
  * - 지수 백오프(Exponential Backoff) 적용
- * - 요청별 타임아웃 적용 (20초)
+ * - 요청별 타임아웃 적용 (10초)
  */
-function createRetryFetch(maxRetries = 3, baseDelay = 1000) {
+function createRetryFetch(maxRetries = 2, baseDelay = 1000) {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     let lastError: Error | null = null
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 20000)
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
         
         const fetchInit = {
           ...init,
@@ -52,7 +52,7 @@ function createRetryFetch(maxRetries = 3, baseDelay = 1000) {
           
           if (attempt < maxRetries) {
             const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500
-            console.warn(`[Supabase Fetch] 타임아웃 (20초), ${attempt + 1}/${maxRetries + 1} 재시도 (${Math.round(delay)}ms 후)`)
+            console.warn(`[Supabase Fetch] 타임아웃 (10초), ${attempt + 1}/${maxRetries + 1} 재시도 (${Math.round(delay)}ms 후)`)
             await new Promise(resolve => setTimeout(resolve, delay))
             continue
           }
@@ -88,7 +88,7 @@ export function createClient() {
       headers: {
         'X-Client-Info': 'bokbikkabi-web',
       },
-      fetch: createRetryFetch(3, 1000),
+      fetch: createRetryFetch(2, 1000),
     },
     db: {
       schema: 'public',
