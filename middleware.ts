@@ -78,36 +78,46 @@ export async function middleware(request: NextRequest) {
   // getSession()이 아닌 getUser()를 반드시 사용해야 서버에서 JWT를 검증합니다.
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser()
 
   /**
-   * 핵심 수정: 무효한 세션의 쿠키 정리
+   * 무효한 세션의 쿠키 정리 (인증 에러에만 한정)
    *
-   * getUser()가 null을 반환했지만 sb-* 쿠키가 존재하는 경우,
-   * 해당 쿠키는 만료되었거나 무효한 세션의 잔여물입니다.
+   * ⚠️ 중요: getUser()가 실패하는 원인은 두 가지입니다:
    *
-   * 이 쿠키를 삭제하지 않으면:
-   * - 클라이언트에서 getSession()이 만료된 세션을 반환
-   * - UI는 "로그인됨"으로 보이지만 실제 API 요청은 실패
-   * - '상태 불일치' 현상 발생
+   * 1. 인증 에러 (401/403): 세션이 확실히 만료/무효 → 쿠키 삭제 OK
+   *    - "Invalid JWT", "Token expired", Refresh Token 만료
    *
-   * maxAge: 0으로 설정하여 브라우저가 쿠키를 즉시 삭제하도록 합니다.
+   * 2. 일시적 에러: 네트워크 장애, Supabase 서버 다운, 타임아웃
+   *    - 이 경우 쿠키를 삭제하면 유효한 세션이 날아감!
+   *    - 다음 요청에서 자동 복구되므로 쿠키를 보존해야 함
+   *
+   * 이전 코드는 모든 실패에서 쿠키를 삭제하여,
+   * 탭 전환 복귀 시 일시적 네트워크 이슈로 세션이 날아가는 버그가 있었음.
    */
-  if (!user) {
-    // 무효한 세션의 쿠키 정리
-    // (OAuth 콜백은 위에서 이미 early return 했으므로 여기까지 도달하지 않음)
-    const supabaseCookies = request.cookies
-      .getAll()
-      .filter((cookie) => cookie.name.startsWith('sb-'))
+  if (!user && authError) {
+    const isDefinitiveAuthError =
+      authError.status === 401 ||
+      authError.status === 403 ||
+      authError.message?.includes('Invalid') ||
+      authError.message?.includes('expired')
 
-    if (supabaseCookies.length > 0) {
-      supabaseCookies.forEach((cookie) => {
-        supabaseResponse.cookies.set(cookie.name, '', {
-          maxAge: 0,
-          path: '/',
+    if (isDefinitiveAuthError) {
+      const supabaseCookies = request.cookies
+        .getAll()
+        .filter((cookie) => cookie.name.startsWith('sb-'))
+
+      if (supabaseCookies.length > 0) {
+        supabaseCookies.forEach((cookie) => {
+          supabaseResponse.cookies.set(cookie.name, '', {
+            maxAge: 0,
+            path: '/',
+          })
         })
-      })
+      }
     }
+    // 일시적 에러(네트워크 등)는 쿠키를 보존 → 다음 요청에서 자동 재시도
   }
 
   return supabaseResponse
