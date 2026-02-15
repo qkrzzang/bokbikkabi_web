@@ -14,6 +14,21 @@ import { NextResponse, type NextRequest } from 'next/server'
  *   다른 코드를 넣으면 세션이 랜덤하게 끊길 수 있습니다.
  */
 export async function middleware(request: NextRequest) {
+  // ── OAuth code가 루트(/)에 도착한 경우 → /auth/callback으로 전달 ──
+  //
+  // Supabase Auth가 redirectTo를 무시하고 Site URL(루트)로 리다이렉트하는 경우,
+  // /?code=xxx 형태로 PKCE 코드가 루트에 도착함.
+  // 이를 /auth/callback?code=xxx 로 전달하여 정상적인 코드 교환이 이루어지도록 함.
+  //
+  if (
+    request.nextUrl.pathname === '/' &&
+    request.nextUrl.searchParams.has('code')
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/auth/callback'
+    return NextResponse.redirect(url)
+  }
+
   // ── OAuth 콜백은 미들웨어 세션 처리를 완전히 건너뜀 ──
   //
   // /auth/callback 요청 시:
