@@ -633,6 +633,39 @@
   color: #94a3b8;
 }
 
+.reviewBonusTip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+}
+
+.reviewBonusIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.reviewBonusText {
+  font-size: 13px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.reviewBonusTextActive {
+  font-size: 13px;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.reviewBonusCheck {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
 .reviewTextMeta {
   display: flex;
   justify-content: flex-end;

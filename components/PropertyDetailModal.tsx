@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import ReviewModal from './ReviewModal'
 import styles from './PropertyDetailModal.module.css'
 import { supabase } from '@/lib/supabase/client'
@@ -298,7 +299,12 @@ export default function PropertyDetailModal({
     }
   }, [isOpen, isLoggedIn, property, coordinates])
 
-  if (!isOpen || !property) return null
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!isOpen || !property || !mounted) return null
 
   const renderStars = (rating: number) => {
     const stars = []
@@ -465,7 +471,7 @@ export default function PropertyDetailModal({
     }
   }
 
-  return (
+  return createPortal(
     <>
       <div className={styles.overlay} onClick={onClose}>
         <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -947,6 +953,7 @@ export default function PropertyDetailModal({
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   )
 }

@@ -2215,6 +2215,13 @@ export default function CameraButton() {
                       onChange={(e) => setReviewText(e.target.value)}
                       rows={5}
                     />
+                    <div className={styles.reviewBonusTip}>
+                      <span className={styles.reviewBonusIcon}>💰</span>
+                      <span className={reviewCharCount >= 100 ? styles.reviewBonusTextActive : styles.reviewBonusText}>
+                        리뷰 100자 이상 작성 시 포인트 2배 지급 (2,000Point)
+                      </span>
+                      {reviewCharCount >= 100 && <span className={styles.reviewBonusCheck}>✅</span>}
+                    </div>
                     <div className={styles.reviewTextMeta}>
                       <span
                         className={`${styles.reviewTextCounter} ${isReviewLengthValid ? styles.reviewTextCounterComplete : ''}`}
