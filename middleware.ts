@@ -64,17 +64,32 @@ export async function middleware(request: NextRequest) {
    * maxAge: 0으로 설정하여 브라우저가 쿠키를 즉시 삭제하도록 합니다.
    */
   if (!user) {
-    const supabaseCookies = request.cookies
-      .getAll()
-      .filter((cookie) => cookie.name.startsWith('sb-'))
+    // ⚠️ OAuth 콜백 경로에서는 쿠키를 삭제하면 안 됩니다!
+    //
+    // PKCE 플로우:
+    //   signInWithOAuth() → sb-*-code-verifier 쿠키 생성
+    //   → OAuth 프로바이더 인증
+    //   → /auth/callback?code=xxx 로 리다이렉트
+    //   → exchangeCodeForSession(code) 시 code_verifier 쿠키 필요
+    //
+    // 이 시점에서 getUser()는 아직 세션이 없으므로 null을 반환하지만,
+    // sb-*-code-verifier 쿠키를 삭제하면 코드 교환이 실패합니다.
+    //
+    const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback')
 
-    if (supabaseCookies.length > 0) {
-      supabaseCookies.forEach((cookie) => {
-        supabaseResponse.cookies.set(cookie.name, '', {
-          maxAge: 0,
-          path: '/',
+    if (!isAuthCallback) {
+      const supabaseCookies = request.cookies
+        .getAll()
+        .filter((cookie) => cookie.name.startsWith('sb-'))
+
+      if (supabaseCookies.length > 0) {
+        supabaseCookies.forEach((cookie) => {
+          supabaseResponse.cookies.set(cookie.name, '', {
+            maxAge: 0,
+            path: '/',
+          })
         })
-      })
+      }
     }
   }
 
