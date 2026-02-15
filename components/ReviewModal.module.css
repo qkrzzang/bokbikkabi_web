@@ -535,7 +535,8 @@
 @media (max-width: 768px) {
   .overlay {
     padding: 0;
-    padding-top: 80px;
+    padding-top: 60px;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
     align-items: flex-start;
     justify-content: center;
     overscroll-behavior: contain;
@@ -544,11 +545,9 @@
   .modal {
     width: 92%;
     max-width: 595px;
-    height: calc(100dvh - 100px);
-    height: calc(100vh - 100px);
-    max-height: none;
-    padding-bottom: env(safe-area-inset-bottom);
-    border-radius: 16px 16px 0 0;
+    max-height: 100%;
+    padding-bottom: 0;
+    border-radius: 16px;
     display: flex;
     flex-direction: column;
   }

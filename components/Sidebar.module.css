@@ -1272,6 +1272,18 @@
   animation: fadeIn 0.2s ease-out;
 }
 
+@media (max-width: 768px) {
+  .iosGuideOverlay {
+    padding-top: 60px;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+
+  .iosGuideModal {
+    max-height: 100%;
+    overflow-y: auto;
+  }
+}
+
 .iosGuideModal {
   position: relative;
   background: #fff;

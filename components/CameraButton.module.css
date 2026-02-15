@@ -1059,17 +1059,16 @@
   .overlay {
     align-items: flex-start;
     padding-top: 60px;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
     overscroll-behavior: contain;
   }
 
   .modal {
     width: 92%;
     max-width: 425px;
-    height: calc(100vh - 160px);
-    height: calc(100dvh - 160px);
-    max-height: none;
-    padding-bottom: env(safe-area-inset-bottom);
-    border-radius: 16px 16px 0 0;
+    max-height: 100%;
+    padding-bottom: 0;
+    border-radius: 16px;
     margin-bottom: 0;
   }
 

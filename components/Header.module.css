@@ -2957,7 +2957,8 @@
 @media (max-width: 768px) {
   .overlay {
     align-items: flex-start;
-    padding-top: 80px;
+    padding-top: 60px;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
     overscroll-behavior: contain;
   }
 
@@ -3521,7 +3522,7 @@
   .modalContent {
     width: 80%;
     max-width: 510px;
-    max-height: calc(100dvh - 100px);
+    max-height: calc(100dvh - 160px);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
