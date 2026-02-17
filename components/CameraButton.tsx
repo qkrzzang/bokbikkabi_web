@@ -899,35 +899,22 @@ export default function CameraButton() {
       const data = await response.json()
       setOcrResult(data)
 
-      // ── 이미지 크롭 + 암호화 (OCR 결과 재사용, fire-and-forget) ──
+      // ── 이미지 base64 미리 읽어두기 (n8n 완료 후 crop API 호출에 사용) ──
+      let imageBase64ForCrop: string | null = null
       try {
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          const base64Full = reader.result as string
-          const base64Data = base64Full.split(',')[1] // data:image/...;base64, 제거
-          fetch('/api/crop-contract', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Data, ocrResult: data }),
-          })
-            .then(async (res) => {
-              if (res.ok) {
-                const cropData = await res.json()
-                console.log('[이미지 크롭] 결과:', { cropped: cropData.cropped, croppedSize: cropData.croppedSize })
-                if (cropData.success) {
-                  setCropResult({ encrypted: cropData.encrypted, iv: cropData.iv })
-                }
-              } else {
-                console.warn('[이미지 크롭] API 오류:', res.status)
-              }
-            })
-            .catch((err) => {
-              console.warn('[이미지 크롭] 호출 실패 (리뷰 등록에는 영향 없음):', err.message)
-            })
-        }
-        reader.readAsDataURL(fileToUpload)
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            const base64Full = reader.result as string
+            resolve(base64Full.split(',')[1]) // data:image/...;base64, 제거
+          }
+          reader.onerror = reject
+          reader.readAsDataURL(fileToUpload)
+        })
+        imageBase64ForCrop = await base64Promise
+        console.log('[이미지 크롭] base64 준비 완료')
       } catch (cropErr) {
-        console.warn('[이미지 크롭] 준비 실패:', cropErr)
+        console.warn('[이미지 크롭] base64 준비 실패:', cropErr)
       }
 
       // OCR이 끝났지만 n8n 요청이 완료될 때까지 로딩 유지
@@ -1090,6 +1077,37 @@ export default function CameraButton() {
             } else {
               setN8nResult(validContracts)
               trackOcrSuccess(Array.isArray(validContracts) ? validContracts.length : 1)
+
+              // ── 이미지 크롭 + 암호화 (n8n의 contract_type 전달) ──
+              if (imageBase64ForCrop) {
+                const firstContract = Array.isArray(validContracts) ? validContracts[0] : validContracts
+                const contractType = firstContract?.contract_type || firstContract?.contractType || undefined
+                console.log('[이미지 크롭] contract_type:', contractType)
+
+                fetch('/api/crop-contract', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    imageBase64: imageBase64ForCrop,
+                    ocrResult: data,
+                    contractType,
+                  }),
+                })
+                  .then(async (res) => {
+                    if (res.ok) {
+                      const cropData = await res.json()
+                      console.log('[이미지 크롭] 결과:', { cropped: cropData.cropped, matchedKeyword: cropData.matchedKeyword, croppedSize: cropData.croppedSize })
+                      if (cropData.success) {
+                        setCropResult({ encrypted: cropData.encrypted, iv: cropData.iv })
+                      }
+                    } else {
+                      console.warn('[이미지 크롭] API 오류:', res.status)
+                    }
+                  })
+                  .catch((err) => {
+                    console.warn('[이미지 크롭] 호출 실패 (리뷰 등록에는 영향 없음):', err.message)
+                  })
+              }
 
               // 도장 검증이 아직 진행 중이면 완료될 때까지 대기
               await stampPromise
