@@ -450,7 +450,7 @@
 
 @media (max-width: 768px) {
   .overlay {
-    padding: 0;
+    padding: 16px;
     padding-top: 60px;
     padding-bottom: calc(90px + env(safe-area-inset-bottom));
     align-items: flex-start;
@@ -459,9 +459,10 @@
   }
 
   .modal {
-    width: 92%;
+    width: 100%;
     max-width: 510px;
     max-height: 100%;
+    margin: 0 auto;
     padding-bottom: 0;
     border-radius: 16px;
     display: flex;

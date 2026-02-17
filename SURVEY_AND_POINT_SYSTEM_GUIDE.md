@@ -55,7 +55,7 @@
 | ATTENDANCE | 10P | 매일 출석 체크 |
 | CONTRACT | 100P | 계약서 등록 |
 | SURVEY | 50P | 서베이 완료 |
-| REVIEW | 200P | 리뷰 작성 |
+| REVIEW | 1000P | 리뷰 작성 |
 | FAVORITE | 5P | 관심 부동산 등록 |
 
 #### 1.4 `survey_responses` - 서베이 응답

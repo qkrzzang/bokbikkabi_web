@@ -144,3 +144,8 @@ ORDER BY table_name;
 ---
 
 **마지막 업데이트**: 2025-01-25
+
+## 부동산 데이터 매월 업데이트 필요
+https://www.vworld.kr/dtmk/dtmk_ntads_s001.do
+
+부동산중개업정보 검색 -> 부동산중개업사무소정보 다운로드

@@ -1,10 +1,12 @@
 .searchContainer {
   width: 100%;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 40px;
   pointer-events: auto;
-  z-index: 1;
+  z-index: 100;
+  position: relative;
 }
 
 .searchForm {
@@ -88,6 +90,26 @@
   color: #64748b;
 }
 
+.clearButton {
+  position: absolute;
+  right: 52px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  transition: color 0.2s;
+}
+
+.clearButton:hover {
+  color: #475569;
+}
+
 .searchButton {
   position: absolute;
   right: 8px;
@@ -113,6 +135,146 @@
   transform: scale(0.95);
 }
 
+/* ========== 자동완성 드롭다운 ========== */
+
+.autocompleteDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 680px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  z-index: 200;
+  max-height: 360px;
+  overflow-y: auto;
+  animation: dropdownFadeIn 0.15s ease;
+}
+
+.dark .autocompleteDropdown {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.autocompleteItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.autocompleteItem:last-child {
+  border-bottom: none;
+}
+
+.autocompleteItem:first-child {
+  border-radius: 14px 14px 0 0;
+}
+
+.autocompleteItem:last-child {
+  border-radius: 0 0 14px 14px;
+}
+
+.autocompleteItem:only-child {
+  border-radius: 14px;
+}
+
+.autocompleteItemActive,
+.autocompleteItem:hover {
+  background-color: #f8f5ff;
+}
+
+.dark .autocompleteItemActive,
+.dark .autocompleteItem:hover {
+  background-color: #2e1065;
+}
+
+.dark .autocompleteItem {
+  border-bottom-color: #334155;
+}
+
+.autocompleteMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.autocompleteBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background: linear-gradient(135deg, #ede9fe, #f3e8ff);
+  color: #7C3AED;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dark .autocompleteBadge {
+  background: linear-gradient(135deg, #2e1065, #3b0764);
+  color: #c4b5fd;
+}
+
+.autocompleteName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dark .autocompleteName {
+  color: #f1f5f9;
+}
+
+.autocompleteName mark,
+.autocompleteAddress mark {
+  color: #7C3AED;
+  font-weight: 700;
+  background: none;
+}
+
+.dark .autocompleteName mark,
+.dark .autocompleteAddress mark {
+  color: #a78bfa;
+}
+
+.autocompleteAddress {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 1px;
+}
+
+.dark .autocompleteAddress {
+  color: #64748b;
+}
+
+/* ========== 반응형 ========== */
+
 @media (max-width: 768px) {
   .regionSelect {
     height: 48px;
@@ -124,7 +286,6 @@
   .searchInput {
     height: 48px;
     padding: 0 56px 0 14px;
-    /* iOS 자동 줌 방지를 위해 16px 이상 유지 */
     font-size: 16px;
   }
 
@@ -133,5 +294,25 @@
     height: 36px;
     right: 6px;
   }
-}
 
+  .clearButton {
+    right: 46px;
+  }
+
+  .autocompleteDropdown {
+    border-radius: 12px;
+    max-height: 280px;
+  }
+
+  .autocompleteItem {
+    padding: 10px 14px;
+  }
+
+  .autocompleteName {
+    font-size: 13px;
+  }
+
+  .autocompleteAddress {
+    font-size: 11px;
+  }
+}

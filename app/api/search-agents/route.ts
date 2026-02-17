@@ -6,32 +6,46 @@ export const dynamic = 'force-dynamic'
 /**
  * 중개사무소 검색 API (서버 사이드)
  *
- * 클라이언트에서 Supabase PostgREST 직접 호출 대신
- * 서버에서 supabaseAdmin(Service Role)으로 안정적으로 조회
+ * 스마트 파싱: 공백으로 토큰 분리 후 AND 검색
+ * 각 토큰이 상호명 또는 주소에 포함되면 결과에 포함
  *
- * GET /api/search-agents?q=미금&region=성남
+ * GET /api/search-agents?q=강남 사랑&region=서울특별시
+ * GET /api/search-agents?q=미금&region=성남&mode=autocomplete (자동완성: 경량 응답)
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const query = searchParams.get('q')?.trim() || ''
   const region = searchParams.get('region')?.trim() || ''
+  const mode = searchParams.get('mode')?.trim() || ''
 
   if (!query) {
     return NextResponse.json({ data: [], reviews: {} })
   }
 
   try {
-    // 1. 중개사무소 검색
+    // 스마트 파싱: 공백으로 토큰 분리
+    const tokens = query
+      .split(/\s+/)
+      .map(t => t.trim())
+      .filter(t => t.length > 0)
+
+    // 각 토큰에 대해 agent_name 또는 road_address 또는 lot_address에 포함 조건 (AND)
     let dbQuery = supabaseAdmin
       .from('agent_master')
       .select('id, agent_name, road_address, lot_address, latitude, longitude')
-      .or(`agent_name.ilike.%${query}%,road_address.ilike.%${query}%,lot_address.ilike.%${query}%`)
+
+    for (const token of tokens) {
+      dbQuery = dbQuery.or(
+        `agent_name.ilike.%${token}%,road_address.ilike.%${token}%,lot_address.ilike.%${token}%`
+      )
+    }
 
     if (region) {
       dbQuery = dbQuery.or(`road_address.ilike.%${region}%,lot_address.ilike.%${region}%`)
     }
 
-    const { data: agents, error: agentsError } = await dbQuery.limit(50)
+    const limit = mode === 'autocomplete' ? 8 : 50
+    const { data: agents, error: agentsError } = await dbQuery.limit(limit)
 
     if (agentsError) {
       console.error('[search-agents] 검색 오류:', agentsError.message)
@@ -41,11 +55,51 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 2. 검색된 중개사무소의 리뷰 평균 별점 조회
+    // AND 필터링: 모든 토큰이 상호명+주소 결합 텍스트에 포함되어야 함
+    const filteredAgents = (agents || []).filter((agent: any) => {
+      const combined = [
+        agent.agent_name || '',
+        agent.road_address || '',
+        agent.lot_address || '',
+      ].join(' ').toLowerCase()
+
+      return tokens.every(token => combined.includes(token.toLowerCase()))
+    })
+
+    // 검색어 관련성 가중치 정렬
+    const scoredAgents = filteredAgents.map((agent: any) => {
+      let score = 0
+      const name = (agent.agent_name || '').toLowerCase()
+      const addr = (agent.road_address || agent.lot_address || '').toLowerCase()
+
+      for (const token of tokens) {
+        const t = token.toLowerCase()
+        if (name.includes(t)) score += 10
+        if (name.startsWith(t)) score += 5
+        if (addr.includes(t)) score += 3
+      }
+
+      // 정확히 일치하는 이름에 높은 가중치
+      if (name === query.toLowerCase()) score += 50
+
+      return { ...agent, _score: score }
+    })
+
+    scoredAgents.sort((a: any, b: any) => b._score - a._score)
+
+    // _score 필드 제거
+    const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
+
+    // 자동완성 모드: 리뷰 조회 생략 (경량 응답)
+    if (mode === 'autocomplete') {
+      return NextResponse.json({ data: resultAgents, reviews: {} })
+    }
+
+    // 리뷰 평균 별점 조회
     const reviews: Record<number, number> = {}
 
-    if (agents && agents.length > 0) {
-      const agentIds = agents.map((a: any) => a.id)
+    if (resultAgents.length > 0) {
+      const agentIds = resultAgents.map((a: any) => a.id)
 
       const { data: reviewsData, error: reviewsError } = await supabaseAdmin
         .from('agent_reviews')
@@ -54,7 +108,6 @@ export async function GET(request: NextRequest) {
         .or('is_hidden.is.null,is_hidden.eq.false')
 
       if (!reviewsError && reviewsData) {
-        // 중개사무소별 평균 별점 계산
         const agentReviews = new Map<number, number[]>()
 
         reviewsData.forEach((review: any) => {
@@ -82,7 +135,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ data: agents || [], reviews })
+    return NextResponse.json({ data: resultAgents, reviews })
   } catch (error: any) {
     console.error('[search-agents] 예외:', error.message)
     return NextResponse.json(

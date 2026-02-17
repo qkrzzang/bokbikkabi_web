@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -166,8 +166,8 @@ export default function CameraButton() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [ocrResult, setOcrResult] = useState<any>(null)
   const [ocrError, setOcrError] = useState<string | null>(null)
-  const [n8nResult, setN8nResult] = useState<any>(null)
-  const [n8nError, setN8nError] = useState<string | null>(null)
+  const [aiResult, setAiResult] = useState<any>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
   // 도장 검증 결과
   const [stampResult, setStampResult] = useState<{ agent_stamp: boolean; agent_stamp_confidence: number } | null>(null)
   const [isStampVerifying, setIsStampVerifying] = useState(false)
@@ -216,6 +216,26 @@ export default function CameraButton() {
     extra_value4: string | null
     extra_value5: string | null
   }>>([])
+  const [detailEvaluationsForLeaseAndSell, setDetailEvaluationsForLeaseAndSell] = useState<Array<{
+    code_value: string
+    code_name: string
+    extra_value1: string | null
+    extra_value2: string | null
+    extra_value3: string | null
+    extra_value4: string | null
+    extra_value5: string | null
+  }>>([])
+  // 거래 태그에 따라 활성 상세평가 항목 동적 전환
+  // 임차(세입자), 매수(구매) → DETAIL_EVALUATION
+  // 임대(집주인), 매도(판매) → DETAIL_EVALUATION_FOR_LEASE_AND_SELL
+  const activeDetailEvaluations = useMemo(() => {
+    const selectedTag = transactionTags[0] || ''
+    if (selectedTag.includes('임대') || selectedTag.includes('매도')) {
+      return detailEvaluationsForLeaseAndSell
+    }
+    return detailEvaluations
+  }, [transactionTags, detailEvaluations, detailEvaluationsForLeaseAndSell])
+
   const [reviewText, setReviewText] = useState('')
   const [showThankYouModal, setShowThankYouModal] = useState(false)
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false)
@@ -330,7 +350,7 @@ export default function CameraButton() {
       const { data, error } = await supabase
         .from('common_code_detail')
         .select('code_group, code_value, code_name, extra_value1, extra_value2, extra_value3, extra_value4, extra_value5, sort_order, use_yn')
-        .in('code_group', ['TRANSACTION_TYPE', 'PRAISE_TAG', 'REGRET_TAG', 'DETAIL_EVALUATION'])
+        .in('code_group', ['TRANSACTION_TYPE', 'PRAISE_TAG', 'REGRET_TAG', 'DETAIL_EVALUATION', 'DETAIL_EVALUATION_FOR_LEASE_AND_SELL'])
         .order('code_group', { ascending: true })
         .order('sort_order', { ascending: true })
 
@@ -343,6 +363,7 @@ export default function CameraButton() {
       setPraiseTagOptions(activeData.filter((item: any) => item.code_group === 'PRAISE_TAG'))
       setRegretTagOptions(activeData.filter((item: any) => item.code_group === 'REGRET_TAG'))
       setDetailEvaluations(activeData.filter((item: any) => item.code_group === 'DETAIL_EVALUATION'))
+      setDetailEvaluationsForLeaseAndSell(activeData.filter((item: any) => item.code_group === 'DETAIL_EVALUATION_FOR_LEASE_AND_SELL'))
     } catch (error) {
       // 모든 오류 조용히 처리
     }
@@ -388,7 +409,7 @@ export default function CameraButton() {
 
   const getRatingText = (codeValue: string, rating: number): string => {
     if (rating === 0) return ''
-    const target = detailEvaluations.find((item) => item.code_value === codeValue)
+    const target = activeDetailEvaluations.find((item) => item.code_value === codeValue)
     if (!target) return ''
     const texts = [
       target.extra_value1,
@@ -413,8 +434,8 @@ export default function CameraButton() {
     setOriginalFile(null)
     setOcrResult(null)
     setOcrError(null)
-    setN8nResult(null)
-    setN8nError(null)
+    setAiResult(null)
+    setAiError(null)
     setAgentAddresses({})
     setSelectedAgents({})
     setShowAgentSelection(false)
@@ -444,7 +465,7 @@ export default function CameraButton() {
   }
 
   const handleConfirmAgent = () => {
-    if (!confirmingAgent || !pendingAgentSelection || !n8nResult) return
+    if (!confirmingAgent || !pendingAgentSelection || !aiResult) return
 
     console.log(`[중개사 확인] 사용자가 확인 버튼 클릭`)
     console.log(`[중개사 확인] 최종 선택: ${confirmingAgent.agent.agent_name}`)
@@ -473,7 +494,7 @@ export default function CameraButton() {
       }
     }))
 
-    setN8nResult((prev: any) => {
+    setAiResult((prev: any) => {
       if (!prev) return prev
       if (Array.isArray(prev)) {
         return prev.map((item, idx) =>
@@ -520,7 +541,7 @@ export default function CameraButton() {
     setShowAgentSelection(false)
     setPendingAgentSelection(null)
     // 선택 팝업 닫으면 업로드 화면(이미지 노출)으로 복귀, 검증 결과 화면은 표시하지 않음
-    setN8nResult(null)
+    setAiResult(null)
     setSelectedAgents({})
     setAgentAddresses({})
     setMode('upload')
@@ -565,7 +586,7 @@ export default function CameraButton() {
 
     console.log(`[getContractAgentNumbers] raw 값:`, raw, `(타입: ${typeof raw}, 배열: ${Array.isArray(raw)})`)
 
-    // 배열인 경우: 공동중개 (n8n에서 배열로 전달)
+    // 배열인 경우: 공동중개 (AI 분석에서 배열로 전달)
     if (Array.isArray(raw)) {
       const normalized = raw
         .map((item: any) => normalizeAgentNum(item))
@@ -797,8 +818,8 @@ export default function CameraButton() {
 
     setIsLoading(true)
     setOcrError(null)
-    setN8nError(null)
-    setN8nResult(null)
+    setAiError(null)
+    setAiResult(null)
     setStampResult(null)
     setCropResult(null)
     // 이전 업로드 데이터 초기화 (stale data 방지)
@@ -899,7 +920,7 @@ export default function CameraButton() {
       const data = await response.json()
       setOcrResult(data)
 
-      // ── 이미지 base64 미리 읽어두기 (n8n 완료 후 crop API 호출에 사용) ──
+      // ── 이미지 base64 미리 읽어두기 (AI 분석 완료 후 crop API 호출에 사용) ──
       let imageBase64ForCrop: string | null = null
       try {
         const base64Promise = new Promise<string>((resolve, reject) => {
@@ -917,7 +938,7 @@ export default function CameraButton() {
         console.warn('[이미지 크롭] base64 준비 실패:', cropErr)
       }
 
-      // OCR이 끝났지만 n8n 요청이 완료될 때까지 로딩 유지
+      // OCR이 끝났지만 AI 분석 요청이 완료될 때까지 로딩 유지
       
       // OCR 결과에서 text 필드만 추출 (여러 가능한 경로 확인)
       let ocrText = ''
@@ -937,7 +958,7 @@ export default function CameraButton() {
           .join('\n\n')
       }
       
-      // n8n 웹훅으로 OCR text만 전송하고 응답 받기
+      // Gemini AI로 계약서 분석
       if (ocrText) {
         try {
           // ── OCR 텍스트 정규화 (불필요한 제어 문자 제거) ──
@@ -945,88 +966,58 @@ export default function CameraButton() {
             .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // 제어 문자 제거
             .trim()
 
-          console.log('[n8n] 전송할 텍스트 길이:', sanitizedOcrText.length)
-          console.log('[n8n] 텍스트 앞 50자:', sanitizedOcrText.substring(0, 50))
+          console.log('[AI분석] 전송할 텍스트 길이:', sanitizedOcrText.length)
+          console.log('[AI분석] 텍스트 앞 50자:', sanitizedOcrText.substring(0, 50))
 
-          // n8n 요청 타임아웃 (45초)
-          const n8nController = new AbortController()
-          const n8nTimeoutId = window.setTimeout(() => n8nController.abort(), 45_000)
+          // AI 분석 요청 타임아웃 (45초)
+          const aiController = new AbortController()
+          const aiTimeoutId = window.setTimeout(() => aiController.abort(), 45_000)
 
-          // ── JSON body 사전 검증 ──
-          const n8nPayload = {
-            text: sanitizedOcrText,
-            timestamp: new Date().toISOString(),
-          }
-          let n8nBodyString: string
-          try {
-            n8nBodyString = JSON.stringify(n8nPayload)
-          } catch (jsonError) {
-            console.error('[n8n] JSON.stringify 실패:', jsonError)
-            console.error('[n8n] 텍스트 앞 50자:', sanitizedOcrText.substring(0, 50))
-            throw new Error('OCR 결과를 JSON으로 변환할 수 없습니다.')
-          }
+          const aiResponse = await fetch('/api/analyze-contract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: sanitizedOcrText }),
+            signal: aiController.signal,
+          }).finally(() => window.clearTimeout(aiTimeoutId))
 
-          const n8nResponse = await fetch(
-            'https://qkrzzang13.app.n8n.cloud/webhook/4fc817ac-3148-46e1-8127-8960ade84ae3',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: n8nBodyString,
-              signal: n8nController.signal,
-            }
-          ).finally(() => window.clearTimeout(n8nTimeoutId))
-
-          if (!n8nResponse.ok) {
+          if (!aiResponse.ok) {
             let errorText = ''
             try {
-              errorText = await n8nResponse.text()
+              errorText = await aiResponse.text()
             } catch { /* ignore */ }
-            console.error('[n8n] 웹훅 전송 실패:', n8nResponse.status, errorText.substring(0, 200))
-            setN8nError(`n8n 호출 실패: ${n8nResponse.status}`)
+            console.error('[AI분석] API 호출 실패:', aiResponse.status, errorText.substring(0, 200))
+            setAiError(`계약서 분석 실패: ${aiResponse.status}`)
             await stampPromise
             setMode('result')
             setIsLoading(false)
           } else {
-            let n8nRawText = ''
-            let n8nData: any
+            let aiData: any
             try {
-              n8nRawText = await n8nResponse.text()
-              console.log('[n8n] 원본 응답 길이:', n8nRawText.length)
-              console.log('[n8n] 원본 응답 앞 200자:', n8nRawText.substring(0, 200))
-              n8nData = JSON.parse(n8nRawText)
+              aiData = await aiResponse.json()
             } catch (parseError) {
-              console.error('[n8n] JSON 파싱 실패:', parseError)
-              console.error('[n8n] 원본 응답 앞 100자:', n8nRawText.substring(0, 100))
-              setN8nError('n8n 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
+              console.error('[AI분석] JSON 파싱 실패:', parseError)
+              setAiError('AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
               await stampPromise
               setMode('result')
               setIsLoading(false)
               return
             }
-            console.log('====== n8n 응답 받음 ======')
-            console.log('[n8n] 응답 타입:', typeof n8nData, Array.isArray(n8nData) ? `(배열, 길이: ${n8nData.length})` : '')
-            console.log('[n8n] 응답 전체:', JSON.stringify(n8nData, null, 2))
 
-            // ── n8n 응답이 래핑되어 있을 수 있는 경우 언래핑 ──
-            // n8n이 { data: [...] } 또는 { result: [...] } 등으로 감쌀 수 있음
-            let unwrappedData = n8nData
-            if (unwrappedData && typeof unwrappedData === 'object' && !Array.isArray(unwrappedData)) {
-              if (unwrappedData.data && (Array.isArray(unwrappedData.data) || typeof unwrappedData.data === 'object')) {
-                console.log('[n8n] 응답을 data 필드에서 언래핑')
-                unwrappedData = unwrappedData.data
-              } else if (unwrappedData.result && (Array.isArray(unwrappedData.result) || typeof unwrappedData.result === 'object')) {
-                console.log('[n8n] 응답을 result 필드에서 언래핑')
-                unwrappedData = unwrappedData.result
-              } else if (unwrappedData.output && (Array.isArray(unwrappedData.output) || typeof unwrappedData.output === 'object')) {
-                console.log('[n8n] 응답을 output 필드에서 언래핑')
-                unwrappedData = unwrappedData.output
-              } else if (unwrappedData.contracts && Array.isArray(unwrappedData.contracts)) {
-                console.log('[n8n] 응답을 contracts 필드에서 언래핑')
-                unwrappedData = unwrappedData.contracts
-              }
+            // 에러 응답 처리
+            if (aiData.error) {
+              console.error('[AI분석] 서버 오류:', aiData.error)
+              setAiError(`계약서 분석 실패: ${aiData.error}`)
+              await stampPromise
+              setMode('result')
+              setIsLoading(false)
+              return
             }
+
+            console.log('====== AI 분석 응답 받음 ======')
+            console.log('[AI분석] 응답 전체:', JSON.stringify(aiData, null, 2))
+
+            // Gemini 응답은 이미 파싱된 JSON 객체
+            const unwrappedData = aiData
             
             // contract_type이 'NON_CONTRACT'인 항목 필터링
             const filterValidContracts = (data: any): any => {
@@ -1045,7 +1036,7 @@ export default function CameraButton() {
             if (validContracts) {
               const contractsArr = Array.isArray(validContracts) ? validContracts : [validContracts]
               contractsArr.forEach((c: any, idx: number) => {
-                console.log(`[n8n] 계약서[${idx}] agent 필드 상세:`, {
+                console.log(`[AI분석] 계약서[${idx}] agent 필드 상세:`, {
                   agent_number: c?.agent_number,
                   agentNumber: c?.agentNumber,
                   agent_no: c?.agent_no,
@@ -1060,7 +1051,7 @@ export default function CameraButton() {
                 })
               })
             } else {
-              console.warn('[n8n] 유효한 계약서 없음. 원본 데이터 키:', 
+              console.warn('[AI분석] 유효한 계약서 없음. 원본 데이터 키:', 
                 unwrappedData ? (Array.isArray(unwrappedData) 
                   ? unwrappedData.map((d: any) => Object.keys(d || {})) 
                   : Object.keys(unwrappedData)) 
@@ -1069,16 +1060,16 @@ export default function CameraButton() {
             }
             
             if (!validContracts || (Array.isArray(validContracts) && validContracts.length === 0)) {
-              setN8nError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
-              setN8nResult(null)
+              setAiError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
+              setAiResult(null)
               await stampPromise
               setMode('result')
               setIsLoading(false)
             } else {
-              setN8nResult(validContracts)
+              setAiResult(validContracts)
               trackOcrSuccess(Array.isArray(validContracts) ? validContracts.length : 1)
 
-              // ── 이미지 크롭 + 암호화 (n8n의 contract_type 전달) ──
+              // ── 이미지 크롭 + 암호화 (AI 분석의 contract_type 전달) ──
               if (imageBase64ForCrop) {
                 const firstContract = Array.isArray(validContracts) ? validContracts[0] : validContracts
                 const contractType = firstContract?.contract_type || firstContract?.contractType || undefined
@@ -1149,7 +1140,7 @@ export default function CameraButton() {
                   // agent 필드가 모두 비어있으면 상세 경고
                   if (contractAgentNumbers.length === 0 && !contractAgentName) {
                     console.warn(`[계약서 ${i}] ⚠️ agent_number, agent_name 모두 비어있음!`)
-                    console.warn(`[계약서 ${i}] n8n 원본 데이터:`, JSON.stringify(contract, null, 2))
+                    console.warn(`[계약서 ${i}] AI분석 원본 데이터:`, JSON.stringify(contract, null, 2))
                   }
                   
                   // 등록번호(agent_number)로 조회
@@ -1266,20 +1257,19 @@ export default function CameraButton() {
               }
             }
           }
-        } catch (n8nError) {
-          console.error('[n8n] 웹훅 전송 중 오류:', n8nError)
-          // "The string did not match the expected pattern" 디버깅
-          if (n8nError instanceof Error && n8nError.message.includes('did not match')) {
-            console.error('[n8n] 패턴 불일치 에러 발생! OCR 텍스트 앞 50자:', ocrText?.substring(0, 50))
-            console.error('[n8n] OCR 텍스트 길이:', ocrText?.length)
-            console.error('[n8n] 파일 정보:', { name: fileToUpload.name, type: fileToUpload.type, size: fileToUpload.size })
+        } catch (analyzeError) {
+          console.error('[AI분석] 계약서 분석 중 오류:', analyzeError)
+          if (analyzeError instanceof Error && analyzeError.message.includes('did not match')) {
+            console.error('[AI분석] 패턴 불일치 에러! OCR 텍스트 앞 50자:', ocrText?.substring(0, 50))
+            console.error('[AI분석] OCR 텍스트 길이:', ocrText?.length)
+            console.error('[AI분석] 파일 정보:', { name: fileToUpload.name, type: fileToUpload.type, size: fileToUpload.size })
           }
-          setN8nError(
-            n8nError instanceof DOMException && n8nError.name === 'AbortError'
+          setAiError(
+            analyzeError instanceof DOMException && analyzeError.name === 'AbortError'
               ? '검증 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
-              : n8nError instanceof Error
-                ? n8nError.message
-                : 'n8n 호출 중 오류가 발생했습니다.'
+              : analyzeError instanceof Error
+                ? analyzeError.message
+                : '계약서 분석 중 오류가 발생했습니다.'
           )
           await stampPromise
           setMode('result')
@@ -1287,7 +1277,7 @@ export default function CameraButton() {
         }
       } else {
         console.warn('OCR 결과에서 텍스트를 추출할 수 없습니다:', data)
-        setN8nError('부동산 계약서를 다시 올려주세요.')
+        setAiError('부동산 계약서를 다시 올려주세요.')
         await stampPromise
         setMode('result')
         setIsLoading(false)
@@ -1440,7 +1430,7 @@ export default function CameraButton() {
       }
 
       // 상세 평가 필수 체크
-      const requiredEvaluations = detailEvaluations.map(e => e.code_value)
+      const requiredEvaluations = activeDetailEvaluations.map(e => e.code_value)
       const missingEvaluations = requiredEvaluations.filter(code => {
         const rating = reviewRatings[code]
         return !rating || rating === 0
@@ -1448,7 +1438,7 @@ export default function CameraButton() {
 
       if (missingEvaluations.length > 0) {
         const missingNames = missingEvaluations
-          .map(code => detailEvaluations.find(e => e.code_value === code)?.code_name)
+          .map(code => activeDetailEvaluations.find(e => e.code_value === code)?.code_name)
           .filter(Boolean)
           .join(', ')
         showWarning(`모든 상세 평가 항목을 선택해주세요.\n미선택 항목: ${missingNames}`)
@@ -1482,9 +1472,9 @@ export default function CameraButton() {
           }
         }
         
-        // code_value로 못 찾으면 detailEvaluations의 code_name으로 검색
+        // code_value로 못 찾으면 activeDetailEvaluations의 code_name으로 검색
         for (const keyword of keywords) {
-          const evaluation = detailEvaluations.find(e => 
+          const evaluation = activeDetailEvaluations.find(e => 
             e.code_name.includes(keyword) || 
             e.code_value.toUpperCase().includes(keyword.toUpperCase())
           )
@@ -1502,7 +1492,7 @@ export default function CameraButton() {
       }
 
       console.log(`[리뷰 저장] 평가 점수 확인:`, reviewRatings)
-      console.log(`[리뷰 저장] 상세 평가 항목:`, detailEvaluations.map(e => ({ code_value: e.code_value, code_name: e.code_name })))
+      console.log(`[리뷰 저장] 상세 평가 항목:`, activeDetailEvaluations.map(e => ({ code_value: e.code_value, code_name: e.code_name })))
 
       const { error } = await supabase
         .from('agent_reviews')
@@ -1537,25 +1527,26 @@ export default function CameraButton() {
         return
       }
 
-      console.log('[리뷰 저장] 성공, 포인트 지급 시작')
+      // 리뷰 저장 성공 시 포인트 지급 (100자 이상 상세 리뷰: 2,000P / 일반: 기본 정책)
+      const isDetailReview = reviewText.trim().length >= 100
+      const pointType = isDetailReview ? 'REVIEW_DETAIL' : 'REVIEW'
+      const pointDesc = isDetailReview ? '상세 리뷰 작성 완료 (100자 이상)' : '리뷰 작성 완료'
+      console.log(`[리뷰 저장] 성공, 포인트 지급 시작 (${pointType}, ${reviewText.trim().length}자)`)
 
-      // 리뷰 저장 성공 시 포인트 지급
       try {
         const { data: pointResult, error: pointError } = await supabase.rpc('award_points', {
           p_user_id: authUser.id,
-          p_transaction_type: 'REVIEW',
-          p_description: '리뷰 작성 완료'
+          p_transaction_type: pointType,
+          p_description: pointDesc,
         })
 
         if (pointError) {
           console.error('[포인트 지급] 실패:', pointError)
-          // 포인트 지급 실패해도 리뷰는 저장되었으므로 계속 진행
         } else {
           console.log('[포인트 지급] 성공:', pointResult)
         }
       } catch (pointErr) {
         console.error('[포인트 지급] 오류:', pointErr)
-        // 포인트 지급 오류가 발생해도 리뷰는 저장되었으므로 계속 진행
       }
 
       if (reviewAgentName && reviewAgentName !== '-') {
@@ -1587,7 +1578,7 @@ export default function CameraButton() {
   const hasAtLeastOneTag = praiseTags.length > 0 || regretTags.length > 0
   
   // 모든 상세 평가 항목 선택 확인
-  const allEvaluationsSelected = detailEvaluations.every(evaluation => {
+  const allEvaluationsSelected = activeDetailEvaluations.every(evaluation => {
     const rating = reviewRatings[evaluation.code_value]
     return rating && rating > 0
   })
@@ -1604,9 +1595,9 @@ export default function CameraButton() {
     return 0
   })()
   const primaryReviewKey = String(primaryReviewIndex)
-  const primaryContract = Array.isArray(n8nResult)
-    ? (n8nResult[primaryReviewIndex] || n8nResult[0])
-    : n8nResult
+  const primaryContract = Array.isArray(aiResult)
+    ? (aiResult[primaryReviewIndex] || aiResult[0])
+    : aiResult
   const reviewAgentName =
     selectedAgents[primaryReviewKey]?.agent_name ||
     getContractAgentName(primaryContract) ||
@@ -1944,10 +1935,10 @@ export default function CameraButton() {
                         다시 시도
                       </button>
                     </div>
-                  ) : n8nError ? (
+                  ) : aiError ? (
                     <div className={styles.errorContainer}>
                       <h3>검증 오류</h3>
-                      <p>{n8nError}</p>
+                      <p>{aiError}</p>
                       <button
                         className={styles.submitButton}
                         onClick={() => setMode('upload')}
@@ -1955,12 +1946,12 @@ export default function CameraButton() {
                         다시 시도
                       </button>
                     </div>
-                  ) : n8nResult ? (
+                  ) : aiResult ? (
                     <div className={styles.resultContainer}>
                       <h3>검증 결과</h3>
                       <div className={styles.contractInfo}>
-                        {Array.isArray(n8nResult) && n8nResult.length > 0 ? (
-                          n8nResult.map((contract: any, index: number) => (
+                        {Array.isArray(aiResult) && aiResult.length > 0 ? (
+                          aiResult.map((contract: any, index: number) => (
                             <div key={index} className={styles.contractCard}>
                               <div className={styles.contractField}>
                                 <span className={styles.fieldLabel}>계약일자:</span>
@@ -2060,13 +2051,105 @@ export default function CameraButton() {
                               )}
                             </div>
                           ))
-                        ) : (
+                        ) : aiResult && typeof aiResult === 'object' ? (
                           <div className={styles.contractCard}>
-                            <pre className={styles.resultText}>
-                              {JSON.stringify(n8nResult, null, 2)}
-                            </pre>
+                            <div className={styles.contractField}>
+                              <span className={styles.fieldLabel}>계약일자:</span>
+                              <span className={styles.fieldValue}>{aiResult.contract_date || '-'}</span>
+                            </div>
+                            {selectedAgents['0'] ? (
+                              <>
+                                <div className={styles.contractField}>
+                                  <span className={styles.fieldLabel}>중개사무소명:</span>
+                                  <span className={styles.fieldValue}>{selectedAgents['0'].agent_name}</span>
+                                </div>
+                                {selectedAgents['0'].representative_name && (
+                                  <div className={styles.contractField}>
+                                    <span className={styles.fieldLabel}>대표자명:</span>
+                                    <span className={styles.fieldValue}>{selectedAgents['0'].representative_name}</span>
+                                  </div>
+                                )}
+                                <div className={styles.contractField}>
+                                  <span className={styles.fieldLabel}>등록번호:</span>
+                                  <span className={styles.fieldValue}>{selectedAgents['0'].agent_number}</span>
+                                </div>
+                                <div className={styles.contractField}>
+                                  <span className={styles.fieldLabel}>주소(도로명):</span>
+                                  <span className={styles.fieldValue}>{selectedAgents['0'].road_address}</span>
+                                </div>
+                                <div className={styles.contractField}>
+                                  <span className={styles.fieldLabel}>주소(지번):</span>
+                                  <span className={styles.fieldValue}>{selectedAgents['0'].lot_address || '-'}</span>
+                                </div>
+                                <div className={styles.contractField}>
+                                  <span className={styles.fieldLabel}>중개사 도장:</span>
+                                  {isStampVerifying ? (
+                                    <span className={styles.fieldValue} style={{ color: '#64748b' }}>검증 중...</span>
+                                  ) : stampResult ? (
+                                    <span className={styles.fieldValue} style={{
+                                      color: stampResult.agent_stamp ? '#16a34a' : '#ef4444',
+                                      fontWeight: 600,
+                                    }}>
+                                      {stampResult.agent_stamp ? '확인됨' : '미확인'}
+                                      <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: '6px', fontSize: '12px' }}>
+                                        (신뢰도 {stampResult.agent_stamp_confidence}%)
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className={styles.fieldValue} style={{ color: '#94a3b8' }}>검증 불가</span>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className={styles.contractField}>
+                                  <span className={styles.fieldLabel}>중개사무소:</span>
+                                  <span className={styles.fieldValue} style={{ color: '#ef4444', fontWeight: 600 }}>
+                                    정보 없음
+                                  </span>
+                                </div>
+                                {(() => {
+                                  const nums = getContractAgentNumbers(aiResult)
+                                  return nums.length > 0 ? (
+                                    <>
+                                      <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                        <span className={styles.fieldLabel}>등록번호:</span>
+                                        <span className={styles.fieldValue} style={{ color: '#475569' }}>
+                                          <strong>{nums.join(', ')}</strong>
+                                          <span style={{ color: '#64748b', fontSize: '11px' }}>(으)로 인식되었습니다.</span>
+                                        </span>
+                                      </div>
+                                      <div style={{ marginTop: '4px', fontSize: '12px' }}>
+                                        <a
+                                          href="https://www.vworld.kr/dtld/broker/dtld_list_s001.do"
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{ color: '#7C3AED', fontWeight: 600, textDecoration: 'underline' }}
+                                        >
+                                          부동산 중개업소 조회 (공간정보 오픈플랫폼)
+                                        </a>
+                                      </div>
+                                    </>
+                                  ) : null
+                                })()}
+                                <div style={{
+                                  marginTop: '8px',
+                                  padding: '10px 12px',
+                                  background: '#fffbeb',
+                                  border: '1px solid #fde68a',
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  color: '#92400e',
+                                  lineHeight: '1.8',
+                                }}>
+                                  <div>📸 사진이 흔들리거나 어둡나요? (빛 반사 주의)</div>
+                                  <div>📄 계약서 전체가 다 보이나요? (중개사 인감/직인 포함)</div>
+                                  <div>🔍 폐업한 중개소인가요? (최신 정보가 아닐 수 있음)</div>
+                                </div>
+                              </>
+                            )}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                       <div className={styles.resultControls}>
                         <button
@@ -2108,11 +2191,15 @@ export default function CameraButton() {
                             key={tag.code_value}
                             className={`${styles.tagButton} ${transactionTags.includes(tag.code_name) ? styles.tagButtonActive : ''}`}
                             onClick={() => {
-                              if (transactionTags.includes(tag.code_name)) {
+                              const isDeselecting = transactionTags.includes(tag.code_name)
+                              if (isDeselecting) {
                                 setTransactionTags([])
                               } else {
                                 setTransactionTags([tag.code_name])
                               }
+                              // 거래 태그 변경 시 상세 평가 별점 초기화
+                              setReviewRatings({})
+                              setHoverRatings({})
                             }}
                           >
                             {tag.code_name}
@@ -2185,10 +2272,10 @@ export default function CameraButton() {
                       상세 평가 <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
                     </h4>
                     <div className={styles.ratingContainer}>
-                      {detailEvaluations.length === 0 ? (
+                      {activeDetailEvaluations.length === 0 ? (
                         <div className={styles.ratingEmpty}>상세 평가 항목이 없습니다.</div>
                       ) : (
-                        detailEvaluations.map((item) => {
+                        activeDetailEvaluations.map((item) => {
                           const currentRating = reviewRatings[item.code_value] || 0
                           const currentHover = hoverRatings[item.code_value] || 0
                           const displayedRating = currentHover || currentRating

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, FormEvent } from 'react'
+import { useEffect, useState, useRef, FormEvent, useCallback } from 'react'
 import styles from './SearchBar.module.css'
 
 const REGIONS = [
@@ -24,6 +24,13 @@ const REGIONS = [
   { value: '제주특별자치도', label: '제주' },
 ]
 
+interface AutocompleteItem {
+  id: number
+  agent_name: string
+  road_address: string | null
+  lot_address: string | null
+}
+
 interface SearchBarProps {
   onSearch: (query: string, region?: string) => void
   value?: string
@@ -33,56 +40,157 @@ interface SearchBarProps {
 export default function SearchBar({ onSearch, value, regionValue }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [region, setRegion] = useState('')
+  const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  // value prop이 변경되었을 때만 내부 상태 업데이트
   useEffect(() => {
     if (typeof value === 'string') {
       setQuery(value)
     }
   }, [value])
 
-  // 외부에서 지역 값이 변경되었을 때 업데이트
   useEffect(() => {
     if (typeof regionValue === 'string') {
       setRegion(regionValue)
     }
   }, [regionValue])
 
+  // 바깥 클릭 시 드롭다운 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+        inputRef.current && !inputRef.current.contains(e.target as Node)
+      ) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // 자동완성 API 호출 (debounce 300ms)
+  const fetchSuggestions = useCallback((q: string, r: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (abortRef.current) abortRef.current.abort()
+
+    if (q.trim().length < 1) {
+      setSuggestions([])
+      setShowDropdown(false)
+      return
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      try {
+        const params = new URLSearchParams({ q: q.trim(), mode: 'autocomplete' })
+        if (r) params.set('region', r)
+
+        const res = await fetch(`/api/search-agents?${params.toString()}`, {
+          signal: controller.signal,
+        })
+
+        if (!res.ok) return
+
+        const { data } = await res.json()
+        setSuggestions(data || [])
+        setShowDropdown((data || []).length > 0)
+        setActiveIndex(-1)
+      } catch {
+        // abort 등 무시
+      }
+    }, 300)
+  }, [])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setQuery(val)
+    fetchSuggestions(val, region)
+  }
+
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setShowDropdown(false)
     const trimmedQuery = query.trim()
     if (trimmedQuery) {
       onSearch(trimmedQuery, region)
-      if (inputRef.current) {
-        inputRef.current.blur()
-      }
+      if (inputRef.current) inputRef.current.blur()
     } else {
       setQuery('')
       onSearch('', region)
       window.dispatchEvent(new Event('logo:click'))
-      if (inputRef.current) {
-        inputRef.current.blur()
-      }
+      if (inputRef.current) inputRef.current.blur()
     }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value)
   }
 
   const handleClear = () => {
     setQuery('')
+    setSuggestions([])
+    setShowDropdown(false)
     onSearch('', region)
   }
 
   const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newRegion = e.target.value
     setRegion(newRegion)
-    // 검색어가 있으면 지역 변경 시 자동 재검색
     if (query.trim()) {
+      fetchSuggestions(query, newRegion)
       onSearch(query.trim(), newRegion)
     }
+  }
+
+  const handleSuggestionClick = (item: AutocompleteItem) => {
+    setQuery(item.agent_name)
+    setShowDropdown(false)
+    onSearch(item.agent_name, region)
+    if (inputRef.current) inputRef.current.blur()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showDropdown || suggestions.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : 0))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(prev => (prev > 0 ? prev - 1 : suggestions.length - 1))
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault()
+      handleSuggestionClick(suggestions[activeIndex])
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false)
+    }
+  }
+
+  // 주소에서 구 단위 추출
+  const extractDistrict = (address: string | null): string | null => {
+    if (!address) return null
+    const match = address.match(/([가-힣]+[구군])\s/)
+    if (match) return match[1]
+    const match2 = address.match(/\s([가-힣]+구)/)
+    return match2 ? match2[1] : null
+  }
+
+  // 하이라이팅
+  const highlightMatch = (text: string) => {
+    if (!query.trim() || !text) return text
+    const tokens = query.split(/\s+/).filter(t => t.length > 0)
+    const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const regex = new RegExp(`(${escaped.join('|')})`, 'gi')
+    const parts = text.split(regex)
+    return parts.map((part, i) =>
+      regex.test(part)
+        ? `<mark>${part}</mark>`
+        : part
+    ).join('')
   }
 
   return (
@@ -102,9 +210,16 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
           type="text"
           value={query}
           onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => {
+            if (suggestions.length > 0) setShowDropdown(true)
+          }}
           placeholder="부동산명 또는 주소를 검색해보세요"
           className={styles.searchInput}
           autoComplete="off"
+          role="combobox"
+          aria-expanded={showDropdown}
+          aria-autocomplete="list"
         />
         {query && (
           <button 
@@ -112,67 +227,54 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
             onClick={handleClear}
             className={styles.clearButton}
             aria-label="검색어 지우기"
-            style={{
-              position: 'absolute',
-              right: '52px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#94a3b8',
-              transition: 'color 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.color = '#475569'}
-            onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.1"/>
-              <path
-                d="M15 9L9 15M9 9L15 15"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+              <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         )}
         <button type="submit" className={styles.searchButton}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M19 19L14.65 14.65"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M19 19L14.65 14.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       </form>
+
+      {/* 자동완성 드롭다운 */}
+      {showDropdown && suggestions.length > 0 && (
+        <div ref={dropdownRef} className={styles.autocompleteDropdown} role="listbox">
+          {suggestions.map((item, index) => {
+            const district = extractDistrict(item.road_address || item.lot_address)
+            const address = item.road_address || item.lot_address || ''
+            return (
+              <div
+                key={item.id}
+                className={`${styles.autocompleteItem} ${index === activeIndex ? styles.autocompleteItemActive : ''}`}
+                onClick={() => handleSuggestionClick(item)}
+                onMouseEnter={() => setActiveIndex(index)}
+                role="option"
+                aria-selected={index === activeIndex}
+              >
+                <div className={styles.autocompleteMain}>
+                  {district && <span className={styles.autocompleteBadge}>{district}</span>}
+                  <span
+                    className={styles.autocompleteName}
+                    dangerouslySetInnerHTML={{ __html: highlightMatch(item.agent_name) }}
+                  />
+                </div>
+                {address && (
+                  <span
+                    className={styles.autocompleteAddress}
+                    dangerouslySetInnerHTML={{ __html: highlightMatch(address) }}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

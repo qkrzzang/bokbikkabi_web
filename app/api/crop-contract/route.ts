@@ -62,8 +62,9 @@ function detectOrientation(vertices: Array<{ x: number; y: number }>): Orientati
  *   1순위: '공인중개사' (표준 계약서 - STANDARD)
  *   2순위: '사무소'     (일반 계약서 - GENERAL)
  *
- * contractType이 명시적으로 전달되면 해당 키워드만 검색,
- * 전달되지 않으면 1순위 → 2순위 순으로 자동 탐색
+ * STANDARD: '공인중개사' 1차 시도 → 못 찾으면 '사무소' fallback
+ * GENERAL:  '사무소'만 검색
+ * 미지정:   '공인중개사' → '사무소' 순서로 자동 탐색
  */
 const CROP_KEYWORDS = [
   { keyword: '공인중개사', type: 'STANDARD' },
@@ -80,8 +81,9 @@ const CROP_KEYWORDS = [
  *   180° → 이미지 상단 (Y < 70%)
  *   270° → 이미지 우측 (X > 30%)
  *
- * contractType 전달 시 해당 키워드만 검색,
- * 미전달 시 '공인중개사' → '사무소' 순으로 자동 탐색
+ * STANDARD: '공인중개사' 1차 → '사무소' fallback
+ * GENERAL:  '사무소'만 검색
+ * 미전달:   '공인중개사' → '사무소' 순으로 자동 탐색
  */
 function findOfficePosition(ocrResult: any, contractType?: string): (OfficePosition & { matchedKeyword: string }) | null {
   const pages = ocrResult?.pages
@@ -92,10 +94,12 @@ function findOfficePosition(ocrResult: any, contractType?: string): (OfficePosit
   const ocrWidth = page.width || 1
   const words = page.words || []
 
-  // contractType이 명시되면 해당 키워드만, 아니면 우선순위 순으로 모두 시도
-  const keywordsToSearch = contractType
-    ? CROP_KEYWORDS.filter(k => k.type === contractType)
-    : CROP_KEYWORDS
+  // STANDARD: '공인중개사' → '사무소' 순서로 fallback 검색
+  // GENERAL:  '사무소'만 검색
+  // 미지정:   '공인중개사' → '사무소' 순서로 자동 탐색
+  const keywordsToSearch = contractType === 'GENERAL'
+    ? CROP_KEYWORDS.filter(k => k.type === 'GENERAL')
+    : CROP_KEYWORDS // STANDARD 또는 미지정 → 전체 순서대로 (공인중개사 → 사무소)
 
   console.log(`[crop] 검색 키워드: [${keywordsToSearch.map(k => k.keyword).join(', ')}] (contractType=${contractType || '자동'})`)
 
@@ -161,7 +165,7 @@ export async function POST(request: NextRequest) {
     console.log(`[crop] 이미지 수신: ${(buffer.length / 1024).toFixed(1)}KB, contractType=${contractType || 'GENERAL'}`)
 
     // 1. OCR 결과에서 크롭 기준 텍스트 위치 + 방향 감지
-    //    STANDARD → '공인중개사' 검색 / GENERAL → '사무소' 검색
+    //    STANDARD → '공인중개사' 1차, '사무소' fallback / GENERAL → '사무소' 검색
     const officePos = ocrResult ? findOfficePosition(ocrResult, contractType) : null
 
     // 2. EXIF 회전 보정

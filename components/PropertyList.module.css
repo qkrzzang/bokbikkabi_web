@@ -6,9 +6,10 @@
 
 .propertyCard {
   background-color: #ffffff;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  padding: 16px 20px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   transition: all 0.2s ease;
   cursor: pointer;
 }
@@ -30,15 +31,35 @@
 .propertyHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.districtBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #ede9fe, #f3e8ff);
+  color: #7C3AED;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+.dark .districtBadge {
+  background: linear-gradient(135deg, #2e1065, #3b0764);
+  color: #c4b5fd;
 }
 
 .propertyName {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: #1e293b;
   margin: 0;
+  line-height: 1.4;
 }
 
 .dark .propertyName {
@@ -46,14 +67,28 @@
 }
 
 .propertyAddress {
-  font-size: 15px;
-  color: #64748b;
-  margin-bottom: 16px;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 10px;
   line-height: 1.5;
+  padding-left: 1px;
 }
 
 .dark .propertyAddress {
-  color: #94a3b8;
+  color: #64748b;
+}
+
+.highlight {
+  color: #7C3AED;
+  font-weight: 700;
+  background-color: rgba(124, 58, 237, 0.08);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.dark .highlight {
+  color: #a78bfa;
+  background-color: rgba(167, 139, 250, 0.15);
 }
 
 .propertyRating {
@@ -156,11 +191,20 @@
 
 @media (max-width: 768px) {
   .propertyCard {
-    padding: 20px;
+    padding: 14px 16px;
   }
 
   .propertyName {
-    font-size: 18px;
+    font-size: 15px;
+  }
+
+  .districtBadge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  .propertyAddress {
+    font-size: 12px;
   }
 
   .propertyInfo {

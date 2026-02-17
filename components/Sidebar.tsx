@@ -40,6 +40,7 @@ export default function Sidebar({
   const { showAlert, showSuccess, showError, showWarning, showConfirm } = useAlert()
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('menu')
   const [myContracts, setMyContracts] = useState<any[]>([])
+  const [myContractsLoading, setMyContractsLoading] = useState(false)
   const [selectedContract, setSelectedContract] = useState<any>(null)
   const [decryptedImageUrl, setDecryptedImageUrl] = useState<string | null>(null)
   const [isImageLoading, setIsImageLoading] = useState(false)
@@ -230,20 +231,25 @@ export default function Sidebar({
   const loadMyContracts = async () => {
     if (!authUser) return
 
-    const { data } = await apiRequest<any[]>(
-      () => supabase
-        .from('agent_reviews')
-        .select(`
-          *,
-          agent:agent_master(id, agent_name, road_address, lot_address)
-        `)
-        .eq('supabase_user_id', authUser.id)
-        .order('created_at', { ascending: false }),
-      { requireAuth: true }
-    )
+    setMyContractsLoading(true)
+    try {
+      const { data } = await apiRequest<any[]>(
+        () => supabase
+          .from('agent_reviews')
+          .select(`
+            *,
+            agent:agent_master(id, agent_name, road_address, lot_address)
+          `)
+          .eq('supabase_user_id', authUser.id)
+          .order('created_at', { ascending: false }),
+        { requireAuth: true }
+      )
 
-    if (data) {
-      setMyContracts(data)
+      if (data) {
+        setMyContracts(data)
+      }
+    } finally {
+      setMyContractsLoading(false)
     }
   }
 
@@ -846,7 +852,12 @@ export default function Sidebar({
           {/* 내 리뷰 목록 화면 */}
           {currentScreen === 'contracts' && !selectedContract && (
             <div className={styles.screenContent}>
-              {myContracts.length === 0 ? (
+              {myContractsLoading ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.loadingSpinner} />
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>리뷰를 불러오는 중...</div>
+                </div>
+              ) : myContracts.length === 0 ? (
                 <div className={styles.emptyState}>
                   <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
                   <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px', color: '#1e293b' }}>

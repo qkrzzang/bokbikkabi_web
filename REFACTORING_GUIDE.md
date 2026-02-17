@@ -185,20 +185,20 @@
 
     setIsLoading(true)
     setOcrError(null)
-    setN8nError(null)
-    setN8nResult(null)
+    setAiError(null)
+    setAiResult(null)
 
     try {
-      // Step 1 & 2: OCR + n8n 처리 (유틸리티 사용)
+      // Step 1 & 2: OCR + AI 분석 처리 (유틸리티 사용)
       const result = await processContractFile(originalFile)
       
       setOcrResult(result.ocrResult.ocrData)
-      setN8nResult(result.n8nResult.validContracts)
+      setAiResult(result.aiResult.validContracts)
       
       // Step 3: 중개사 검증
-      const contractsToProcess = Array.isArray(result.n8nResult.validContracts) 
-        ? result.n8nResult.validContracts 
-        : [result.n8nResult.validContracts]
+      const contractsToProcess = Array.isArray(result.aiResult.validContracts) 
+        ? result.aiResult.validContracts 
+        : [result.aiResult.validContracts]
       
       if (contractsToProcess.length > 0) {
         const addresses: Record<string, { road_address: string; lot_address: string }> = {}
@@ -287,7 +287,7 @@
       
       if (error.message?.includes('Not a real estate contract') || 
           error.message?.includes('계약서가 아닌')) {
-        setN8nError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
+        setAiError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
       } else if (error.message?.includes('timed out') || 
                  error.message?.includes('시간이 초과')) {
         setOcrError(error.message)

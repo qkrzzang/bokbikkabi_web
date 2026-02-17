@@ -648,21 +648,81 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
     return null
   }
 
+  // 주소에서 '구' 단위 추출 (예: "서울특별시 용산구 ..." → "용산구")
+  const extractDistrict = (address: string): string | null => {
+    if (!address) return null
+    const match = address.match(/([가-힣]+[구군시])\s/)
+    if (match) {
+      // 광역시/도 단위 제외 (예: "서울특별시"는 건너뜀)
+      const district = match[1]
+      if (district.endsWith('구') || district.endsWith('군')) return district
+      // "시" 단위: 성남시, 수원시 등 (광역시 제외)
+      if (district.endsWith('시') && !district.includes('특별') && !district.includes('광역')) return district
+    }
+    // 두 번째 패턴: "OO도 OO시 OO구"
+    const match2 = address.match(/\s([가-힣]+구)/)
+    return match2 ? match2[1] : null
+  }
+
+  // 키워드 하이라이팅 (검색어 토큰을 보라색 볼드로 강조)
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim() || !text) return <>{text}</>
+    const tokens = query.split(/\s+/).filter(t => t.length > 0)
+    if (tokens.length === 0) return <>{text}</>
+
+    // 모든 토큰을 하나의 정규식으로 결합
+    const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const regex = new RegExp(`(${escaped.join('|')})`, 'gi')
+    const parts = text.split(regex)
+
+    return (
+      <>
+        {parts.map((part, i) =>
+          regex.test(part) ? (
+            <span key={i} className={styles.highlight}>{part}</span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+      </>
+    )
+  }
+
   return (
     <>
       <div className={styles.propertyList}>
-        {properties.map((property) => (
-          <div
-            key={property.id}
-            className={styles.propertyCard}
-            onClick={() => handlePropertyClick(property)}
-          >
-            <div className={styles.propertyHeader}>
-              <h3 className={styles.propertyName}>{property.name}</h3>
+        {properties.map((property) => {
+          const district = extractDistrict(property.address)
+
+          return (
+            <div
+              key={property.id}
+              className={styles.propertyCard}
+              onClick={() => handlePropertyClick(property)}
+            >
+              <div className={styles.propertyHeader}>
+                {district && (
+                  <span className={styles.districtBadge}>{district}</span>
+                )}
+                <h3 className={styles.propertyName}>
+                  {highlightText(property.name, searchQuery)}
+                </h3>
+              </div>
+              <p className={styles.propertyAddress}>
+                {highlightText(property.address, searchQuery)}
+              </p>
+              {property.rating > 0 && (
+                <div className={styles.propertyRating}>
+                  <span className={styles.ratingStars}>
+                    {'★'.repeat(Math.round(property.rating))}
+                    {'☆'.repeat(5 - Math.round(property.rating))}
+                  </span>
+                  <span className={styles.ratingValue}>{property.rating.toFixed(1)}</span>
+                </div>
+              )}
             </div>
-            <p className={styles.propertyAddress}>{property.address}</p>
-          </div>
-        ))}
+          )
+        })}
       </div>
       <PropertyDetailModal
         property={selectedProperty}

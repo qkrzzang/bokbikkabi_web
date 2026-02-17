@@ -1546,3 +1546,20 @@
 .deleteConfirmBtn:not(:disabled):active {
   background: #b91c1c;
 }
+
+/* 로딩 스피너 */
+@keyframes sidebarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loadingSpinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e1e8f0;
+  border-top-color: #7C3AED;
+  border-radius: 50%;
+  animation: sidebarSpin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
