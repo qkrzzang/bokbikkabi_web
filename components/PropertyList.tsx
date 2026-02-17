@@ -13,6 +13,7 @@ interface Property {
   name: string
   address: string
   rating: number
+  reviewCount: number
   latitude?: number
   longitude?: number
 }
@@ -71,12 +72,14 @@ const mockProperties: Property[] = [
     name: '미금퍼스트공인중개사사무소(테스트)',
     address: '경기도 성남시 분당구 미금일로90번길 10, 1층(구미동)',
     rating: 4.5,
+    reviewCount: 3,
   },
   {
     id: 'mock-2',
     name: '기쁨부동산',
     address: '서울특별시 성북구 동소문로 109 (동선동4가)',
     rating: 4.7,
+    reviewCount: 5,
   },
 ]
 
@@ -275,6 +278,7 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
         name: agentData.agent_name,
         address: agentData.road_address || agentData.lot_address || '',
         rating: 0,
+        reviewCount: 0,
         latitude: agentData.latitude,
         longitude: agentData.longitude,
       }
@@ -552,15 +556,17 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
           throw new Error(errBody.error || `API ${res.status}`)
         }
 
-        const { data, reviews } = await res.json()
+        const { data, reviews, reviewCounts } = await res.json()
 
         // 검색 결과를 Property 형식으로 변환
         const ratingsMap = reviews as Record<number, number>
+        const countsMap = (reviewCounts || {}) as Record<number, number>
         const propertiesData: Property[] = (data || []).map((agent: any) => ({
           id: agent.id.toString(),
           name: agent.agent_name || '',
           address: agent.road_address || agent.lot_address || '',
           rating: ratingsMap[agent.id] || 0,
+          reviewCount: countsMap[agent.id] || 0,
           latitude: agent.latitude,
           longitude: agent.longitude,
         }))
@@ -711,13 +717,24 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
               <p className={styles.propertyAddress}>
                 {highlightText(property.address, searchQuery)}
               </p>
-              {property.rating > 0 && (
+              {(property.rating > 0 || property.reviewCount > 0) && (
                 <div className={styles.propertyRating}>
-                  <span className={styles.ratingStars}>
-                    {'★'.repeat(Math.round(property.rating))}
-                    {'☆'.repeat(5 - Math.round(property.rating))}
-                  </span>
-                  <span className={styles.ratingValue}>{property.rating.toFixed(1)}</span>
+                  {property.rating > 0 ? (
+                    <>
+                      <span className={styles.ratingStars}>
+                        {'★'.repeat(Math.round(property.rating))}
+                        {'☆'.repeat(5 - Math.round(property.rating))}
+                      </span>
+                      <span className={styles.ratingValue}>{property.rating.toFixed(1)}</span>
+                    </>
+                  ) : (
+                    <span className={styles.ratingStars}>☆☆☆☆☆</span>
+                  )}
+                  {property.reviewCount > 0 && (
+                    <span className={styles.reviewCount}>
+                      리뷰 {property.reviewCount}건
+                    </span>
+                  )}
                 </div>
               )}
             </div>

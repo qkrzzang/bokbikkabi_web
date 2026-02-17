@@ -95,8 +95,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: resultAgents, reviews: {} })
     }
 
-    // 리뷰 평균 별점 조회
+    // 리뷰 평균 별점 + 건수 조회
     const reviews: Record<number, number> = {}
+    const reviewCounts: Record<number, number> = {}
 
     if (resultAgents.length > 0) {
       const agentIds = resultAgents.map((a: any) => a.id)
@@ -107,10 +108,21 @@ export async function GET(request: NextRequest) {
         .in('agent_id', agentIds)
         .or('is_hidden.is.null,is_hidden.eq.false')
 
+      if (reviewsError) {
+        console.error('[search-agents] 리뷰 조회 오류:', reviewsError.message, reviewsError.details)
+      }
+
       if (!reviewsError && reviewsData) {
-        const agentReviews = new Map<number, number[]>()
+        console.log(`[search-agents] 리뷰 데이터 ${reviewsData.length}건 조회 (agentIds: ${agentIds.join(',')})`)
+
+        // agent별 리뷰 평점 집계 + 전체 리뷰 건수 (평점 null 포함)
+        const agentReviewRatings = new Map<number, number[]>()
+        const agentReviewTotals = new Map<number, number>()
 
         reviewsData.forEach((review: any) => {
+          // 전체 리뷰 건수 (평점 null이어도 카운트)
+          agentReviewTotals.set(review.agent_id, (agentReviewTotals.get(review.agent_id) || 0) + 1)
+
           const ratings = [
             review.fee_satisfaction,
             review.expertise,
@@ -121,21 +133,29 @@ export async function GET(request: NextRequest) {
 
           if (ratings.length > 0) {
             const avg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-            if (!agentReviews.has(review.agent_id)) {
-              agentReviews.set(review.agent_id, [])
+            if (!agentReviewRatings.has(review.agent_id)) {
+              agentReviewRatings.set(review.agent_id, [])
             }
-            agentReviews.get(review.agent_id)!.push(avg)
+            agentReviewRatings.get(review.agent_id)!.push(avg)
+          } else {
+            console.warn(`[search-agents] agent_id=${review.agent_id} 리뷰의 평점 필드가 모두 null`)
           }
         })
 
-        agentReviews.forEach((ratings, agentId) => {
+        // 평점 있는 리뷰 평균
+        agentReviewRatings.forEach((ratings, agentId) => {
           const overallAvg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
           reviews[agentId] = Math.round(overallAvg * 10) / 10
+        })
+
+        // 리뷰 건수는 평점 null 포함 전체 건수
+        agentReviewTotals.forEach((count, agentId) => {
+          reviewCounts[agentId] = count
         })
       }
     }
 
-    return NextResponse.json({ data: resultAgents, reviews })
+    return NextResponse.json({ data: resultAgents, reviews, reviewCounts })
   } catch (error: any) {
     console.error('[search-agents] 예외:', error.message)
     return NextResponse.json(

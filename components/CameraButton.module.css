@@ -795,10 +795,11 @@
 
 .contractField {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #f1f5f9;
 }
 
@@ -812,15 +813,16 @@
   font-size: 13px;
   font-weight: 600;
   color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .fieldValue {
   font-size: 15px;
   font-weight: 500;
   color: #1e293b;
-  line-height: 1.6;
+  line-height: 1.5;
+  word-break: keep-all;
 }
 
 .fieldValueAddress {

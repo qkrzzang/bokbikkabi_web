@@ -921,18 +921,53 @@ export default function CameraButton() {
       setOcrResult(data)
 
       // ── 이미지 base64 미리 읽어두기 (AI 분석 완료 후 crop API 호출에 사용) ──
+      // Vercel 페이로드 제한(4.5MB)을 초과하지 않도록 Canvas로 리사이즈 후 압축
       let imageBase64ForCrop: string | null = null
       try {
-        const base64Promise = new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onloadend = () => {
-            const base64Full = reader.result as string
-            resolve(base64Full.split(',')[1]) // data:image/...;base64, 제거
-          }
-          reader.onerror = reject
-          reader.readAsDataURL(fileToUpload)
-        })
-        imageBase64ForCrop = await base64Promise
+        const MAX_DIMENSION = 2000
+        const TARGET_QUALITY = 0.7
+        const MAX_BASE64_SIZE = 3 * 1024 * 1024 // 3MB (base64 기준, 안전 마진 확보)
+
+        const compressImage = (file: File): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const img = new Image()
+            const url = URL.createObjectURL(file)
+            img.onload = () => {
+              URL.revokeObjectURL(url)
+              let { width, height } = img
+
+              // 긴 변 기준 리사이즈
+              if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height)
+                width = Math.round(width * ratio)
+                height = Math.round(height * ratio)
+              }
+
+              const canvas = document.createElement('canvas')
+              canvas.width = width
+              canvas.height = height
+              const ctx = canvas.getContext('2d')
+              if (!ctx) { reject(new Error('Canvas 컨텍스트 실패')); return }
+              ctx.drawImage(img, 0, 0, width, height)
+
+              let quality = TARGET_QUALITY
+              let base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1]
+
+              // 아직 크면 품질을 더 낮춤
+              while (base64.length > MAX_BASE64_SIZE && quality > 0.3) {
+                quality -= 0.1
+                base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1]
+              }
+
+              console.log(`[이미지 크롭] 압축 완료: ${(base64.length / 1024).toFixed(0)}KB (${width}x${height}, q=${quality.toFixed(1)})`)
+              resolve(base64)
+            }
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지 로드 실패')) }
+            img.src = url
+          })
+        }
+
+        imageBase64ForCrop = await compressImage(fileToUpload)
         console.log('[이미지 크롭] base64 준비 완료')
       } catch (cropErr) {
         console.warn('[이미지 크롭] base64 준비 실패:', cropErr)
@@ -1461,18 +1496,27 @@ export default function CameraButton() {
 
       const contractData = primaryContract
 
+      // DB 컬럼명 → 키워드 매핑 (code_value 또는 code_name에서 매칭)
+      const COLUMN_KEYWORD_MAP: Record<string, string[]> = {
+        fee_satisfaction: ['FEE_SATISFACTION', 'FEE', '수수료', '중개보수', '비용'],
+        expertise: ['EXPERTISE', 'EXPERT', '전문', '지식', '역량'],
+        kindness: ['KINDNESS', 'KIND', '친절', '태도', '응대', '매너'],
+        property_reliability: ['PROPERTY_RELIABILITY', 'PROPERTY', 'RELIABILITY', '매물', '신뢰', '정확'],
+        response_speed: ['RESPONSE_SPEED', 'RESPONSE', 'COMMUNICATION', 'SPEED', '응답', '속도', '연락', '소통'],
+      }
+
       // code_value 또는 code_name으로 평가 점수 찾기
-      const getRatingByKeywords = (keywords: string[]) => {
-        // 먼저 code_value로 검색
+      const getRatingByKeywords = (keywords: string[]): number | null => {
+        // 1차: code_value 직접 매칭
         for (const keyword of keywords) {
           const value = reviewRatings[keyword]
           if (typeof value === 'number' && value > 0) {
-            console.log(`[리뷰 저장] ${keyword} 점수 찾음 (code_value): ${value}`)
+            console.log(`[리뷰 저장] ${keyword} 점수 찾음 (code_value 직접): ${value}`)
             return value
           }
         }
         
-        // code_value로 못 찾으면 activeDetailEvaluations의 code_name으로 검색
+        // 2차: code_value 부분 매칭 또는 code_name 키워드 매칭
         for (const keyword of keywords) {
           const evaluation = activeDetailEvaluations.find(e => 
             e.code_name.includes(keyword) || 
@@ -1481,7 +1525,7 @@ export default function CameraButton() {
           if (evaluation) {
             const value = reviewRatings[evaluation.code_value]
             if (typeof value === 'number' && value > 0) {
-              console.log(`[리뷰 저장] ${keyword} 점수 찾음 (code_name 매칭): ${value}`)
+              console.log(`[리뷰 저장] ${keyword} 점수 찾음 (code_name 매칭 → ${evaluation.code_value}): ${value}`)
               return value
             }
           }
@@ -1491,8 +1535,61 @@ export default function CameraButton() {
         return null
       }
 
-      console.log(`[리뷰 저장] 평가 점수 확인:`, reviewRatings)
+      console.log(`[리뷰 저장] 평가 점수 확인:`, JSON.stringify(reviewRatings))
       console.log(`[리뷰 저장] 상세 평가 항목:`, activeDetailEvaluations.map(e => ({ code_value: e.code_value, code_name: e.code_name })))
+
+      // 키워드 매핑으로 각 DB 컬럼에 대응하는 점수 찾기
+      const mappedRatings: Record<string, number | null> = {}
+      const usedCodeValues = new Set<string>()
+
+      for (const [column, keywords] of Object.entries(COLUMN_KEYWORD_MAP)) {
+        const rating = getRatingByKeywords(keywords)
+        mappedRatings[column] = rating
+        if (rating !== null) {
+          // 매칭된 code_value 기록 (중복 방지)
+          for (const keyword of keywords) {
+            if (reviewRatings[keyword]) { usedCodeValues.add(keyword); break }
+            const ev = activeDetailEvaluations.find(e =>
+              e.code_name.includes(keyword) || e.code_value.toUpperCase().includes(keyword.toUpperCase())
+            )
+            if (ev && reviewRatings[ev.code_value]) { usedCodeValues.add(ev.code_value); break }
+          }
+        }
+      }
+
+      // 3차 폴백: 매핑되지 않은 평점이 있으면 남은 reviewRatings 값을 순서대로 채움
+      const nullColumns = Object.entries(mappedRatings)
+        .filter(([, v]) => v === null)
+        .map(([k]) => k)
+      
+      if (nullColumns.length > 0) {
+        const unmappedRatings = activeDetailEvaluations
+          .filter(e => !usedCodeValues.has(e.code_value))
+          .map(e => ({ code_value: e.code_value, rating: reviewRatings[e.code_value] }))
+          .filter(r => typeof r.rating === 'number' && r.rating > 0)
+
+        console.log(`[리뷰 저장] 미매핑 컬럼 ${nullColumns.length}개, 남은 평점 ${unmappedRatings.length}개 → 순서 폴백`)
+
+        for (let i = 0; i < nullColumns.length && i < unmappedRatings.length; i++) {
+          mappedRatings[nullColumns[i]] = unmappedRatings[i].rating
+          console.log(`[리뷰 저장] 폴백: ${nullColumns[i]} ← ${unmappedRatings[i].code_value} = ${unmappedRatings[i].rating}`)
+        }
+      }
+
+      // 최종 확인: 모든 평점이 null이면 전체 평균으로 채움
+      const allNull = Object.values(mappedRatings).every(v => v === null)
+      if (allNull && Object.keys(reviewRatings).length > 0) {
+        const allRatings = Object.values(reviewRatings).filter(v => typeof v === 'number' && v > 0) as number[]
+        if (allRatings.length > 0) {
+          const avgRating = Math.round((allRatings.reduce((s, r) => s + r, 0) / allRatings.length) * 10) / 10
+          console.log(`[리뷰 저장] 모든 매핑 실패 → 전체 평균 ${avgRating}로 채움`)
+          for (const col of Object.keys(mappedRatings)) {
+            mappedRatings[col] = avgRating
+          }
+        }
+      }
+
+      console.log(`[리뷰 저장] 최종 매핑 결과:`, mappedRatings)
 
       const { error } = await supabase
         .from('agent_reviews')
@@ -1508,11 +1605,11 @@ export default function CameraButton() {
           reason: contractData?.reason || null,
           praise_tags: praiseTags,
           regret_tags: regretTags,
-          fee_satisfaction: getRatingByKeywords(['FEE_SATISFACTION', '수수료']),
-          expertise: getRatingByKeywords(['EXPERTISE', '전문성', '지식']),
-          kindness: getRatingByKeywords(['KINDNESS', '친절', '태도']),
-          property_reliability: getRatingByKeywords(['PROPERTY_RELIABILITY', '매물', '신뢰도']),
-          response_speed: getRatingByKeywords(['RESPONSE_SPEED', 'COMMUNICATION', '응답', '속도']),
+          fee_satisfaction: mappedRatings.fee_satisfaction,
+          expertise: mappedRatings.expertise,
+          kindness: mappedRatings.kindness,
+          property_reliability: mappedRatings.property_reliability,
+          response_speed: mappedRatings.response_speed,
           review_text: reviewText || null,
           contract_date: contractData?.contract_date || null,
           agent_stamp: stampResult?.agent_stamp ?? null,

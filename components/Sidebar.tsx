@@ -924,6 +924,7 @@ export default function Sidebar({
                             detail: {
                               searchQuery: selectedContract.agent.agent_name,
                               agentId: selectedContract.agent.id,
+                              roadAddress: selectedContract.agent.road_address || '',
                             }
                           }))
                         }}

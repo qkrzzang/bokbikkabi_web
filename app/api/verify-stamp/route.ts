@@ -19,21 +19,141 @@ const PROMPT = `당신은 부동산 계약서 검증 전문가입니다.
   "agent_stamp_confidence": 0~100
 }`
 
+const USER_MESSAGE = '이 부동산 계약서 이미지에서 개업공인중개사의 도장(인장)이 있는지 확인해주세요.'
+
+/**
+ * 결과 타입 검증 및 보정
+ */
+function validateResult(raw: any): { agent_stamp: boolean; agent_stamp_confidence: number } {
+  const result = { ...raw }
+
+  if (typeof result.agent_stamp !== 'boolean') {
+    result.agent_stamp = Boolean(result.agent_stamp)
+  }
+  if (typeof result.agent_stamp_confidence !== 'number') {
+    result.agent_stamp_confidence = parseInt(String(result.agent_stamp_confidence), 10) || 0
+  }
+  result.agent_stamp_confidence = Math.max(0, Math.min(100, result.agent_stamp_confidence))
+
+  return result
+}
+
+/**
+ * JSON 파싱 헬퍼
+ */
+function parseJsonResponse(content: string): any {
+  try {
+    return JSON.parse(content)
+  } catch {
+    const jsonMatch = content.match(/\{[\s\S]*?\}/)
+    if (!jsonMatch) {
+      throw new Error('JSON 형식을 찾을 수 없습니다.')
+    }
+    return JSON.parse(jsonMatch[0])
+  }
+}
+
+/**
+ * Gemini로 도장 검증
+ */
+async function verifyWithGemini(base64Data: string, mimeType: string): Promise<any> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) throw new Error('GEMINI_API_KEY 미설정')
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`
+
+  const response = await fetch(geminiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: PROMPT + '\n\n' + USER_MESSAGE },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: base64Data.replace(/^data:image\/\w+;base64,/, ''),
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 500,
+        responseMimeType: 'application/json',
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(`Gemini API ${response.status}: ${errorData?.error?.message || '알 수 없는 오류'}`)
+  }
+
+  const data = await response.json()
+  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  if (!content) throw new Error('Gemini 응답이 비어있습니다.')
+
+  return parseJsonResponse(content)
+}
+
+/**
+ * GPT로 도장 검증 (Gemini 실패 시 fallback)
+ */
+async function verifyWithGPT(base64Data: string, mimeType: string): Promise<any> {
+  const apiKey = process.env.GPT_API_KEY
+  if (!apiKey) throw new Error('GPT_API_KEY 미설정')
+
+  const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '')
+  const dataUrl = `data:${mimeType};base64,${cleanBase64}`
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: USER_MESSAGE },
+            { type: 'image_url', image_url: { url: dataUrl, detail: 'low' } },
+          ],
+        },
+      ],
+      temperature: 0,
+      max_tokens: 500,
+      response_format: { type: 'json_object' },
+    }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(`GPT API ${response.status}: ${errorData?.error?.message || '알 수 없는 오류'}`)
+  }
+
+  const data = await response.json()
+  const content = data?.choices?.[0]?.message?.content || ''
+
+  if (!content) throw new Error('GPT 응답이 비어있습니다.')
+
+  return parseJsonResponse(content)
+}
+
 /**
  * 계약서 이미지에서 중개사 도장 진위 검증
- * Gemini 2.5 Flash 사용
+ * Gemini 1차 → GPT fallback
  * POST: FormData (file) 또는 JSON (image_base64)
  */
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY 환경변수가 설정되지 않았습니다.' },
-        { status: 500 }
-      )
-    }
-
     let base64Data = ''
     let mimeType = 'image/jpeg'
 
@@ -64,100 +184,29 @@ export async function POST(request: Request) {
       }
     }
 
-   // 1. 엔드포인트를 v1beta로 설정 (기능 지원이 가장 확실합니다)
-   // 1. URL 수정: 모델명 뒤에 :generateContent가 붙는 구조 확인
-const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`
-
-const response = await fetch(geminiUrl, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    contents: [
-      {
-        parts: [
-          {
-            text: PROMPT + '\n\n이 부동산 계약서 이미지에서 개업공인중개사의 도장(인장)이 있는지 확인해주세요.',
-          },
-          {
-            inline_data: {
-              mime_type: mimeType,
-              data: base64Data.replace(/^data:image\/\w+;base64,/, ""),
-            },
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 500,
-      // response_mime_type 대신 responseMimeType (v1beta fetch 기준)
-      responseMimeType: "application/json" 
-    },
-  }),
-})
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('[도장 검증] Gemini API 오류:', response.status, errorData)
-      return NextResponse.json(
-        {
-          error: `Gemini API 오류: ${response.status}`,
-          detail: errorData?.error?.message || '',
-        },
-        { status: response.status }
-      )
+    // 1차: Gemini로 검증
+    try {
+      const raw = await verifyWithGemini(base64Data, mimeType)
+      const result = validateResult(raw)
+      console.log('[도장 검증] Gemini 성공:', result)
+      return NextResponse.json({ success: true, ...result })
+    } catch (geminiError: any) {
+      console.warn('[도장 검증] Gemini 실패, GPT fallback 시도:', geminiError.message)
     }
 
-    const data = await response.json()
-
-    // Gemini 응답에서 텍스트 추출
-    const content =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-    console.log('[도장 검증] Gemini 응답:', content)
-
-    // JSON 파싱
-    let result: { agent_stamp: boolean; agent_stamp_confidence: number }
-
+    // 2차: GPT fallback
     try {
-      // ```json ... ``` 블록 또는 순수 JSON 추출
-      const jsonMatch = content.match(/\{[\s\S]*?\}/)
-      if (!jsonMatch) {
-        throw new Error('JSON 형식을 찾을 수 없습니다.')
-      }
-      result = JSON.parse(jsonMatch[0])
-
-      // 타입 검증
-      if (typeof result.agent_stamp !== 'boolean') {
-        result.agent_stamp = Boolean(result.agent_stamp)
-      }
-      if (typeof result.agent_stamp_confidence !== 'number') {
-        result.agent_stamp_confidence =
-          parseInt(String(result.agent_stamp_confidence), 10) || 0
-      }
-
-      // 범위 보정
-      result.agent_stamp_confidence = Math.max(
-        0,
-        Math.min(100, result.agent_stamp_confidence)
-      )
-    } catch (parseErr) {
-      console.error('[도장 검증] 응답 파싱 오류:', parseErr, 'Raw:', content)
+      const raw = await verifyWithGPT(base64Data, mimeType)
+      const result = validateResult(raw)
+      console.log('[도장 검증] GPT fallback 성공:', result)
+      return NextResponse.json({ success: true, ...result })
+    } catch (gptError: any) {
+      console.error('[도장 검증] GPT fallback도 실패:', gptError.message)
       return NextResponse.json(
-        {
-          error: '도장 검증 결과를 파싱할 수 없습니다.',
-          raw_response: content,
-        },
+        { error: 'Gemini 및 GPT 모두 도장 검증에 실패했습니다.', detail: gptError.message },
         { status: 500 }
       )
     }
-
-    return NextResponse.json({
-      success: true,
-      ...result,
-    })
   } catch (error: any) {
     console.error('[도장 검증] 예외:', error)
     return NextResponse.json(
