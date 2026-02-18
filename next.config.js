@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false, // Hydration 경고 감소
+  reactStrictMode: false,
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
   
   // 환경변수 명시적 검증 (개발 환경에서만)
   async headers() {

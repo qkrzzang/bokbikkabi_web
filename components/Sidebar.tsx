@@ -67,6 +67,7 @@ export default function Sidebar({
   const [isMobile, setIsMobile] = useState(false) // 모바일 여부
   const [editNickname, setEditNickname] = useState('') // 닉네임 수정용
   const [isNicknameEditing, setIsNicknameEditing] = useState(false) // 닉네임 수정 모드
+  const [inquiryType, setInquiryType] = useState('광고')
   const [isNicknameSaving, setIsNicknameSaving] = useState(false) // 닉네임 저장 중
   const [nicknameChangedAt, setNicknameChangedAt] = useState<string | null>(null) // 닉네임 마지막 변경일
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false) // 회원탈퇴 확인
@@ -592,7 +593,7 @@ export default function Sidebar({
                currentScreen === 'favorites' ? '내 관심 부동산' :
                currentScreen === 'survey' ? '서베이' :
                currentScreen === 'points' ? '내 포인트' :
-               currentScreen === 'partnership' ? '광고/제휴 문의' :
+               currentScreen === 'partnership' ? '광고/제휴/오류 문의' :
                currentScreen === 'policy' ? '약관/정책' :
                currentScreen === 'profile' ? '내 정보 설정' :
                currentScreen === 'admin' ? '관리자 메뉴' : ''}
@@ -762,7 +763,7 @@ export default function Sidebar({
                 onClick={() => setCurrentScreen('partnership')}
               >
                 <span className={styles.navIcon}>🤝</span>
-                <span className={styles.navLabel}>광고/제휴 문의</span>
+                <span className={styles.navLabel}>광고/제휴/오류 문의</span>
                 <span className={styles.chevron}>›</span>
               </button>
 
@@ -1271,7 +1272,7 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* 광고/제휴 문의 화면 */}
+          {/* 광고/제휴/오류 문의 화면 */}
           {currentScreen === 'partnership' && (
             <div className={styles.screenContent}>
               <form className={styles.partnershipForm} onSubmit={async (e) => {
@@ -1316,11 +1317,19 @@ export default function Sidebar({
               }}>
                 <div className={styles.formGroup}>
                   <label>문의 유형 *</label>
-                  <select name="type" required className={styles.formSelect}>
-                    <option value="광고">광고</option>
-                    <option value="제휴">제휴</option>
-                    <option value="기타">기타</option>
-                  </select>
+                  <input type="hidden" name="type" value={inquiryType} />
+                  <div className={styles.chipGroup}>
+                    {['광고', '제휴', '오류', '기타'].map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`${styles.chip} ${inquiryType === type ? styles.chipActive : ''}`}
+                        onClick={() => setInquiryType(type)}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 
                 <div className={styles.formGroup}>
@@ -1550,6 +1559,9 @@ export default function Sidebar({
             )}
           </div>
         )}
+
+        {/* 하단 여백 (풋터 높이의 절반) */}
+        <div className={styles.sidebarBottomSpacer} />
       </div>
 
       {/* 광고 모달 */}

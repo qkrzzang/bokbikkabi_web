@@ -79,6 +79,9 @@ export function AlertProvider({ children }: { children: ReactNode }) {
             justifyContent: 'center',
             zIndex: 100000,
             animation: 'alertFadeIn 0.2s ease',
+            paddingTop: '64px',
+            paddingBottom: 'calc(80px + env(safe-area-inset-bottom))',
+            boxSizing: 'border-box',
           }}
           onClick={closeAlert}
         >

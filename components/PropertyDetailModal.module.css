@@ -451,9 +451,9 @@
 @media (max-width: 768px) {
   .overlay {
     padding: 16px;
-    padding-top: 60px;
-    padding-bottom: calc(90px + env(safe-area-inset-bottom));
-    align-items: flex-start;
+    padding-top: 64px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+    align-items: center;
     justify-content: center;
     overscroll-behavior: contain;
   }
@@ -685,8 +685,8 @@
 
 @media (max-width: 768px) {
   .pointsGuideOverlay {
-    padding-top: 60px;
-    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+    padding-top: 64px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
 
   .pointsGuideModal {

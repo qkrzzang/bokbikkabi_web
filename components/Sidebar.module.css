@@ -558,6 +558,11 @@
   font-weight: 600;
 }
 
+.sidebarBottomSpacer {
+  flex-shrink: 0;
+  height: 40px;
+}
+
 .sidebarFooter {
   padding: 16px 24px;
   border-top: 1px solid #e2e8f0;
@@ -600,6 +605,45 @@
   font-size: 14px;
   font-weight: 600;
   color: #1e293b;
+}
+
+.chipGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 8px 18px;
+  border-radius: 20px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: #c4b5fd;
+  background: #f5f3ff;
+  color: #7C3AED;
+}
+
+.chipActive {
+  background: #7C3AED;
+  border-color: #7C3AED;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+}
+
+.chipActive:hover {
+  background: #6D28D9;
+  border-color: #6D28D9;
+  color: #ffffff;
 }
 
 .formInput,
@@ -1274,8 +1318,8 @@
 
 @media (max-width: 768px) {
   .iosGuideOverlay {
-    padding-top: 60px;
-    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+    padding-top: 64px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
 
   .iosGuideModal {

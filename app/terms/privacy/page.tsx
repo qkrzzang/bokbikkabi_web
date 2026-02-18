@@ -22,13 +22,12 @@ export default function PrivacyPolicy() {
         <section className={styles.section}>
           <h2>제1조 (계약서 데이터 처리 및 비학습 보안 원칙)</h2>
           <p>
-            회사는 이용자가 업로드하는 부동산 계약서 이미지에 대해 국내 최고 수준의 보안 공정 및
-            &lsquo;Zero-Retention&rsquo; 원칙을 적용합니다.
+          회사는 이용자가 업로드하는 부동산 계약서 이미지에 대해 '<strong>필요 정보 외 영구 파기</strong>' 및 '<strong>AI 비학습(Zero-Retention)</strong>' 원칙을 철저히 준수합니다.
           </p>
 
           <h3>이미지 부분 절취(Crop) 및 파기</h3>
           <p>
-            회사는 OCR 기술을 통해 계약서 이미지에서 중개사 정보(상호, 등록번호, 소재지)가 포함된
+            회사는 계약서 이미지에서 중개사 정보(상호, 등록번호, 소재지)가 포함된
             영역만을 절취(Crop)하여 활용합니다. 중개사 정보와 무관한 개인 식별 정보(성명,
             주민등록번호, 연락처, 상세 주소 등)가 포함된 원본 이미지 영역은 분석 직후 시스템에서
             즉시 파기하며 서버에 저장하지 않습니다.
@@ -36,9 +35,10 @@ export default function PrivacyPolicy() {
 
           <h3>데이터 비학습 원칙</h3>
           <p>
-            계약서 분석에 사용되는 Google AI(Vertex AI) 및 Upstage OCR은 이용자의 데이터를
-            모델 학습에 활용하지 않습니다. 분석 과정에서 전달되는 데이터는 오직 텍스트 추출
-            목적으로만 일시적으로 처리됩니다.
+          계약서 분석 및 데이터 처리에 사용되는 Google AI(Gemini/Vertex AI), 
+          Upstage OCR, 그리고 OpenAI(GPT-4o-mini) API는 이용자의 데이터를 모델 
+          학습에 활용하지 않습니다. 분석 과정에서 전달되는 데이터는 오직 텍스트 추출 및 정보 
+          검증 목적으로만 일시적으로 처리됩니다.
           </p>
 
           <h3>공개 정보의 활용</h3>
@@ -96,8 +96,8 @@ export default function PrivacyPolicy() {
                   <td>대한민국 (서울 리전), 회원 탈퇴 시까지</td>
                 </tr>
                 <tr>
-                  <td>Google Cloud (AI)</td>
-                  <td>계약서 텍스트 추출 및 주소 검증</td>
+                  <td>Gemini API, OpenAI API</td>
+                  <td>계약서 텍스트 데이터 분석 및 검증</td>
                   <td>비학습(Zero-Retention), 처리 후 즉시 파기</td>
                 </tr>
                 <tr>

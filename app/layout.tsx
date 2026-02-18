@@ -62,6 +62,14 @@ export default function RootLayout({
             <PWAInstallPrompt />
           </AlertProvider>
         </AuthProvider>
+        {/* 콘솔 로그 비활성화 */}
+        <Script
+          id="suppress-console"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var n=function(){};console.log=n;console.warn=n;console.info=n;console.debug=n;})();`
+          }}
+        />
         {/* 실제 모바일 뷰포트 높이 계산 */}
         <Script
           id="mobile-viewport-height"

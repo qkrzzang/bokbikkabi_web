@@ -1059,9 +1059,10 @@
   }
 
   .overlay {
-    align-items: flex-start;
-    padding-top: 60px;
-    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+    align-items: center;
+    justify-content: center;
+    padding-top: 64px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
     overscroll-behavior: contain;
   }
 
@@ -1554,6 +1555,11 @@
 }
 
 @media (max-width: 768px) {
+  .alertModalOverlay {
+    padding-top: 64px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
   .confirmModal {
     width: 76%;
     max-width: 340px;
@@ -1562,7 +1568,7 @@
   .agentSelectionModal {
     width: 76%;
     max-width: 510px;
-    max-height: 85dvh;
+    max-height: 100%;
     padding-bottom: env(safe-area-inset-bottom);
   }
 
