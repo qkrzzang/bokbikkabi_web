@@ -43,6 +43,15 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="복비까비" />
         
+        {/* Google AdSense */}
+        <Script
+          id="google-adsense"
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4570213329792486"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
+        
         {/* 네이버 지도 API 스크립트 (submodules=geocoder 추가) */}
         {naverMapClientId && (
           <Script

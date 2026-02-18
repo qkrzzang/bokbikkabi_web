@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import styles from './AdModal.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -13,23 +13,103 @@ interface AdModalProps {
   onComplete: () => void
 }
 
+function getKoreaToday() {
+  const now = new Date()
+  const koreaTime = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  const todayKorea = koreaTime.toISOString().split('T')[0]
+  return {
+    todayKorea,
+    todayYmd: todayKorea.replace(/-/g, ''),
+    startOfDay: new Date(`${todayKorea}T00:00:00+09:00`).toISOString(),
+    endOfDay: new Date(`${todayKorea}T23:59:59+09:00`).toISOString(),
+  }
+}
+
 export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
   const { user: authUser } = useAuth()
   const { showAlert, showSuccess, showError, showWarning } = useAlert()
-  const [countdown, setCountdown] = useState(30) // 30초 광고
+  const [countdown, setCountdown] = useState(30)
   const [canClose, setCanClose] = useState(false)
   const [isWatched, setIsWatched] = useState(false)
+  const [dailyLimit, setDailyLimit] = useState(3)
+  const [todayCount, setTodayCount] = useState(0)
+  const [pointsPerView, setPointsPerView] = useState(10)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLimitReached, setIsLimitReached] = useState(false)
+
+  const loadAdConfig = useCallback(async () => {
+    if (!authUser) return
+    setIsLoading(true)
+
+    try {
+      const { todayYmd, startOfDay, endOfDay } = getKoreaToday()
+
+      const [limitResult, policyResult, countResult] = await Promise.all([
+        apiRequest<{ code_name: string }>(
+          () => supabase
+            .from('common_code_detail')
+            .select('code_name')
+            .eq('code_group', 'SYSTEM_CONFIG')
+            .eq('code_value', 'AD_VIEW_DAILY_LIMIT')
+            .eq('use_yn', 'Y')
+            .lte('sta_ymd', todayYmd)
+            .gte('end_ymd', todayYmd)
+            .maybeSingle(),
+          { requireAuth: false }
+        ),
+        apiRequest<{ code_name: string }>(
+          () => supabase
+            .from('common_code_detail')
+            .select('code_name')
+            .eq('code_group', 'POINT_POLICY')
+            .eq('code_value', 'AD_VIEW')
+            .eq('use_yn', 'Y')
+            .lte('sta_ymd', todayYmd)
+            .gte('end_ymd', todayYmd)
+            .maybeSingle(),
+          { requireAuth: false }
+        ),
+        apiRequest<any[]>(
+          () => supabase
+            .from('point_transactions')
+            .select('id')
+            .eq('supabase_user_id', authUser.id)
+            .eq('transaction_type', 'AD_VIEW')
+            .gte('created_at', startOfDay)
+            .lte('created_at', endOfDay),
+          { requireAuth: true }
+        ),
+      ])
+
+      const limit = limitResult.data ? parseInt(limitResult.data.code_name) || 3 : 3
+      const points = policyResult.data ? parseInt(policyResult.data.code_name) || 10 : 10
+      const count = countResult.data?.length ?? 0
+
+      setDailyLimit(limit)
+      setPointsPerView(points)
+      setTodayCount(count)
+      setIsLimitReached(count >= limit)
+    } catch {
+      setDailyLimit(3)
+      setPointsPerView(10)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [authUser])
 
   useEffect(() => {
     if (!isOpen) {
-      // 모달이 닫힐 때 초기화
       setCountdown(30)
       setCanClose(false)
       setIsWatched(false)
       return
     }
+    loadAdConfig()
+  }, [isOpen, loadAdConfig])
 
-    // 카운트다운 시작
+  useEffect(() => {
+    if (!isOpen || isLimitReached || isLoading) return
+
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -43,16 +123,18 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [isOpen])
+  }, [isOpen, isLimitReached, isLoading])
 
   const handleClose = async () => {
+    if (isLimitReached) {
+      onClose()
+      return
+    }
     if (!canClose) {
       showWarning('광고를 끝까지 시청해주세요!')
       return
     }
-
     if (isWatched) {
-      // 포인트 적립
       await awardAdPoints()
       onComplete()
     }
@@ -60,58 +142,28 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
   }
 
   const awardAdPoints = async () => {
-    if (!authUser) {
-      console.log('로그인이 필요합니다.')
-      return
-    }
+    if (!authUser) return
 
     try {
-      // 오늘 이미 광고 시청 포인트를 받았는지 확인 (한국 시간대 기준)
-      const now = new Date()
-      const koreaOffset = 9 * 60 // 한국은 UTC+9
-      const koreaTime = new Date(now.getTime() + koreaOffset * 60 * 1000)
-      const todayKorea = koreaTime.toISOString().split('T')[0]
-      
-      // 한국 시간 기준 오늘 00:00:00 ~ 23:59:59 (UTC로 변환)
-      const startOfDayKorea = new Date(`${todayKorea}T00:00:00+09:00`).toISOString()
-      const endOfDayKorea = new Date(`${todayKorea}T23:59:59+09:00`).toISOString()
-      
+      const { startOfDay, endOfDay } = getKoreaToday()
+
       const { data: existingTransactions } = await apiRequest<any[]>(
         () => supabase
           .from('point_transactions')
           .select('id')
           .eq('supabase_user_id', authUser.id)
           .eq('transaction_type', 'AD_VIEW')
-          .gte('created_at', startOfDayKorea)
-          .lte('created_at', endOfDayKorea)
-          .limit(1),
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay),
         { requireAuth: true }
       )
 
-      if (existingTransactions && existingTransactions.length > 0) {
-        showAlert('오늘은 이미 광고 시청 포인트를 받았습니다!')
+      if (existingTransactions && existingTransactions.length >= dailyLimit) {
+        showAlert(`오늘의 광고 시청 횟수(${dailyLimit}회)를 모두 사용했습니다!`)
         return
       }
 
-      // 포인트 정책 조회
-      const todayYmd = todayKorea.replace(/-/g, '')
-      const { data: policyData } = await apiRequest<{ code_name: string }>(
-        () => supabase
-          .from('common_code_detail')
-          .select('code_name')
-          .eq('code_group', 'POINT_POLICY')
-          .eq('code_value', 'AD_VIEW')
-          .eq('use_yn', 'Y')
-          .lte('sta_ymd', todayYmd)
-          .gte('end_ymd', todayYmd)
-          .maybeSingle(),
-        { requireAuth: false }
-      )
-
-      const points = policyData ? parseInt(policyData.code_name) : 10
-
-      // 포인트 적립 함수 호출
-      const { data, error } = await apiRequest<any>(
+      const { error } = await apiRequest<any>(
         () => supabase.rpc('award_points', {
           p_user_id: authUser.id,
           p_transaction_type: 'AD_VIEW',
@@ -121,24 +173,26 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
       )
 
       if (error) {
-        console.error('광고 포인트 적립 오류:', error)
         showError('포인트 적립에 실패했습니다.')
       } else {
-        showSuccess(`광고 시청 완료! ${points}P가 적립되었습니다!`)
+        const remaining = dailyLimit - (todayCount + 1)
+        showSuccess(`광고 시청 완료! ${pointsPerView}P 적립! (오늘 남은 횟수: ${Math.max(remaining, 0)}회)`)
       }
-    } catch (error) {
-      console.error('광고 포인트 적립 예외:', error)
+    } catch {
+      showError('포인트 적립 중 오류가 발생했습니다.')
     }
   }
 
   if (!isOpen) return null
 
+  const remaining = dailyLimit - todayCount
+
   return (
     <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2 className={styles.title}>📺 광고 시청하기</h2>
-          {canClose && (
+          <h2 className={styles.title}>광고 시청하기</h2>
+          {(canClose || isLimitReached) && (
             <button className={styles.closeButton} onClick={handleClose}>
               ✕
             </button>
@@ -146,64 +200,98 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
         </div>
 
         <div className={styles.body}>
-          {/* 광고 영역 */}
-          <div className={styles.adContainer}>
-            <div className={styles.adContent}>
-              <div className={styles.adIcon}>🎬</div>
-              <h3 className={styles.adTitle}>복비까비 광고</h3>
-              <p className={styles.adDescription}>
-                광고를 시청하고 포인트를 받아보세요!
+          {isLoading ? (
+            <div className={styles.loadingContainer}>
+              <div className={styles.spinner} />
+              <p className={styles.loadingText}>광고 준비 중...</p>
+            </div>
+          ) : isLimitReached ? (
+            <div className={styles.limitReachedContainer}>
+              <div className={styles.limitIcon}>🚫</div>
+              <h3 className={styles.limitTitle}>오늘의 광고 시청 완료</h3>
+              <p className={styles.limitDescription}>
+                오늘 {dailyLimit}회 광고를 모두 시청했습니다.
                 <br />
-                포인트로 다양한 혜택을 누리실 수 있습니다.
+                내일 다시 시청하고 포인트를 받아보세요!
               </p>
-              
-              {/* 실제 광고 영역 (나중에 구글 애드센스 등으로 대체) */}
-              <div className={styles.adPlaceholder}>
-                <p className={styles.adPlaceholderText}>
-                  [ 광고 영역 ]
-                  <br />
-                  <br />
-                  여기에 실제 광고가 표시됩니다.
-                  <br />
-                  구글 애드센스, 카카오 애드핏 등<br />
-                  다양한 광고 플랫폼을 연동할 수 있습니다.
-                </p>
-              </div>
-
-              {/* 카운트다운 */}
-              <div className={styles.countdown}>
-                {canClose ? (
-                  <div className={styles.completeMessage}>
-                    <span className={styles.completeIcon}>✅</span>
-                    <span className={styles.completeText}>시청 완료! 닫기 버튼을 눌러주세요.</span>
-                  </div>
-                ) : (
-                  <div className={styles.countdownMessage}>
-                    <span className={styles.countdownIcon}>⏱️</span>
-                    <span className={styles.countdownText}>
-                      광고 종료까지 <strong>{countdown}초</strong> 남았습니다
-                    </span>
-                  </div>
-                )}
+              <div className={styles.limitInfo}>
+                <span>오늘 적립: <strong>{todayCount * pointsPerView}P</strong></span>
               </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className={styles.statusBar}>
+                <span className={styles.statusLabel}>오늘 시청</span>
+                <div className={styles.statusDots}>
+                  {Array.from({ length: dailyLimit }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={`${styles.statusDot} ${i < todayCount ? styles.statusDotUsed : styles.statusDotAvailable}`}
+                    />
+                  ))}
+                </div>
+                <span className={styles.statusCount}>{remaining}회 남음</span>
+              </div>
 
-          {/* 안내 메시지 */}
-          <div className={styles.notice}>
-            <p className={styles.noticeText}>
-              💡 광고를 끝까지 시청하면 <strong>10P</strong>가 적립됩니다!
-            </p>
-            <p className={styles.noticeSubText}>
-              (하루 1회 적립 가능)
-            </p>
-          </div>
+              {/* 광고 영역 - 구글 애드센스 리워드 광고 슬롯 */}
+              <div className={styles.adContainer}>
+                <div className={styles.adContent}>
+                  <div id="ad-reward-slot" className={styles.adSlot}>
+                    <div className={styles.adPlaceholder}>
+                      <p className={styles.adPlaceholderText}>
+                        광고 준비 중입니다
+                        <br />
+                        <span className={styles.adPlaceholderSub}>Google AdSense 심사 통과 후 실제 광고가 표시됩니다</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={styles.countdown}>
+                    {canClose ? (
+                      <div className={styles.completeMessage}>
+                        <span className={styles.completeIcon}>✅</span>
+                        <span className={styles.completeText}>시청 완료!</span>
+                      </div>
+                    ) : (
+                      <div className={styles.countdownMessage}>
+                        <div className={styles.progressBarContainer}>
+                          <div
+                            className={styles.progressBar}
+                            style={{ width: `${((30 - countdown) / 30) * 100}%` }}
+                          />
+                        </div>
+                        <span className={styles.countdownText}>
+                          <strong>{countdown}</strong>초 남음
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.notice}>
+                <p className={styles.noticeText}>
+                  광고를 끝까지 시청하면 <strong>{pointsPerView}P</strong> 적립!
+                </p>
+                <p className={styles.noticeSubText}>
+                  (하루 최대 {dailyLimit}회, {dailyLimit * pointsPerView}P 적립 가능)
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
-        {canClose && (
+        {canClose && !isLimitReached && (
           <div className={styles.footer}>
             <button className={styles.confirmButton} onClick={handleClose}>
-              닫기 (10P 받기)
+              {pointsPerView}P 받기
+            </button>
+          </div>
+        )}
+        {isLimitReached && (
+          <div className={styles.footer}>
+            <button className={styles.confirmButton} onClick={handleClose}>
+              확인
             </button>
           </div>
         )}
@@ -211,4 +299,3 @@ export default function AdModal({ isOpen, onClose, onComplete }: AdModalProps) {
     </div>
   )
 }
-

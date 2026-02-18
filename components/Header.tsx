@@ -269,6 +269,7 @@ export default function Header() {
   const [mainAdVisibility, setMainAdVisibility] = useState('Y')
   const [mainAdPosition, setMainAdPosition] = useState<'TOP' | 'BOTTOM'>('BOTTOM')
   const [mainAdDevice, setMainAdDevice] = useState<'MOBILE' | 'PC' | 'ALL'>('ALL')
+  const [adViewDailyLimit, setAdViewDailyLimit] = useState('3')
   
   // useAuth Hook으로 중앙화된 인증 상태 관리
   const { user, session, userType, isLoading, signOut } = useAuth()
@@ -1569,7 +1570,7 @@ export default function Header() {
         .from('common_code_detail')
         .select('code_value, description')
         .eq('code_group', 'SYSTEM_CONFIG')
-        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'MAIN_AD_VISIBLE'])
+        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'MAIN_AD_VISIBLE', 'AD_VIEW_DAILY_LIMIT'])
 
       if (!error && data) {
         data.forEach((item: any) => {
@@ -1585,6 +1586,8 @@ export default function Header() {
             if (upper.includes('MOBILE')) setMainAdDevice('MOBILE')
             else if (upper.includes(',PC') || upper.endsWith('PC')) setMainAdDevice('PC')
             else setMainAdDevice('ALL')
+          } else if (item.code_value === 'AD_VIEW_DAILY_LIMIT') {
+            setAdViewDailyLimit(item.code_name || '3')
           }
         })
         console.log('[콘텐츠 노출] 설정 로드 완료:', data)
@@ -4923,6 +4926,22 @@ export default function Header() {
                             <span className={styles.visibilityToggleText}>숨김</span>
                           </label>
                         </div>
+                        {adVisibility === 'Y' && (
+                          <div style={{ marginTop: '12px' }}>
+                            <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>일일 시청 횟수 제한</p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={adViewDailyLimit}
+                                onChange={(e) => setAdViewDailyLimit(e.target.value)}
+                                style={{ width: '60px', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', textAlign: 'center' }}
+                              />
+                              <span style={{ fontSize: '13px', color: '#64748b' }}>회 / 일</span>
+                            </div>
+                          </div>
+                        )}
                         <div className={styles.visibilityCardMeta}>
                           <span className={styles.visibilityMetaItem}>
                             📍 위치: 사이드바 &gt; 광고보기
@@ -4931,7 +4950,10 @@ export default function Header() {
                             💰 보상: 광고 시청 완료 시 10P 적립
                           </span>
                           <span className={styles.visibilityMetaItem}>
-                            🔑 설정 키: ADVERTISEMENT_VISIBLE
+                            🔁 일일 제한: {adViewDailyLimit}회
+                          </span>
+                          <span className={styles.visibilityMetaItem}>
+                            🔑 설정 키: ADVERTISEMENT_VISIBLE, AD_VIEW_DAILY_LIMIT
                           </span>
                         </div>
                       </div>
@@ -4940,23 +4962,36 @@ export default function Header() {
                           className={styles.visibilitySaveBtn}
                           onClick={async () => {
                             try {
-                              const { error } = await supabase
-                                .from('common_code_detail')
-                                .update({
-                                  description: adVisibility === 'Y' ? 'Y:노출,N:숨김' : 'N:노출,Y:숨김',
-                                  updated_at: new Date().toISOString()
-                                })
-                                .eq('code_group', 'SYSTEM_CONFIG')
-                                .eq('code_value', 'ADVERTISEMENT_VISIBLE')
+                              const [adResult, limitResult] = await Promise.all([
+                                supabase
+                                  .from('common_code_detail')
+                                  .update({
+                                    description: adVisibility === 'Y' ? 'Y:노출,N:숨김' : 'N:노출,Y:숨김',
+                                    updated_at: new Date().toISOString()
+                                  })
+                                  .eq('code_group', 'SYSTEM_CONFIG')
+                                  .eq('code_value', 'ADVERTISEMENT_VISIBLE'),
+                                supabase
+                                  .from('common_code_detail')
+                                  .upsert({
+                                    code_group: 'SYSTEM_CONFIG',
+                                    code_value: 'AD_VIEW_DAILY_LIMIT',
+                                    code_name: adViewDailyLimit || '3',
+                                    description: `광고 시청 일일 최대 횟수 (현재: ${adViewDailyLimit}회)`,
+                                    sort_order: 4,
+                                    use_yn: 'Y',
+                                    sta_ymd: '20240101',
+                                    end_ymd: '99991231',
+                                    updated_at: new Date().toISOString()
+                                  }, { onConflict: 'code_group,code_value' })
+                              ])
 
-                              if (error) {
-                                showError('설정 저장에 실패했습니다: ' + error.message)
+                              if (adResult.error || limitResult.error) {
+                                showError('설정 저장에 실패했습니다: ' + (adResult.error?.message || limitResult.error?.message))
                               } else {
                                 setSaveSuccessMessage('광고 노출 설정이 저장되었습니다.')
                                 setShowSaveSuccessToast(true)
                                 setTimeout(() => setShowSaveSuccessToast(false), 2000)
-                                
-                                // 실시간 반영을 위한 이벤트 발생
                                 window.dispatchEvent(new Event('visibility:changed'))
                               }
                             } catch (error) {
