@@ -1,0 +1,47 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  background-color: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.top {
+  border-top: none;
+}
+
+.bottom {
+  border-bottom: none;
+}
+
+.bannerIframe {
+  width: 320px;
+  height: 50px;
+  border: none;
+  overflow: hidden;
+  display: block;
+}
+
+.notice {
+  font-size: 10px;
+  color: #94a3b8;
+  margin: 4px 0 0;
+  text-align: center;
+}
+
+/* 모바일 전용: PC에서 숨김 */
+@media (min-width: 769px) {
+  .mobileOnly {
+    display: none;
+  }
+}
+
+/* PC 전용: 모바일에서 숨김 */
+@media (max-width: 768px) {
+  .pcOnly {
+    display: none;
+  }
+}
