@@ -274,14 +274,190 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: rgba(15, 10, 30, 0.92);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   z-index: 10;
   border-radius: 12px;
+  overflow: hidden;
 }
 
+/* ── 상단 프로그레스 섹션 ── */
+.scanHeader {
+  padding: 16px 20px 12px;
+  flex-shrink: 0;
+}
+
+.scanTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #c4b5fd;
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.scanTitleDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7C3AED;
+  animation: scanPulse 1.2s ease-in-out infinite;
+}
+
+.scanProgressBar {
+  width: 100%;
+  height: 4px;
+  background: rgba(124, 58, 237, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.scanProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #7C3AED, #a78bfa, #7C3AED);
+  background-size: 200% 100%;
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: scanProgressShine 2s linear infinite;
+}
+
+.scanPercentage {
+  font-size: 12px;
+  color: #a78bfa;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── 중앙 스캔 영역 ── */
+.scanBody {
+  flex: 1;
+  position: relative;
+  margin: 0 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 160px;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.scanImageWrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.scanImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.35) saturate(0.4);
+  display: block;
+}
+
+.scanLaser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(124, 58, 237, 0.4) 15%,
+    #a78bfa 40%,
+    #ffffff 50%,
+    #a78bfa 60%,
+    rgba(124, 58, 237, 0.4) 85%,
+    transparent 100%
+  );
+  box-shadow: 0 0 16px 4px rgba(124, 58, 237, 0.5), 0 0 40px 8px rgba(124, 58, 237, 0.2);
+  animation: scanLaserMove 2.4s ease-in-out infinite;
+  z-index: 2;
+}
+
+.scanGrid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(124, 58, 237, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  z-index: 1;
+}
+
+.scanCorner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  z-index: 3;
+}
+.scanCornerTL { top: 0; left: 0; border-top: 2px solid #7C3AED; border-left: 2px solid #7C3AED; }
+.scanCornerTR { top: 0; right: 0; border-top: 2px solid #7C3AED; border-right: 2px solid #7C3AED; }
+.scanCornerBL { bottom: 0; left: 0; border-bottom: 2px solid #7C3AED; border-left: 2px solid #7C3AED; }
+.scanCornerBR { bottom: 0; right: 0; border-bottom: 2px solid #7C3AED; border-right: 2px solid #7C3AED; }
+
+/* ── 하단 실시간 로그 ── */
+.scanLogs {
+  padding: 12px 20px 16px;
+  flex-shrink: 0;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.scanLogItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 4px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  animation: scanLogFadeIn 0.4s ease-out;
+}
+
+.scanLogIcon {
+  flex-shrink: 0;
+  font-weight: 700;
+  min-width: 14px;
+  text-align: center;
+}
+
+.scanLogOk { color: #4ade80; }
+.scanLogWait { color: #facc15; }
+.scanLogFail { color: #f87171; }
+
+.scanLogText {
+  color: #cbd5e1;
+}
+
+.scanLogTextDim {
+  color: #64748b;
+}
+
+/* ── 키프레임 ── */
+@keyframes scanLaserMove {
+  0%, 100% { top: 5%; }
+  50% { top: 92%; }
+}
+
+@keyframes scanPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+@keyframes scanProgressShine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes scanLogFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* legacy fallback */
 .loadingMessage {
   display: flex;
   flex-direction: column;
@@ -823,6 +999,41 @@
   color: #1e293b;
   line-height: 1.5;
   word-break: keep-all;
+}
+
+.copyableNumber {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #f5f3ff;
+  border: 1px dashed #c4b5fd;
+  transition: all 0.2s ease;
+  user-select: all;
+}
+
+.copyableNumber:hover {
+  background: #ede9fe;
+  border-color: #7C3AED;
+}
+
+.copyableNumber:active {
+  background: #ddd6fe;
+  transform: scale(0.98);
+}
+
+.copyIcon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: #7C3AED;
+  opacity: 0.7;
+}
+
+.copyableNumber:hover .copyIcon {
+  opacity: 1;
 }
 
 .fieldValueAddress {

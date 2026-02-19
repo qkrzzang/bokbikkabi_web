@@ -163,6 +163,10 @@ export default function CameraButton() {
   const [isDragging, setIsDragging] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [scanProgress, setScanProgress] = useState(0)
+  const [scanLogs, setScanLogs] = useState<Array<{ status: 'ok' | 'wait' | 'fail'; text: string }>>([])
+  const scanLogsEndRef = useRef<HTMLDivElement>(null)
+  const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [ocrResult, setOcrResult] = useState<any>(null)
   const [ocrError, setOcrError] = useState<string | null>(null)
@@ -547,6 +551,23 @@ export default function CameraButton() {
     setMode('upload')
   }
 
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      showSuccess('등록번호가 복사되었습니다')
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      showSuccess('등록번호가 복사되었습니다')
+    }
+  }, [showSuccess])
+
   // agent_number 정규화 헬퍼 (공백만 제거, 원본 최대 보존)
   const normalizeAgentNum = (raw: any): string => {
     const result = typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
@@ -810,6 +831,21 @@ export default function CameraButton() {
     }
   }
 
+  const addScanLog = useCallback((status: 'ok' | 'wait' | 'fail', text: string) => {
+    setScanLogs(prev => [...prev, { status, text }])
+    requestAnimationFrame(() => {
+      scanLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    })
+  }, [])
+
+  const finishScanProgress = useCallback((target: number) => {
+    if (scanTimerRef.current) {
+      clearInterval(scanTimerRef.current)
+      scanTimerRef.current = null
+    }
+    setScanProgress(target)
+  }, [])
+
   const handleImageSubmit = async () => {
     if (!originalFile) {
       showError('파일을 찾을 수 없습니다.')
@@ -817,6 +853,24 @@ export default function CameraButton() {
     }
 
     setIsLoading(true)
+    setScanProgress(0)
+    setScanLogs([])
+
+    // 0% → 80% 자동 진행 (약 20초간 일정 속도)
+    if (scanTimerRef.current) clearInterval(scanTimerRef.current)
+    const autoProgressStart = Date.now()
+    const AUTO_DURATION = 20_000
+    const AUTO_MAX = 80
+    scanTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - autoProgressStart
+      const ratio = Math.min(elapsed / AUTO_DURATION, 1)
+      setScanProgress(Math.round(ratio * AUTO_MAX))
+      if (ratio >= 1 && scanTimerRef.current) {
+        clearInterval(scanTimerRef.current)
+        scanTimerRef.current = null
+      }
+    }, 300)
+
     setOcrError(null)
     setAiError(null)
     setAiResult(null)
@@ -833,6 +887,8 @@ export default function CameraButton() {
     let stampPromise: Promise<void> = Promise.resolve()
 
     try {
+      addScanLog('wait', '계약서 이미지 분석 중...')
+
       // ── 파일 전처리: HEIC 변환 + 타입 보장 ──
       let fileToUpload = originalFile
 
@@ -919,6 +975,7 @@ export default function CameraButton() {
 
       const data = await response.json()
       setOcrResult(data)
+      addScanLog('ok', '계약서 텍스트 분석 및 추출 완료')
 
       // ── 이미지 base64 미리 읽어두기 (AI 분석 완료 후 crop API 호출에 사용) ──
       // Vercel 페이로드 제한(4.5MB)을 초과하지 않도록 Canvas로 리사이즈 후 압축
@@ -973,7 +1030,7 @@ export default function CameraButton() {
         console.warn('[이미지 크롭] base64 준비 실패:', cropErr)
       }
 
-      // OCR이 끝났지만 AI 분석 요청이 완료될 때까지 로딩 유지
+      addScanLog('wait', '인감 및 중개사 정보 유효성 검사 중...')
       
       // OCR 결과에서 text 필드만 추출 (여러 가능한 경로 확인)
       let ocrText = ''
@@ -1021,6 +1078,8 @@ export default function CameraButton() {
               errorText = await aiResponse.text()
             } catch { /* ignore */ }
             console.error('[AI분석] API 호출 실패:', aiResponse.status, errorText.substring(0, 200))
+            addScanLog('fail', `AI 분석 실패 (${aiResponse.status})`)
+            finishScanProgress(100)
             setAiError(`계약서 분석 실패: ${aiResponse.status}`)
             await stampPromise
             setMode('result')
@@ -1031,6 +1090,8 @@ export default function CameraButton() {
               aiData = await aiResponse.json()
             } catch (parseError) {
               console.error('[AI분석] JSON 파싱 실패:', parseError)
+              addScanLog('fail', 'AI 응답 파싱 실패')
+              finishScanProgress(100)
               setAiError('AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
               await stampPromise
               setMode('result')
@@ -1041,6 +1102,8 @@ export default function CameraButton() {
             // 에러 응답 처리
             if (aiData.error) {
               console.error('[AI분석] 서버 오류:', aiData.error)
+              addScanLog('fail', `AI 서버 오류: ${aiData.error}`)
+              finishScanProgress(100)
               setAiError(`계약서 분석 실패: ${aiData.error}`)
               await stampPromise
               setMode('result')
@@ -1050,6 +1113,8 @@ export default function CameraButton() {
 
             console.log('====== AI 분석 응답 받음 ======')
             console.log('[AI분석] 응답 전체:', JSON.stringify(aiData, null, 2))
+            addScanLog('ok', '인감 및 중개사 정보 유효성 검사 완료')
+            finishScanProgress(85)
 
             // Gemini 응답은 이미 파싱된 JSON 객체
             const unwrappedData = aiData
@@ -1094,7 +1159,12 @@ export default function CameraButton() {
               )
             }
             
+            addScanLog('wait', '분석 결과 정리 및 암호화 중...')
+            setScanProgress(90)
+
             if (!validContracts || (Array.isArray(validContracts) && validContracts.length === 0)) {
+              addScanLog('fail', '유효한 부동산 계약서를 찾을 수 없음')
+              finishScanProgress(100)
               setAiError('계약서가 아닌 문서입니다. 부동산 계약서를 다시 올려주세요.')
               setAiResult(null)
               await stampPromise
@@ -1104,6 +1174,7 @@ export default function CameraButton() {
               setAiResult(validContracts)
               trackOcrSuccess(Array.isArray(validContracts) ? validContracts.length : 1)
 
+              setScanProgress(93)
               // ── 이미지 크롭 + 암호화 (AI 분석의 contract_type 전달) ──
               if (imageBase64ForCrop) {
                 const firstContract = Array.isArray(validContracts) ? validContracts[0] : validContracts
@@ -1137,6 +1208,10 @@ export default function CameraButton() {
 
               // 도장 검증이 아직 진행 중이면 완료될 때까지 대기
               await stampPromise
+              addScanLog('ok', '분석 결과 정리 및 암호화 완료')
+              finishScanProgress(100)
+
+              await new Promise(r => setTimeout(r, 500))
 
               setMode('result')
               setIsLoading(false)
@@ -1293,6 +1368,8 @@ export default function CameraButton() {
             }
           }
         } catch (analyzeError) {
+          addScanLog('fail', 'AI 계약서 분석 중 오류 발생')
+          finishScanProgress(100)
           console.error('[AI분석] 계약서 분석 중 오류:', analyzeError)
           if (analyzeError instanceof Error && analyzeError.message.includes('did not match')) {
             console.error('[AI분석] 패턴 불일치 에러! OCR 텍스트 앞 50자:', ocrText?.substring(0, 50))
@@ -1311,6 +1388,8 @@ export default function CameraButton() {
           setIsLoading(false)
         }
       } else {
+        addScanLog('fail', 'OCR 텍스트 추출 실패')
+        finishScanProgress(100)
         console.warn('OCR 결과에서 텍스트를 추출할 수 없습니다:', data)
         setAiError('부동산 계약서를 다시 올려주세요.')
         await stampPromise
@@ -1338,6 +1417,10 @@ export default function CameraButton() {
       setOcrError(errMsg)
       trackOcrFail(errMsg)
     } finally {
+      if (scanTimerRef.current) {
+        clearInterval(scanTimerRef.current)
+        scanTimerRef.current = null
+      }
       setIsLoading(false)
     }
   }
@@ -1967,9 +2050,57 @@ export default function CameraButton() {
                 <div className={styles.uploadMode}>
                   {isLoading && (
                     <div className={styles.loadingOverlay}>
-                      <div className={styles.loadingMessage}>
-                        <div className={styles.loadingSpinnerLarge}></div>
-                        <p>계약서 분석중 ...</p>
+                      {/* 상단: 프로그레스 */}
+                      <div className={styles.scanHeader}>
+                        <div className={styles.scanTitle}>
+                          <span className={styles.scanTitleDot} />
+                          복비까비 AI가 계약서를 꼼꼼히 읽고 있어요
+                        </div>
+                        <div className={styles.scanProgressBar}>
+                          <div
+                            className={styles.scanProgressFill}
+                            style={{ width: `${scanProgress}%` }}
+                          />
+                        </div>
+                        <div className={styles.scanPercentage}>{scanProgress}%</div>
+                      </div>
+
+                      {/* 중앙: 계약서 이미지 + 레이저 스캔 */}
+                      <div className={styles.scanBody}>
+                        <div className={styles.scanImageWrapper}>
+                          {capturedImage && (
+                            <img
+                              src={capturedImage}
+                              alt="스캔 중인 계약서"
+                              className={styles.scanImage}
+                            />
+                          )}
+                          <div className={styles.scanGrid} />
+                          <div className={styles.scanLaser} />
+                          <div className={`${styles.scanCorner} ${styles.scanCornerTL}`} />
+                          <div className={`${styles.scanCorner} ${styles.scanCornerTR}`} />
+                          <div className={`${styles.scanCorner} ${styles.scanCornerBL}`} />
+                          <div className={`${styles.scanCorner} ${styles.scanCornerBR}`} />
+                        </div>
+                      </div>
+
+                      {/* 하단: 실시간 로그 */}
+                      <div className={styles.scanLogs}>
+                        {scanLogs.map((log, i) => (
+                          <div key={i} className={styles.scanLogItem}>
+                            <span className={`${styles.scanLogIcon} ${
+                              log.status === 'ok' ? styles.scanLogOk :
+                              log.status === 'wait' ? styles.scanLogWait :
+                              styles.scanLogFail
+                            }`}>
+                              {log.status === 'ok' ? '✓' : log.status === 'wait' ? '◌' : '✗'}
+                            </span>
+                            <span className={log.status === 'ok' ? styles.scanLogTextDim : styles.scanLogText}>
+                              {log.text}
+                            </span>
+                          </div>
+                        ))}
+                        <div ref={scanLogsEndRef} />
                       </div>
                     </div>
                   )}
@@ -2068,7 +2199,14 @@ export default function CameraButton() {
                                   )}
                                   <div className={styles.contractField}>
                                     <span className={styles.fieldLabel}>등록번호:</span>
-                                    <span className={styles.fieldValue}>{selectedAgents[`${index}`].agent_number}</span>
+                                    <span
+                                      className={styles.copyableNumber}
+                                      onClick={() => copyToClipboard(selectedAgents[`${index}`].agent_number)}
+                                      title="클릭하여 복사"
+                                    >
+                                      {selectedAgents[`${index}`].agent_number}
+                                      <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    </span>
                                   </div>
                                   <div className={styles.contractField}>
                                     <span className={styles.fieldLabel}>주소(도로명):</span>
@@ -2112,10 +2250,15 @@ export default function CameraButton() {
                                       <>
                                         <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                                           <span className={styles.fieldLabel}>등록번호:</span>
-                                          <span className={styles.fieldValue} style={{ color: '#475569' }}>
+                                          <span
+                                            className={styles.copyableNumber}
+                                            onClick={() => copyToClipboard(nums.join(', '))}
+                                            title="클릭하여 복사"
+                                          >
                                             <strong>{nums.join(', ')}</strong>
-                                            <span style={{ color: '#64748b', fontSize: '11px' }}>(으)로 인식되었습니다.</span>
+                                            <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                           </span>
+                                          <span style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>(으)로 인식되었습니다.</span>
                                         </div>
                                         <div style={{ marginTop: '4px', fontSize: '12px' }}>
                                           <a
@@ -2168,7 +2311,14 @@ export default function CameraButton() {
                                 )}
                                 <div className={styles.contractField}>
                                   <span className={styles.fieldLabel}>등록번호:</span>
-                                  <span className={styles.fieldValue}>{selectedAgents['0'].agent_number}</span>
+                                  <span
+                                    className={styles.copyableNumber}
+                                    onClick={() => copyToClipboard(selectedAgents['0'].agent_number)}
+                                    title="클릭하여 복사"
+                                  >
+                                    {selectedAgents['0'].agent_number}
+                                    <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                  </span>
                                 </div>
                                 <div className={styles.contractField}>
                                   <span className={styles.fieldLabel}>주소(도로명):</span>
@@ -2211,10 +2361,15 @@ export default function CameraButton() {
                                     <>
                                       <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                                         <span className={styles.fieldLabel}>등록번호:</span>
-                                        <span className={styles.fieldValue} style={{ color: '#475569' }}>
+                                        <span
+                                          className={styles.copyableNumber}
+                                          onClick={() => copyToClipboard(nums.join(', '))}
+                                          title="클릭하여 복사"
+                                        >
                                           <strong>{nums.join(', ')}</strong>
-                                          <span style={{ color: '#64748b', fontSize: '11px' }}>(으)로 인식되었습니다.</span>
+                                          <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                         </span>
+                                        <span style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>(으)로 인식되었습니다.</span>
                                       </div>
                                       <div style={{ marginTop: '4px', fontSize: '12px' }}>
                                         <a
