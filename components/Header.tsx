@@ -266,6 +266,7 @@ export default function Header() {
   const [replyText, setReplyText] = useState('')
   const [adVisibility, setAdVisibility] = useState('Y')
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
+  const [luckyDrawVisibility, setLuckyDrawVisibility] = useState('Y')
   const [mainAdVisibility, setMainAdVisibility] = useState('Y')
   const [mainAdPosition, setMainAdPosition] = useState<'TOP' | 'BOTTOM'>('BOTTOM')
   const [mainAdDevice, setMainAdDevice] = useState<'MOBILE' | 'PC' | 'ALL'>('ALL')
@@ -1570,7 +1571,7 @@ export default function Header() {
         .from('common_code_detail')
         .select('code_value, description')
         .eq('code_group', 'SYSTEM_CONFIG')
-        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'MAIN_AD_VISIBLE', 'AD_VIEW_DAILY_LIMIT'])
+        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'LUCKY_DRAW_VISIBLE', 'MAIN_AD_VISIBLE', 'AD_VIEW_DAILY_LIMIT'])
 
       if (!error && data) {
         data.forEach((item: any) => {
@@ -1578,6 +1579,8 @@ export default function Header() {
             setAdVisibility(item.description?.startsWith('Y:') ? 'Y' : 'N')
           } else if (item.code_value === 'SURVEY_VISIBLE') {
             setSurveyVisibility(item.description?.startsWith('Y:') ? 'Y' : 'N')
+          } else if (item.code_value === 'LUCKY_DRAW_VISIBLE') {
+            setLuckyDrawVisibility(item.description?.startsWith('Y') ? 'Y' : 'N')
           } else if (item.code_value === 'MAIN_AD_VISIBLE') {
             const desc = (item.description || '') as string
             setMainAdVisibility(desc.startsWith('Y') ? 'Y' : 'N')
@@ -5071,6 +5074,83 @@ export default function Header() {
                                 setTimeout(() => setShowSaveSuccessToast(false), 2000)
                                 
                                 // 실시간 반영을 위한 이벤트 발생
+                                window.dispatchEvent(new Event('visibility:changed'))
+                              }
+                            } catch (error) {
+                              showError('설정 저장 중 오류가 발생했습니다.')
+                            }
+                          }}
+                        >
+                          저장
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 럭키드로우 메뉴 노출 */}
+                    <div className={styles.visibilityCard}>
+                      <div className={styles.visibilityCardHeader}>
+                        <div className={styles.visibilityCardIcon}>🎰</div>
+                        <div className={styles.visibilityCardInfo}>
+                          <h3 className={styles.visibilityCardTitle}>럭키드로우</h3>
+                          <p className={styles.visibilityCardDesc}>
+                            사이드바에 &quot;럭키드로우&quot; 메뉴 표시 여부
+                          </p>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardBody}>
+                        <div className={styles.visibilityToggleGroup}>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="luckyDraw"
+                              value="Y"
+                              checked={luckyDrawVisibility === 'Y'}
+                              onChange={(e) => setLuckyDrawVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>노출</span>
+                          </label>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="luckyDraw"
+                              value="N"
+                              checked={luckyDrawVisibility === 'N'}
+                              onChange={(e) => setLuckyDrawVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>숨김</span>
+                          </label>
+                        </div>
+                        <div className={styles.visibilityCardMeta}>
+                          <span className={styles.visibilityMetaItem}>
+                            📍 위치: 사이드바 &gt; 럭키드로우
+                          </span>
+                          <span className={styles.visibilityMetaItem}>
+                            🔑 설정 키: LUCKY_DRAW_VISIBLE
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardFooter}>
+                        <button 
+                          className={styles.visibilitySaveBtn}
+                          onClick={async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('common_code_detail')
+                                .update({
+                                  description: luckyDrawVisibility === 'Y' ? 'Y' : 'N',
+                                  updated_at: new Date().toISOString()
+                                })
+                                .eq('code_group', 'SYSTEM_CONFIG')
+                                .eq('code_value', 'LUCKY_DRAW_VISIBLE')
+
+                              if (error) {
+                                showError('설정 저장에 실패했습니다: ' + error.message)
+                              } else {
+                                setSaveSuccessMessage('럭키드로우 노출 설정이 저장되었습니다.')
+                                setShowSaveSuccessToast(true)
+                                setTimeout(() => setShowSaveSuccessToast(false), 2000)
                                 window.dispatchEvent(new Event('visibility:changed'))
                               }
                             } catch (error) {

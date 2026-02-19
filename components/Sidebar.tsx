@@ -9,7 +9,7 @@ import { apiRequest } from '@/lib/api/interceptor'
 import AdModal from './AdModal'
 import { useAlert } from '@/contexts/AlertContext'
 
-type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'partnership' | 'policy' | 'admin' | 'profile'
+type ScreenType = 'menu' | 'contracts' | 'favorites' | 'survey' | 'points' | 'luckydraw' | 'partnership' | 'policy' | 'admin' | 'profile'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -58,6 +58,15 @@ export default function Sidebar({
   const [isSurveyVisible, setIsSurveyVisible] = useState(true) // 서베이 메뉴 노출 여부
   const [isAdModalOpen, setIsAdModalOpen] = useState(false) // 광고 모달 열림 여부
   const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
+  const [userTickets, setUserTickets] = useState(0)
+  const [ticketCost, setTicketCost] = useState(1000)
+  const [ticketHistory, setTicketHistory] = useState<any[]>([])
+  const [luckyDrawEvents, setLuckyDrawEvents] = useState<any[]>([])
+  const [myEntries, setMyEntries] = useState<any[]>([])
+  const [isLuckyDrawLoading, setIsLuckyDrawLoading] = useState(false)
+  const [isPurchasing, setIsPurchasing] = useState(false)
+  const [isEntering, setIsEntering] = useState<number | null>(null)
+  const [isLuckyDrawVisible, setIsLuckyDrawVisible] = useState(false)
   const [transactionLimit, setTransactionLimit] = useState(10) // 포인트 내역 표시 개수
   const [isGradeTooltipVisible, setIsGradeTooltipVisible] = useState(false) // 등급 툴팁 표시 여부
   const [userGrade, setUserGrade] = useState<string>('IMJANG') // 사용자 등급
@@ -75,7 +84,12 @@ export default function Sidebar({
   const [transactionTagOptions, setTransactionTagOptions] = useState<Array<{
     code_value: string
     code_name: string
-  }>>([]) // Transaction tag options from common_code_detail
+  }>>([])
+  const [referralStats, setReferralStats] = useState({ total_referrals: 0, monthly_referrals: 0, monthly_limit: 10 })
+  const [referralCopied, setReferralCopied] = useState(false)
+  const [isPointHistoryExpanded, setIsPointHistoryExpanded] = useState(false)
+  const [isTicketHistoryExpanded, setIsTicketHistoryExpanded] = useState(false)
+  const [isMyEntriesExpanded, setIsMyEntriesExpanded] = useState(false)
   
   // PWA 설치 프롬프트 감지 + 모바일 판별
   useEffect(() => {
@@ -91,7 +105,6 @@ export default function Sidebar({
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
-      // 모바일에서만 설치 프롬프트 저장 (PC에서는 차단)
       if (window.innerWidth <= 768) {
         setDeferredPrompt(e as BeforeInstallPromptEvent)
       }
@@ -145,6 +158,11 @@ export default function Sidebar({
     if (isOpen && user) {
       loadUserPoints()
       loadVisibilitySettings()
+      // 응모권 단가 로드
+      fetch('/api/lucky-draw?action=ticket-cost')
+        .then(r => r.json())
+        .then(d => setTicketCost(d.cost || 1000))
+        .catch(() => {})
       // 사용자 등급 로드
       supabase
         .from('users')
@@ -183,6 +201,8 @@ export default function Sidebar({
         loadFavoriteAgents()
       } else if (currentScreen === 'points') {
         loadUserPoints()
+      } else if (currentScreen === 'luckydraw') {
+        loadLuckyDrawData()
       }
     }
 
@@ -198,7 +218,7 @@ export default function Sidebar({
         .from('common_code_detail')
         .select('code_value, description')
         .eq('code_group', 'SYSTEM_CONFIG')
-        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE'])
+        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'LUCKY_DRAW_VISIBLE'])
         .eq('use_yn', 'Y')
         .lte('sta_ymd', today)
         .gte('end_ymd', today)
@@ -210,6 +230,8 @@ export default function Sidebar({
             setIsAdVisible(isVisible)
           } else if (item.code_value === 'SURVEY_VISIBLE') {
             setIsSurveyVisible(isVisible)
+          } else if (item.code_value === 'LUCKY_DRAW_VISIBLE') {
+            setIsLuckyDrawVisible(isVisible)
           }
         })
       }
@@ -217,6 +239,7 @@ export default function Sidebar({
       console.error('노출 설정 로드 오류:', error)
       setIsAdVisible(false)
       setIsSurveyVisible(true)
+      setIsLuckyDrawVisible(false)
     }
   }
 
@@ -305,6 +328,109 @@ export default function Sidebar({
 
     if (policies) {
       setPointPolicies(policies)
+    }
+
+    // 리퍼럴 통계 로드
+    try {
+      const res = await fetch(`/api/referral?action=my-stats&userId=${authUser.id}`)
+      const stats = await res.json()
+      if (stats.monthly_referrals !== undefined) {
+        setReferralStats(stats)
+      }
+    } catch (e) {
+      console.error('[리퍼럴] 통계 로드 오류:', e)
+    }
+  }
+
+  // 럭키드로우 데이터 불러오기
+  const loadLuckyDrawData = async () => {
+    if (!authUser) return
+    setIsLuckyDrawLoading(true)
+    try {
+      const [ticketsRes, eventsRes, entriesRes, costRes, historyRes] = await Promise.all([
+        fetch(`/api/lucky-draw?action=my-tickets&userId=${authUser.id}`),
+        fetch('/api/lucky-draw?action=events'),
+        fetch(`/api/lucky-draw?action=my-entries&userId=${authUser.id}`),
+        fetch('/api/lucky-draw?action=ticket-cost'),
+        fetch(`/api/lucky-draw?action=ticket-history&userId=${authUser.id}`),
+      ])
+      const [ticketsData, eventsData, entriesData, costData, historyData] = await Promise.all([
+        ticketsRes.json(),
+        eventsRes.json(),
+        entriesRes.json(),
+        costRes.json(),
+        historyRes.json(),
+      ])
+      setUserTickets(ticketsData.tickets || 0)
+      setLuckyDrawEvents(eventsData.events || [])
+      setMyEntries(entriesData.entries || [])
+      setTicketCost(costData.cost || 1000)
+      setTicketHistory(historyData.transactions || [])
+    } catch (err) {
+      console.error('[럭키드로우] 데이터 로드 실패:', err)
+    } finally {
+      setIsLuckyDrawLoading(false)
+    }
+  }
+
+  // 응모권 구매
+  const handlePurchaseTicket = () => {
+    if (!authUser) return
+    showConfirm(
+      `${ticketCost.toLocaleString()}P를 사용하여 응모권 1장을 구매하시겠습니까?`,
+      async () => {
+        setIsPurchasing(true)
+        try {
+          const res = await fetch('/api/lucky-draw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'purchase-ticket', userId: authUser.id, quantity: 1 }),
+          })
+          const data = await res.json()
+          if (data.success) {
+            showSuccess(`응모권 1장 구매 완료! (${data.points_spent}P 차감)`)
+            setUserTickets(prev => prev + 1)
+            setUserPoints(prev => prev - data.points_spent)
+            loadUserPoints()
+            fetch(`/api/lucky-draw?action=ticket-history&userId=${authUser.id}`)
+              .then(r => r.json())
+              .then(d => setTicketHistory(d.transactions || []))
+              .catch(() => {})
+          } else {
+            showWarning(data.error || '응모권 구매에 실패했습니다.')
+          }
+        } catch (err) {
+          showError('응모권 구매 중 오류가 발생했습니다.')
+        } finally {
+          setIsPurchasing(false)
+        }
+      },
+      { title: '응모권 구매', icon: '🎫', confirmText: '구매', cancelText: '취소' }
+    )
+  }
+
+  // 럭키드로우 응모
+  const handleEnterDraw = async (eventId: number) => {
+    if (!authUser) return
+    setIsEntering(eventId)
+    try {
+      const res = await fetch('/api/lucky-draw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enter-draw', userId: authUser.id, eventId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showSuccess(`"${data.event_title}" 응모 완료!`)
+        setUserTickets(prev => prev - data.tickets_used)
+        loadLuckyDrawData()
+      } else {
+        showWarning(data.error || '응모에 실패했습니다.')
+      }
+    } catch (err) {
+      showError('응모 중 오류가 발생했습니다.')
+    } finally {
+      setIsEntering(null)
     }
   }
 
@@ -593,6 +719,7 @@ export default function Sidebar({
                currentScreen === 'favorites' ? '내 관심 부동산' :
                currentScreen === 'survey' ? '서베이' :
                currentScreen === 'points' ? '내 포인트' :
+               currentScreen === 'luckydraw' ? '럭키드로우' :
                currentScreen === 'partnership' ? '광고/제휴/오류 문의' :
                currentScreen === 'policy' ? '약관/정책' :
                currentScreen === 'profile' ? '내 정보 설정' :
@@ -746,6 +873,21 @@ export default function Sidebar({
                 </button>
               )}
 
+              {/* 럭키드로우 버튼 (설정에서 활성화된 경우에만 표시) */}
+              {isLuckyDrawVisible && (
+                <button 
+                  className={styles.navItem} 
+                  onClick={() => {
+                    loadLuckyDrawData()
+                    setCurrentScreen('luckydraw')
+                  }}
+                >
+                  <span className={styles.navIcon}>🎰</span>
+                  <span className={styles.navLabel}>럭키드로우</span>
+                  <span className={styles.chevron}>›</span>
+                </button>
+              )}
+
               {/* 광고보기 버튼 (설정에서 활성화된 경우에만 표시) */}
               {isAdVisible && (
                 <button 
@@ -773,7 +915,6 @@ export default function Sidebar({
                   className={styles.navItem} 
                   onClick={async () => {
                     if (deferredPrompt) {
-                      // Android: 네이티브 설치 프롬프트
                       deferredPrompt.prompt()
                       const { outcome } = await deferredPrompt.userChoice
                       if (outcome === 'accepted') {
@@ -782,12 +923,10 @@ export default function Sidebar({
                       }
                       setDeferredPrompt(null)
                     } else {
-                      // iOS 또는 설치 프롬프트를 지원하지 않는 브라우저
                       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
                       if (isIOS) {
                         setShowIOSGuide(true)
                       } else {
-                        // 이미 설치 가능하지 않은 경우 (이미 설치됨 또는 지원하지 않는 브라우저)
                         showAlert('브라우저 메뉴에서 "홈 화면에 추가" 또는 "앱 설치"를 선택해주세요.')
                       }
                     }
@@ -1196,6 +1335,122 @@ export default function Sidebar({
                   </div>
                 </div>
 
+                {/* 포인트 사용처 CTA */}
+                <button
+                  onClick={() => {
+                    loadLuckyDrawData()
+                    setCurrentScreen('luckydraw')
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '14px 16px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+                    boxShadow: '0 4px 16px rgba(124, 58, 237, 0.35)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '16px',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '22px' }}>🎰</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>
+                        럭키드로우 응모하기
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#e9d5ff', marginTop: '2px' }}>
+                        {ticketCost.toLocaleString()}P = 응모권 1장
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '18px', color: '#e9d5ff' }}>›</span>
+                </button>
+
+                {/* 친구 초대 (리퍼럴) */}
+                <div className={styles.pointsSection}>
+                  <h4 className={styles.sectionTitle}>👫 친구 초대</h4>
+                  <div style={{
+                    padding: '16px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #faf5ff, #f5f3ff)',
+                    border: '1px solid #e9d5ff',
+                    textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: '14px', color: '#1e293b', fontWeight: 600, marginBottom: '8px' }}>
+                    친구 초대하면 둘 다 추가 500 포인트 지급!
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.6', marginBottom: '12px' }}>
+                    <strong style={{ color: '#7C3AED' }}>내 링크로 가입한 친구가 첫 리뷰를 작성</strong>하면 지급됩니다.
+                    </div>
+                    <div style={{
+                      padding: '10px 12px', background: 'white', borderRadius: '8px',
+                      marginBottom: '12px',
+                    }}>
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        fontSize: '13px', color: '#475569', marginBottom: '8px',
+                      }}>
+                        <span>이번 달 초대</span>
+                        <strong style={{ color: '#7C3AED' }}>
+                          {referralStats.monthly_referrals} / {referralStats.monthly_limit}명
+                        </strong>
+                      </div>
+                      <div style={{
+                        width: '100%', height: '8px', background: '#e9d5ff',
+                        borderRadius: '4px', overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${Math.min((referralStats.monthly_referrals / referralStats.monthly_limit) * 100, 100)}%`,
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #7C3AED, #a78bfa)',
+                          borderRadius: '4px',
+                          transition: 'width 0.5s ease',
+                        }} />
+                      </div>
+                    </div>
+                    {authUser && (
+                      <button
+                        onClick={() => {
+                          const url = `${window.location.origin}?ref=${authUser.id}`
+                          navigator.clipboard.writeText(url).then(() => {
+                            setReferralCopied(true)
+                            setTimeout(() => setReferralCopied(false), 2000)
+                          }).catch(() => {
+                            const ta = document.createElement('textarea')
+                            ta.value = url
+                            document.body.appendChild(ta)
+                            ta.select()
+                            document.execCommand('copy')
+                            document.body.removeChild(ta)
+                            setReferralCopied(true)
+                            setTimeout(() => setReferralCopied(false), 2000)
+                          })
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          borderRadius: '10px',
+                          border: 'none',
+                          background: referralCopied
+                            ? 'linear-gradient(135deg, #10b981, #059669)'
+                            : 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+                          color: 'white',
+                          fontWeight: 600,
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {referralCopied ? '✅ 링크가 복사되었습니다!' : '📋 초대 링크'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* 포인트 획득 방법 (접기/펼치기) */}
                 <div className={styles.pointsSection}>
                   <button 
@@ -1213,62 +1468,327 @@ export default function Sidebar({
                           <div className={styles.policyPoints}>+{policy.code_name} {policy.extra_value1}P</div>
                         </div>
                       ))}
-                      <div style={{
-                        marginTop: '10px',
-                        padding: '10px 12px',
-                        background: 'linear-gradient(135deg, #f3e8ff, #ede9fe)',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: '#6b21a8',
-                        lineHeight: '1.6',
-                      }}>
-                        <div style={{ fontWeight: 700, marginBottom: '2px' }}>🎁 포인트 사용처</div>
-                        <div>적립된 포인트는 럭키드로우(추첨권) 응모에 활용됩니다. <strong>Coming Soon!!</strong></div>
-                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* 포인트 내역 (스크롤 + 더 보기) */}
+                {/* 포인트 내역 (아코디언) */}
                 <div className={styles.pointsSection}>
-                  <h4 className={styles.sectionTitle}>📝 포인트 내역</h4>
-                  {pointTransactions.length === 0 ? (
-                    <div className={styles.emptyState}>아직 포인트 내역이 없습니다.</div>
-                  ) : (
-                    <>
-                      <div className={styles.transactionsScrollList}>
-                        {pointTransactions.slice(0, transactionLimit).map((tx) => {
-                          // transaction_type에 해당하는 extra_value2 찾기
-                          const policy = pointPolicies.find(p => p.code_value === tx.transaction_type)
-                          const displayText = policy?.extra_value2 || tx.description
-                          
-                          return (
+                  <button
+                    className={styles.sectionTitleButton}
+                    onClick={() => setIsPointHistoryExpanded(!isPointHistoryExpanded)}
+                  >
+                    <span>📝 포인트 내역 {pointTransactions.length > 0 ? `(${pointTransactions.length})` : ''}</span>
+                    <span className={styles.expandIcon}>{isPointHistoryExpanded ? '▼' : '▶'}</span>
+                  </button>
+                  {isPointHistoryExpanded && (
+                    pointTransactions.length === 0 ? (
+                      <div className={styles.emptyState}>아직 포인트 내역이 없습니다.</div>
+                    ) : (
+                      <>
+                        <div className={styles.transactionsScrollList}>
+                          {pointTransactions.slice(0, transactionLimit).map((tx) => {
+                            const policy = pointPolicies.find(p => p.code_value === tx.transaction_type)
+                            const displayText = policy?.extra_value2 || tx.description
+                            
+                            return (
+                              <div key={tx.id} className={styles.transactionItem}>
+                                <div className={styles.transactionInfo}>
+                                  <span className={styles.transactionDesc}>{displayText}</span>
+                                  <span className={styles.transactionDate}>
+                                    {new Date(tx.created_at).toLocaleDateString('ko-KR')}
+                                  </span>
+                                </div>
+                                <span className={`${styles.transactionPoints} ${tx.points > 0 ? styles.pointsPlus : styles.pointsMinus}`}>
+                                  {tx.points > 0 ? '+' : ''}{tx.points}P
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {pointTransactions.length > transactionLimit && (
+                          <button 
+                            className={styles.loadMoreButton}
+                            onClick={() => setTransactionLimit(prev => prev + 10)}
+                          >
+                            더 보기 ({pointTransactions.length - transactionLimit}개 남음)
+                          </button>
+                        )}
+                      </>
+                    )
+                  )}
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* 럭키드로우 화면 */}
+          {currentScreen === 'luckydraw' && (
+            <div className={styles.screenContent}>
+              {isLuckyDrawLoading ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.loadingSpinner} />
+                  <div style={{ fontSize: '14px', color: '#64748b' }}>로딩 중...</div>
+                </div>
+              ) : (
+                <div className={styles.pointsContainer}>
+                  {/* 응모권 현황 + 구매 */}
+                  <div className={styles.pointsHeader}>
+                    <div className={styles.pointsBalance}>
+                      <span className={styles.pointsLabel}>보유 응모권</span>
+                      <span className={styles.pointsAmount}>{userTickets}장</span>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    display: 'flex', gap: '8px', padding: '0 0 16px',
+                    flexDirection: 'column',
+                  }}>
+                    <div style={{
+                      padding: '12px 16px',
+                      background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
+                      borderRadius: '10px',
+                      fontSize: '13px',
+                      color: '#5b21b6',
+                      lineHeight: '1.6',
+                    }}>
+                      <strong>{ticketCost.toLocaleString()}P = 응모권 1장</strong><br/>
+                      보유 포인트: <strong>{userPoints.toLocaleString()}P</strong>
+                    </div>
+                    <button
+                      onClick={handlePurchaseTicket}
+                      disabled={isPurchasing || userPoints < ticketCost}
+                      style={{
+                        padding: '12px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: userPoints >= ticketCost
+                          ? 'linear-gradient(135deg, #7C3AED, #6D28D9)'
+                          : '#e2e8f0',
+                        color: userPoints >= ticketCost ? 'white' : '#94a3b8',
+                        fontWeight: 600,
+                        fontSize: '14px',
+                        cursor: userPoints >= ticketCost ? 'pointer' : 'not-allowed',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {isPurchasing ? '구매 중...' : `응모권 구매(${ticketCost.toLocaleString()}P)`}
+                    </button>
+                  </div>
+
+                  {/* 진행 중인 이벤트 */}
+                  <div className={styles.pointsSection}>
+                    <h4 className={styles.sectionTitle}>🎰 진행 중인 이벤트</h4>
+                    {luckyDrawEvents.filter(e => e.status === 'ACTIVE').length === 0 ? (
+                      <div className={styles.emptyState} style={{ padding: '24px 0' }}>
+                        <div style={{ fontSize: '14px', color: '#94a3b8' }}>현재 진행 중인 이벤트가 없습니다.</div>
+                      </div>
+                    ) : (
+                      luckyDrawEvents.filter(e => e.status === 'ACTIVE').map(event => {
+                        const myEntry = myEntries.find(entry => entry.lucky_draw_id === event.id)
+                        const myEntryCount = myEntry?.entries_count || 0
+                        const endDate = new Date(event.end_date)
+                        const daysLeft = Math.max(0, Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+
+                        return (
+                          <div key={event.id} style={{
+                            padding: '16px',
+                            borderRadius: '12px',
+                            border: '1px solid #e9d5ff',
+                            background: 'linear-gradient(135deg, #faf5ff, #f5f3ff)',
+                            marginBottom: '12px',
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                              <div style={{ fontWeight: 700, fontSize: '15px', color: '#1e293b' }}>{event.title}</div>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                background: '#7C3AED',
+                                color: 'white',
+                              }}>D-{daysLeft}</span>
+                            </div>
+                            <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '10px', lineHeight: '1.5' }}>
+                              {event.description}
+                            </div>
+                            <div style={{
+                              display: 'flex', flexDirection: 'column', gap: '6px',
+                              padding: '10px 12px',
+                              background: 'white',
+                              borderRadius: '8px',
+                              fontSize: '13px',
+                              color: '#475569',
+                              marginBottom: '12px',
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>🎁 경품</span>
+                                <strong style={{ color: '#7C3AED' }}>{event.prize_name}</strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>🎫 필요 응모권</span>
+                                <strong>{event.tickets_required}장</strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>👥 현재 응모</span>
+                                <strong>{event.total_entries}명</strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>🏆 당첨 인원</span>
+                                <strong>{event.max_winners}명</strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>📅 마감일</span>
+                                <strong>{endDate.toLocaleDateString('ko-KR')}</strong>
+                              </div>
+                            </div>
+                            {myEntryCount > 0 && (
+                              <div style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                background: '#f0fdf4',
+                                border: '1px solid #bbf7d0',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                color: '#15803d',
+                                marginBottom: '8px',
+                              }}>
+                                ✅ {myEntryCount}회 응모 완료 <br />(당첨 확률 {myEntryCount}배)
+                              </div>
+                            )}
+                            <button
+                              onClick={() => handleEnterDraw(event.id)}
+                              disabled={isEntering === event.id || userTickets < event.tickets_required}
+                              style={{
+                                width: '100%',
+                                padding: '12px',
+                                borderRadius: '10px',
+                                border: 'none',
+                                background: userTickets >= event.tickets_required
+                                  ? 'linear-gradient(135deg, #7C3AED, #6D28D9)'
+                                  : '#e2e8f0',
+                                color: userTickets >= event.tickets_required ? 'white' : '#94a3b8',
+                                fontWeight: 600,
+                                fontSize: '14px',
+                                cursor: userTickets >= event.tickets_required ? 'pointer' : 'not-allowed',
+                                transition: 'all 0.2s',
+                              }}
+                            >
+                              {isEntering === event.id
+                                ? '응모 중...'
+                                : userTickets < event.tickets_required
+                                  ? `응모권 부족 (${event.tickets_required}장 필요)`
+                                  : myEntryCount > 0
+                                    ? `추가 응모하기 (응모권 ${event.tickets_required}장)`
+                                    : `응모하기 (응모권 ${event.tickets_required}장)`
+                              }
+                            </button>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {/* 응모권 이력 (아코디언) */}
+                  <div className={styles.pointsSection}>
+                    <button
+                      className={styles.sectionTitleButton}
+                      onClick={() => setIsTicketHistoryExpanded(!isTicketHistoryExpanded)}
+                    >
+                      <span>🎫 응모권 이력 {ticketHistory.length > 0 ? `(${ticketHistory.length})` : ''}</span>
+                      <span className={styles.expandIcon}>{isTicketHistoryExpanded ? '▼' : '▶'}</span>
+                    </button>
+                    {isTicketHistoryExpanded && (
+                      ticketHistory.length === 0 ? (
+                        <div className={styles.emptyState} style={{ padding: '24px 0' }}>
+                          <div style={{ fontSize: '14px', color: '#94a3b8' }}>응모권 이력이 없습니다.</div>
+                        </div>
+                      ) : (
+                        <div className={styles.transactionsScrollList}>
+                          {ticketHistory.map(tx => (
                             <div key={tx.id} className={styles.transactionItem}>
                               <div className={styles.transactionInfo}>
-                                <span className={styles.transactionDesc}>{displayText}</span>
+                                <span className={styles.transactionDesc}>{tx.description}</span>
                                 <span className={styles.transactionDate}>
                                   {new Date(tx.created_at).toLocaleDateString('ko-KR')}
                                 </span>
                               </div>
-                              <span className={`${styles.transactionPoints} ${tx.points > 0 ? styles.pointsPlus : styles.pointsMinus}`}>
-                                {tx.points > 0 ? '+' : ''}{tx.points}P
+                              <span className={`${styles.transactionPoints} ${tx.tickets > 0 ? styles.pointsPlus : styles.pointsMinus}`}>
+                                {tx.tickets > 0 ? '+' : ''}{tx.tickets}장
                               </span>
                             </div>
-                          )
-                        })}
-                      </div>
-                      {pointTransactions.length > transactionLimit && (
-                        <button 
-                          className={styles.loadMoreButton}
-                          onClick={() => setTransactionLimit(prev => prev + 10)}
-                        >
-                          더 보기 ({pointTransactions.length - transactionLimit}개 남음)
-                        </button>
-                      )}
-                    </>
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  {/* 내 응모 내역 (아코디언) */}
+                  <div className={styles.pointsSection}>
+                    <button
+                      className={styles.sectionTitleButton}
+                      onClick={() => setIsMyEntriesExpanded(!isMyEntriesExpanded)}
+                    >
+                      <span>📋 내 응모 내역 {myEntries.length > 0 ? `(${myEntries.length})` : ''}</span>
+                      <span className={styles.expandIcon}>{isMyEntriesExpanded ? '▼' : '▶'}</span>
+                    </button>
+                    {isMyEntriesExpanded && (
+                      myEntries.length === 0 ? (
+                        <div className={styles.emptyState} style={{ padding: '24px 0' }}>
+                          <div style={{ fontSize: '14px', color: '#94a3b8' }}>응모 내역이 없습니다.</div>
+                        </div>
+                      ) : (
+                        myEntries.map(entry => (
+                          <div key={entry.id} className={styles.transactionItem}>
+                            <div className={styles.transactionInfo}>
+                              <span className={styles.transactionDesc}>
+                                {entry.event?.title || '이벤트'}
+                              </span>
+                              <span className={styles.transactionDate}>
+                                {new Date(entry.created_at).toLocaleDateString('ko-KR')}
+                              </span>
+                            </div>
+                            <span style={{
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: entry.is_winner ? '#dcfce7' : entry.event?.status === 'COMPLETED' ? '#fee2e2' : '#f1f5f9',
+                              color: entry.is_winner ? '#15803d' : entry.event?.status === 'COMPLETED' ? '#dc2626' : '#64748b',
+                            }}>
+                              {entry.is_winner ? '🎉 당첨' : entry.event?.status === 'COMPLETED' ? '미당첨' : '추첨 대기'}
+                            </span>
+                          </div>
+                        ))
+                      )
+                    )}
+                  </div>
+
+                  {/* 예정된 이벤트 */}
+                  {luckyDrawEvents.filter(e => e.status === 'UPCOMING').length > 0 && (
+                    <div className={styles.pointsSection}>
+                      <h4 className={styles.sectionTitle}>📢 예정된 이벤트</h4>
+                      {luckyDrawEvents.filter(e => e.status === 'UPCOMING').map(event => (
+                        <div key={event.id} style={{
+                          padding: '12px 16px',
+                          borderRadius: '10px',
+                          border: '1px dashed #cbd5e1',
+                          marginBottom: '8px',
+                        }}>
+                          <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>
+                            {event.title}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            🎁 {event.prize_name} · 시작: {new Date(event.start_date).toLocaleDateString('ko-KR')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -1534,6 +2054,12 @@ export default function Sidebar({
                         await supabase.from('agent_reviews').delete().eq('supabase_user_id', authUser.id)
                         await supabase.from('agent_comments').delete().eq('supabase_user_id', authUser.id)
                         await supabase.from('favorite_agents').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('referral_rewards').delete().eq('referrer_id', authUser.id)
+                        await supabase.from('referral_rewards').delete().eq('referee_id', authUser.id)
+                        await supabase.from('lucky_draw_winners').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('lucky_draw_entries').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('ticket_transactions').delete().eq('supabase_user_id', authUser.id)
+                        await supabase.from('user_tickets').delete().eq('supabase_user_id', authUser.id)
                         await supabase.from('point_transactions').delete().eq('supabase_user_id', authUser.id)
                         await supabase.from('user_points').delete().eq('supabase_user_id', authUser.id)
                         await supabase.from('user_attendance').delete().eq('supabase_user_id', authUser.id)

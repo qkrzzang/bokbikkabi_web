@@ -1729,6 +1729,21 @@ export default function CameraButton() {
         console.error('[포인트 지급] 오류:', pointErr)
       }
 
+      // 리퍼럴 보상 처리 (첫 리뷰 작성 시 추천인에게 포인트 지급)
+      try {
+        const res = await fetch('/api/referral', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'process-reward', userId: authUser.id }),
+        })
+        const refResult = await res.json()
+        if (refResult.success) {
+          console.log('[리퍼럴] 보상 지급 완료:', refResult)
+        }
+      } catch (refErr) {
+        console.error('[리퍼럴] 보상 처리 오류:', refErr)
+      }
+
       if (reviewAgentName && reviewAgentName !== '-') {
         window.dispatchEvent(new CustomEvent('review:saved', { detail: { query: reviewAgentName } }))
       }

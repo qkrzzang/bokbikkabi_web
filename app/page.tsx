@@ -44,6 +44,24 @@ export default function Home() {
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
   const [mainAdConfig, setMainAdConfig] = useState<{ visible: boolean; position: 'top' | 'bottom'; device: 'mobile' | 'pc' | 'all' }>({ visible: true, position: 'bottom', device: 'all' })
 
+  // 리퍼럴 파라미터 감지 및 저장 (7일간 유지)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const ref = params.get('ref')
+    if (ref && ref.length > 10) {
+      const expiry = Date.now() + 7 * 24 * 60 * 60 * 1000
+      localStorage.setItem('bokbikkabi_ref', JSON.stringify({ id: ref, expires: expiry }))
+      console.log('[리퍼럴] 추천인 저장:', ref)
+      // URL에서 ref 파라미터 제거 (히스토리 깔끔하게)
+      params.delete('ref')
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname
+      window.history.replaceState({}, '', newUrl)
+    }
+  }, [])
+
   useEffect(() => {
     const handleReviewSaved = (event: Event) => {
       const detail = (event as CustomEvent).detail

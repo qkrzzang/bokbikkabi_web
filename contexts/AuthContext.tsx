@@ -66,15 +66,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── users 테이블 Upsert (로그인 시에만 호출) ──
   const upsertUser = useCallback(async (authUser: User) => {
     try {
-      await supabase.from('users').upsert(
-        {
-          supabase_user_id: authUser.id,
-          email: authUser.email || '',
-          provider: authUser.app_metadata?.provider || 'email',
-          last_login_at: new Date().toISOString(),
-        },
-        { onConflict: 'supabase_user_id' }
-      )
+      const upsertData: Record<string, any> = {
+        supabase_user_id: authUser.id,
+        email: authUser.email || '',
+        provider: authUser.app_metadata?.provider || 'email',
+        last_login_at: new Date().toISOString(),
+      }
+
+      // 리퍼럴 코드가 localStorage에 있으면 referred_by에 저장 (최초 가입 시)
+      if (typeof window !== 'undefined') {
+        try {
+          const refData = localStorage.getItem('bokbikkabi_ref')
+          if (refData) {
+            const { id, expires } = JSON.parse(refData)
+            if (Date.now() < expires && id !== authUser.id) {
+              // 이미 referred_by가 설정되어 있는지 확인
+              const { data: existingUser } = await supabase
+                .from('users')
+                .select('referred_by')
+                .eq('supabase_user_id', authUser.id)
+                .maybeSingle()
+
+              if (!existingUser?.referred_by) {
+                upsertData.referred_by = id
+                console.log('[Auth] 리퍼럴 코드 적용:', id)
+              }
+              localStorage.removeItem('bokbikkabi_ref')
+            } else {
+              localStorage.removeItem('bokbikkabi_ref')
+            }
+          }
+        } catch (e) {
+          console.error('[Auth] 리퍼럴 처리 오류:', e)
+        }
+      }
+
+      await supabase.from('users').upsert(upsertData, { onConflict: 'supabase_user_id' })
     } catch (error) {
       console.error('[Auth] upsertUser 오류:', error)
     }
