@@ -168,7 +168,7 @@ export default function Sidebar({
         .from('users')
         .select('user_grade')
         .eq('supabase_user_id', user.id)
-        .single()
+        .maybeSingle()
         .then(({ data }: { data: any }) => {
           if (data?.user_grade) setUserGrade(data.user_grade)
         })
@@ -342,30 +342,18 @@ export default function Sidebar({
     }
   }
 
-  // 럭키드로우 데이터 불러오기
+  // 럭키드로우 데이터 불러오기 (단일 API 호출)
   const loadLuckyDrawData = async () => {
     if (!authUser) return
     setIsLuckyDrawLoading(true)
     try {
-      const [ticketsRes, eventsRes, entriesRes, costRes, historyRes] = await Promise.all([
-        fetch(`/api/lucky-draw?action=my-tickets&userId=${authUser.id}`),
-        fetch('/api/lucky-draw?action=events'),
-        fetch(`/api/lucky-draw?action=my-entries&userId=${authUser.id}`),
-        fetch('/api/lucky-draw?action=ticket-cost'),
-        fetch(`/api/lucky-draw?action=ticket-history&userId=${authUser.id}`),
-      ])
-      const [ticketsData, eventsData, entriesData, costData, historyData] = await Promise.all([
-        ticketsRes.json(),
-        eventsRes.json(),
-        entriesRes.json(),
-        costRes.json(),
-        historyRes.json(),
-      ])
-      setUserTickets(ticketsData.tickets || 0)
-      setLuckyDrawEvents(eventsData.events || [])
-      setMyEntries(entriesData.entries || [])
-      setTicketCost(costData.cost || 1000)
-      setTicketHistory(historyData.transactions || [])
+      const res = await fetch(`/api/lucky-draw?action=all&userId=${authUser.id}`)
+      const data = await res.json()
+      setUserTickets(data.tickets || 0)
+      setLuckyDrawEvents(data.events || [])
+      setMyEntries(data.entries || [])
+      setTicketCost(data.cost || 1000)
+      setTicketHistory(data.transactions || [])
     } catch (err) {
       console.error('[럭키드로우] 데이터 로드 실패:', err)
     } finally {
@@ -902,7 +890,10 @@ export default function Sidebar({
 
               <button 
                 className={styles.navItem} 
-                onClick={() => setCurrentScreen('partnership')}
+                onClick={() => {
+                  setInquiryType('광고')
+                  setCurrentScreen('partnership')
+                }}
               >
                 <span className={styles.navIcon}>🤝</span>
                 <span className={styles.navLabel}>광고/제휴/오류 문의</span>
@@ -959,7 +950,7 @@ export default function Sidebar({
                       .from('users')
                       .select('nickname, nickname_changed_at')
                       .eq('supabase_user_id', userId)
-                      .single()
+                      .maybeSingle()
                       .then(({ data }: { data: any }) => {
                         if (data?.nickname) setEditNickname(data.nickname)
                         setNicknameChangedAt(data?.nickname_changed_at || null)
@@ -1380,11 +1371,8 @@ export default function Sidebar({
                     border: '1px solid #e9d5ff',
                     textAlign: 'center',
                   }}>
-                    <div style={{ fontSize: '14px', color: '#1e293b', fontWeight: 600, marginBottom: '8px' }}>
-                    친구 초대하면 둘 다 추가 500 포인트 지급!
-                    </div>
                     <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.6', marginBottom: '12px' }}>
-                    <strong style={{ color: '#7C3AED' }}>내 링크로 가입한 친구가 첫 리뷰를 작성</strong>하면 지급됩니다.
+                    내<strong style={{ color: '#7C3AED' }}> 초대 링크</strong>로 가입한 친구가 <strong style={{ color: '#7C3AED' }}>첫 리뷰</strong>를 작성하면 <strong style={{ color: '#7C3AED' }}>둘 다 추가 500P 지급</strong>
                     </div>
                     <div style={{
                       padding: '10px 12px', background: 'white', borderRadius: '8px',
@@ -1500,7 +1488,7 @@ export default function Sidebar({
                                   </span>
                                 </div>
                                 <span className={`${styles.transactionPoints} ${tx.points > 0 ? styles.pointsPlus : styles.pointsMinus}`}>
-                                  {tx.points > 0 ? '+' : ''}{tx.points}P
+                                  {tx.points > 0 ? '+' : ''}{tx.points.toLocaleString()}P
                                 </span>
                               </div>
                             )
@@ -1550,10 +1538,10 @@ export default function Sidebar({
                       background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
                       borderRadius: '10px',
                       fontSize: '13px',
+                      textAlign: 'center',
                       color: '#5b21b6',
                       lineHeight: '1.6',
                     }}>
-                      <strong>{ticketCost.toLocaleString()}P = 응모권 1장</strong><br/>
                       보유 포인트: <strong>{userPoints.toLocaleString()}P</strong>
                     </div>
                     <button
@@ -1573,7 +1561,8 @@ export default function Sidebar({
                         transition: 'all 0.2s',
                       }}
                     >
-                      {isPurchasing ? '구매 중...' : `응모권 구매(${ticketCost.toLocaleString()}P)`}
+                      {isPurchasing ? '구매 중...' : `응모권 1장 구매(${ticketCost.toLocaleString()}P)`}
+                      
                     </button>
                   </div>
 
@@ -1870,6 +1859,9 @@ export default function Sidebar({
                 <div className={styles.formGroup}>
                   <label>연락처 *</label>
                   <input type="tel" name="phone" required className={styles.formInput} placeholder="010-0000-0000" />
+                  <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    🔒 연락처는 암호화되어 안전하게 저장됩니다.
+                  </span>
                 </div>
                 
                 <div className={styles.formGroup}>
@@ -2031,6 +2023,7 @@ export default function Sidebar({
                   정말로 탈퇴하시겠습니까?
                 </p>
                 <ul className={styles.deleteWarningList}>
+                  <li>탈퇴 후 <strong>재가입은 한 달 뒤</strong> 가능합니다.</li>
                   <li>보유한 포인트 <strong>{userPoints.toLocaleString()}P</strong>가 모두 삭제됩니다.</li>
                   <li>작성하신 리뷰가 모두 삭제됩니다.</li>
                   <li>관심 부동산, 서베이 응답 등 모든 데이터가 삭제됩니다.</li>
@@ -2050,23 +2043,15 @@ export default function Sidebar({
                       if (!authUser) return
                       setIsDeleting(true)
                       try {
-                        await supabase.from('review_helpful').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('agent_reviews').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('agent_comments').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('favorite_agents').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('referral_rewards').delete().eq('referrer_id', authUser.id)
-                        await supabase.from('referral_rewards').delete().eq('referee_id', authUser.id)
-                        await supabase.from('lucky_draw_winners').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('lucky_draw_entries').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('ticket_transactions').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('user_tickets').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('point_transactions').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('user_points').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('user_attendance').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('survey_responses').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('partnership_inquiries').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('access_logs').delete().eq('supabase_user_id', authUser.id)
-                        await supabase.from('users').delete().eq('supabase_user_id', authUser.id)
+                        const res = await fetch('/api/delete-account', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ userId: authUser.id }),
+                        })
+                        const result = await res.json()
+                        if (!res.ok) {
+                          throw new Error(result.error || '서버 오류')
+                        }
                         await supabase.auth.signOut()
                         showSuccess('회원탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.')
                         window.location.href = '/'

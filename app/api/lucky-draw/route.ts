@@ -12,6 +12,101 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action')
     const userId = searchParams.get('userId')
 
+    // 통합 조회: 5개 쿼리를 병렬 실행하여 한 번의 API 호출로 처리
+    if (action === 'all' && userId) {
+      const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+
+      const [ticketsResult, eventsResult, entriesResult, costResult, historyResult] = await Promise.all([
+        supabaseAdmin
+          .from('user_tickets')
+          .select('total_tickets')
+          .eq('supabase_user_id', userId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from('common_code_detail')
+          .select('*')
+          .eq('code_group', 'LUCKY_DRAW_PRIZE')
+          .eq('use_yn', 'Y')
+          .lte('sta_ymd', today)
+          .gte('end_ymd', today)
+          .order('sort_order', { ascending: true }),
+        supabaseAdmin
+          .from('lucky_draw_entries')
+          .select('*')
+          .eq('supabase_user_id', userId)
+          .order('created_at', { ascending: false }),
+        supabaseAdmin
+          .from('common_code_detail')
+          .select('extra_value1')
+          .eq('code_group', 'LUCKY_DRAW_CONFIG')
+          .eq('code_value', 'TICKET_COST')
+          .eq('use_yn', 'Y')
+          .lte('sta_ymd', today)
+          .gte('end_ymd', today)
+          .maybeSingle(),
+        supabaseAdmin
+          .from('ticket_transactions')
+          .select('*')
+          .eq('supabase_user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ])
+
+      // 이벤트 목록 매핑
+      const eventsData = eventsResult.data || []
+      const eventIds = eventsData.map(e => e.id)
+
+      // 응모 수 일괄 조회 (N+1 제거)
+      let entryCounts: Record<number, number> = {}
+      if (eventIds.length > 0) {
+        const { data: allEntries } = await supabaseAdmin
+          .from('lucky_draw_entries')
+          .select('lucky_draw_id, entries_count')
+          .in('lucky_draw_id', eventIds)
+        for (const e of (allEntries || [])) {
+          entryCounts[e.lucky_draw_id] = (entryCounts[e.lucky_draw_id] || 0) + (e.entries_count || 1)
+        }
+      }
+
+      const events = eventsData.map(item => ({
+        id: item.id,
+        code_value: item.code_value,
+        title: item.code_name,
+        description: item.description || '',
+        prize_name: item.code_name,
+        tickets_required: parseInt(item.extra_value1 || '1'),
+        max_winners: parseInt(item.extra_value2 || '1'),
+        end_date: item.extra_value3
+          ? `${item.extra_value3.slice(0,4)}-${item.extra_value3.slice(4,6)}-${item.extra_value3.slice(6,8)}`
+          : '9999-12-31',
+        status: item.extra_value4 || 'ACTIVE',
+        total_entries: entryCounts[item.id] || 0,
+      }))
+
+      // 내 응모 내역에 이벤트 정보 매핑 (N+1 제거: eventsData를 Map으로 활용)
+      const eventMap = new Map(eventsData.map(e => [e.id, e]))
+      const entries = (entriesResult.data || []).map(entry => {
+        const ev = eventMap.get(entry.lucky_draw_id)
+        return {
+          ...entry,
+          event: ev ? {
+            id: ev.id,
+            title: ev.code_name,
+            prize_name: ev.code_name,
+            status: ev.extra_value4 || 'ACTIVE',
+          } : null,
+        }
+      })
+
+      return NextResponse.json({
+        tickets: ticketsResult.data?.total_tickets || 0,
+        events,
+        entries,
+        cost: costResult.data ? parseInt(costResult.data.extra_value1) : 1000,
+        transactions: historyResult.data || [],
+      })
+    }
+
     if (action === 'events') {
       const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
       const { data, error } = await supabaseAdmin

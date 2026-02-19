@@ -87,11 +87,9 @@ export async function GET(request: NextRequest) {
 
     scoredAgents.sort((a: any, b: any) => b._score - a._score)
 
-    // _score 필드 제거
-    const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
-
     // 자동완성 모드: 리뷰 조회 생략 (경량 응답)
     if (mode === 'autocomplete') {
+      const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
       return NextResponse.json({ data: resultAgents, reviews: {} })
     }
 
@@ -99,9 +97,9 @@ export async function GET(request: NextRequest) {
     const reviews: Record<number, number> = {}
     const reviewCounts: Record<number, number> = {}
 
-    if (resultAgents.length > 0) {
-      const agentIds = resultAgents.map((a: any) => a.id)
+    const agentIds = scoredAgents.map((a: any) => a.id)
 
+    if (agentIds.length > 0) {
       const { data: reviewsData, error: reviewsError } = await supabaseAdmin
         .from('agent_reviews')
         .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
@@ -115,12 +113,10 @@ export async function GET(request: NextRequest) {
       if (!reviewsError && reviewsData) {
         console.log(`[search-agents] 리뷰 데이터 ${reviewsData.length}건 조회 (agentIds: ${agentIds.join(',')})`)
 
-        // agent별 리뷰 평점 집계 + 전체 리뷰 건수 (평점 null 포함)
         const agentReviewRatings = new Map<number, number[]>()
         const agentReviewTotals = new Map<number, number>()
 
         reviewsData.forEach((review: any) => {
-          // 전체 리뷰 건수 (평점 null이어도 카운트)
           agentReviewTotals.set(review.agent_id, (agentReviewTotals.get(review.agent_id) || 0) + 1)
 
           const ratings = [
@@ -142,18 +138,29 @@ export async function GET(request: NextRequest) {
           }
         })
 
-        // 평점 있는 리뷰 평균
         agentReviewRatings.forEach((ratings, agentId) => {
           const overallAvg = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
           reviews[agentId] = Math.round(overallAvg * 10) / 10
         })
 
-        // 리뷰 건수는 평점 null 포함 전체 건수
         agentReviewTotals.forEach((count, agentId) => {
           reviewCounts[agentId] = count
         })
       }
     }
+
+    // 리뷰/별점 있는 부동산을 상위로 정렬
+    scoredAgents.sort((a: any, b: any) => {
+      const aHasReview = reviewCounts[a.id] ? 1 : 0
+      const bHasReview = reviewCounts[b.id] ? 1 : 0
+      if (aHasReview !== bHasReview) return bHasReview - aHasReview
+      const aRating = reviews[a.id] || 0
+      const bRating = reviews[b.id] || 0
+      if (aRating !== bRating) return bRating - aRating
+      return b._score - a._score
+    })
+
+    const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
 
     return NextResponse.json({ data: resultAgents, reviews, reviewCounts })
   } catch (error: any) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 /**
  * OAuth 콜백 Route Handler
@@ -21,7 +22,6 @@ export async function GET(request: Request) {
   if (errorParam) {
     const errorDescription = searchParams.get('error_description') || errorParam
     console.error('[콜백] OAuth 에러:', errorParam, errorDescription)
-    // 에러 시 홈으로 리다이렉트 (AuthContext가 미인증 상태 표시)
     return NextResponse.redirect(`${origin}/`)
   }
 
@@ -45,12 +45,41 @@ export async function GET(request: Request) {
       }
     )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code)
 
-    if (!error) {
-      console.log('[콜백] ✅ 코드 교환 성공, 리다이렉트:', next)
+    if (!error && sessionData?.session) {
+      const userEmail = sessionData.session.user.email
 
-      // Vercel 등 리버스 프록시 환경 대응
+      // 탈퇴 블랙리스트 체크
+      if (userEmail) {
+        try {
+          const { data: blacklisted } = await supabaseAdmin
+            .from('deleted_accounts')
+            .select('eligible_at')
+            .eq('email', userEmail)
+            .gt('eligible_at', new Date().toISOString())
+            .order('eligible_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (blacklisted) {
+            const eligibleDate = new Date(blacklisted.eligible_at)
+            const formattedDate = `${eligibleDate.getFullYear()}년 ${eligibleDate.getMonth() + 1}월 ${eligibleDate.getDate()}일`
+
+            console.warn(`[콜백] 블랙리스트 차단: ${userEmail}, 재가입 가능일: ${formattedDate}`)
+
+            await supabase.auth.signOut()
+
+            const message = encodeURIComponent(`탈퇴 후 30일이 지나야 재가입할 수 있습니다. (${formattedDate} 이후 가능)`)
+            return NextResponse.redirect(`${origin}/?blocked=${message}`)
+          }
+        } catch (err: any) {
+          console.error('[콜백] 블랙리스트 체크 오류:', err.message)
+        }
+      }
+
+      console.log('[콜백] 코드 교환 성공, 리다이렉트:', next)
+
       const forwardedHost = request.headers.get('x-forwarded-host')
       const isLocalEnv = process.env.NODE_ENV === 'development'
 
@@ -63,9 +92,8 @@ export async function GET(request: Request) {
       }
     }
 
-    console.error('[콜백] ❌ 코드 교환 실패:', error.message)
+    console.error('[콜백] 코드 교환 실패:', error?.message)
   }
 
-  // code가 없거나 교환 실패 시 홈으로 리다이렉트
   return NextResponse.redirect(`${origin}/`)
 }

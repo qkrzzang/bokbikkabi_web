@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.partnership_inquiries (
   user_name TEXT,
   company_name TEXT,
   contact_phone TEXT,
-  inquiry_type TEXT NOT NULL CHECK (inquiry_type IN ('광고', '제휴', '기타')),
+  inquiry_type TEXT NOT NULL CHECK (inquiry_type IN ('광고', '제휴', '오류', '기타')),
   title TEXT NOT NULL,
   content TEXT NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'rejected')),

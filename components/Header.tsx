@@ -264,6 +264,20 @@ export default function Header() {
   const [partnershipStatusFilter, setPartnershipStatusFilter] = useState('')
   const [selectedInquiry, setSelectedInquiry] = useState<any>(null)
   const [replyText, setReplyText] = useState('')
+  const [decryptedPhones, setDecryptedPhones] = useState<Record<number, string>>({})
+
+  const decryptPhone = async (inquiryId: number, encryptedPhone: string) => {
+    if (decryptedPhones[inquiryId]) return
+    try {
+      const res = await fetch(`/api/partnership-inquiry?action=decrypt&phone=${encodeURIComponent(encryptedPhone)}`)
+      const data = await res.json()
+      if (data.phone) {
+        setDecryptedPhones(prev => ({ ...prev, [inquiryId]: data.phone }))
+      }
+    } catch {
+      setDecryptedPhones(prev => ({ ...prev, [inquiryId]: encryptedPhone }))
+    }
+  }
   const [adVisibility, setAdVisibility] = useState('Y')
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
   const [luckyDrawVisibility, setLuckyDrawVisibility] = useState('Y')
@@ -2141,28 +2155,28 @@ export default function Header() {
                   }
 
                   try {
-                    const { error } = await apiRequest(
-                      () => supabase
-                        .from('partnership_inquiries')
-                        .insert({
-                          supabase_user_id: user.id,
-                          user_email: formData.get('email'),
-                          user_name: formData.get('name'),
-                          company_name: formData.get('company'),
-                          contact_phone: formData.get('phone'),
-                          inquiry_type: formData.get('type'),
-                          title: formData.get('title'),
-                          content: formData.get('content'),
-                        }),
-                      { requireAuth: true }
-                    )
+                    const res = await fetch('/api/partnership-inquiry', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        supabase_user_id: user.id,
+                        user_email: formData.get('email'),
+                        user_name: formData.get('name'),
+                        company_name: formData.get('company'),
+                        contact_phone: formData.get('phone'),
+                        inquiry_type: formData.get('type'),
+                        title: formData.get('title'),
+                        content: formData.get('content'),
+                      }),
+                    })
+                    const result = await res.json()
 
-                    if (!error) {
+                    if (result.success) {
                       showSuccess('문의가 접수되었습니다.\n빠른 시일 내에 답변드리겠습니다.')
                       e.currentTarget.reset()
                       closePartnershipModal()
                     } else {
-                      showError('문의 접수 중 오류가 발생했습니다.')
+                      showError(`문의 접수 중 오류가 발생했습니다.\n(${result.error || '알 수 없는 오류'})`)
                     }
                   } catch (error: any) {
                     showError('문의 접수 중 오류가 발생했습니다.')
@@ -2203,6 +2217,9 @@ export default function Header() {
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>연락처 *</label>
                     <input type="tel" name="phone" required className={styles.formInput} placeholder="010-0000-0000" />
+                    <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      🔒 연락처는 암호화되어 안전하게 저장됩니다.
+                    </span>
                   </div>
                   
                   <div className={styles.formGroup}>
@@ -3993,7 +4010,24 @@ export default function Header() {
                               </div>
                               <div className={styles.partnerCardMetaRow}>
                                 <span className={styles.partnerCardIcon}>📞</span>
-                                <span>{inquiry.contact_phone || '-'}</span>
+                                <span>
+                                  {!inquiry.contact_phone ? '-' :
+                                    decryptedPhones[inquiry.id] ? decryptedPhones[inquiry.id] : '••••-••••-••••'}
+                                </span>
+                                {inquiry.contact_phone && !decryptedPhones[inquiry.id] && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      decryptPhone(inquiry.id, inquiry.contact_phone)
+                                    }}
+                                    style={{
+                                      fontSize: '11px', color: '#7C3AED', background: '#f5f3ff',
+                                      border: '1px solid #e9d5ff', borderRadius: '4px', padding: '1px 6px',
+                                      cursor: 'pointer', marginLeft: '4px',
+                                    }}
+                                  >🔓 보기</button>
+                                )}
                                 <span className={styles.partnerCardDivider}>·</span>
                                 <span className={styles.partnerCardIcon}>📅</span>
                                 <span>{formatDate(inquiry.created_at)}</span>
@@ -4081,7 +4115,21 @@ export default function Header() {
                               </div>
                               <div className={styles.partnerInfoItem}>
                                 <span className={styles.partnerInfoLabel}>연락처</span>
-                                <span className={styles.partnerInfoValue}>{selectedInquiry.contact_phone || '-'}</span>
+                                <span className={styles.partnerInfoValue} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {!selectedInquiry.contact_phone ? '-' :
+                                    decryptedPhones[selectedInquiry.id] ? decryptedPhones[selectedInquiry.id] : '••••-••••-••••'}
+                                  {selectedInquiry.contact_phone && !decryptedPhones[selectedInquiry.id] && (
+                                    <button
+                                      type="button"
+                                      onClick={() => decryptPhone(selectedInquiry.id, selectedInquiry.contact_phone)}
+                                      style={{
+                                        fontSize: '12px', color: '#7C3AED', background: '#f5f3ff',
+                                        border: '1px solid #e9d5ff', borderRadius: '6px', padding: '2px 10px',
+                                        cursor: 'pointer', fontWeight: 600,
+                                      }}
+                                    >🔓 복호화</button>
+                                  )}
+                                </span>
                               </div>
                             </div>
                           </div>

@@ -206,10 +206,12 @@ export default function CameraButton() {
   const [praiseTagOptions, setPraiseTagOptions] = useState<Array<{
     code_value: string
     code_name: string
+    extra_value1: string | null
   }>>([])
   const [regretTagOptions, setRegretTagOptions] = useState<Array<{
     code_value: string
     code_name: string
+    extra_value1: string | null
   }>>([])
   const [detailEvaluations, setDetailEvaluations] = useState<Array<{
     code_value: string
@@ -239,6 +241,36 @@ export default function CameraButton() {
     }
     return detailEvaluations
   }, [transactionTags, detailEvaluations, detailEvaluationsForLeaseAndSell])
+
+  // 거래 태그에 따라 칭찬/아쉬움 태그 필터링
+  // extra_value1: 'BUY_AND_RENT' = 매수/임차, 'LEASE_AND_SELL' = 매도/임대, 'ALL' = 모두
+  const filteredPraiseTagOptions = useMemo(() => {
+    const selectedTag = transactionTags[0] || ''
+    if (!selectedTag) return praiseTagOptions
+    const isBuyOrRent = selectedTag.includes('매수') || selectedTag.includes('임차')
+    const isLeaseOrSell = selectedTag.includes('매도') || selectedTag.includes('임대')
+    return praiseTagOptions.filter(tag => {
+      const v = tag.extra_value1 || 'ALL'
+      if (v === 'ALL') return true
+      if (isBuyOrRent && v === 'BUY_AND_RENT') return true
+      if (isLeaseOrSell && v === 'LEASE_AND_SELL') return true
+      return false
+    })
+  }, [transactionTags, praiseTagOptions])
+
+  const filteredRegretTagOptions = useMemo(() => {
+    const selectedTag = transactionTags[0] || ''
+    if (!selectedTag) return regretTagOptions
+    const isBuyOrRent = selectedTag.includes('매수') || selectedTag.includes('임차')
+    const isLeaseOrSell = selectedTag.includes('매도') || selectedTag.includes('임대')
+    return regretTagOptions.filter(tag => {
+      const v = tag.extra_value1 || 'ALL'
+      if (v === 'ALL') return true
+      if (isBuyOrRent && v === 'BUY_AND_RENT') return true
+      if (isLeaseOrSell && v === 'LEASE_AND_SELL') return true
+      return false
+    })
+  }, [transactionTags, regretTagOptions])
 
   const [reviewText, setReviewText] = useState('')
   const [showThankYouModal, setShowThankYouModal] = useState(false)
@@ -1674,6 +1706,21 @@ export default function CameraButton() {
 
       console.log(`[리뷰 저장] 최종 매핑 결과:`, mappedRatings)
 
+      // users 테이블에 행이 존재하는지 확인 (탈퇴 후 재가입 시 FK 오류 방지)
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('supabase_user_id')
+        .eq('supabase_user_id', authUser.id)
+        .maybeSingle()
+
+      if (!existingUser) {
+        await supabase.from('users').upsert({
+          supabase_user_id: authUser.id,
+          email: authUser.email || '',
+          provider: authUser.app_metadata?.provider || 'email',
+        }, { onConflict: 'supabase_user_id' })
+      }
+
       const { error } = await supabase
         .from('agent_reviews')
         .insert({
@@ -2464,7 +2511,9 @@ export default function CameraButton() {
                               } else {
                                 setTransactionTags([tag.code_name])
                               }
-                              // 거래 태그 변경 시 상세 평가 별점 초기화
+                              // 거래 태그 변경 시 칭찬/아쉬움 태그 및 상세 평가 별점 초기화
+                              setPraiseTags([])
+                              setRegretTags([])
                               setReviewRatings({})
                               setHoverRatings({})
                             }}
@@ -2485,10 +2534,10 @@ export default function CameraButton() {
                       </span>
                     </h4>
                     <div className={styles.tagContainer}>
-                      {praiseTagOptions.length === 0 ? (
+                      {filteredPraiseTagOptions.length === 0 ? (
                         <span className={styles.reviewTagEmpty}>칭찬 태그가 없습니다.</span>
                       ) : (
-                        praiseTagOptions.map((tag) => (
+                        filteredPraiseTagOptions.map((tag) => (
                           <button
                             key={tag.code_value}
                             className={`${styles.tagButton} ${praiseTags.includes(tag.code_name) ? styles.tagButtonPraiseActive : ''}`}
@@ -2511,10 +2560,10 @@ export default function CameraButton() {
                   <div className={styles.reviewSection}>
                     <h4 className={styles.reviewSectionTitle}>아쉬움 태그</h4>
                     <div className={styles.tagContainer}>
-                      {regretTagOptions.length === 0 ? (
+                      {filteredRegretTagOptions.length === 0 ? (
                         <span className={styles.reviewTagEmpty}>아쉬움 태그가 없습니다.</span>
                       ) : (
-                        regretTagOptions.map((tag) => (
+                        filteredRegretTagOptions.map((tag) => (
                           <button
                             key={tag.code_value}
                             className={`${styles.tagButton} ${regretTags.includes(tag.code_name) ? styles.tagButtonRegretActive : ''}`}

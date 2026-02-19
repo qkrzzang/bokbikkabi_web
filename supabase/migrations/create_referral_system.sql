@@ -79,10 +79,12 @@ DECLARE
   v_referrer_points INT;
   v_referee_points INT;
   v_ip_count INT;
+  v_referee_email TEXT;
+  v_email_reward_count INT;
 BEGIN
-  -- 피추천인의 추천인 조회
-  SELECT referred_by, referral_rewarded
-  INTO v_referrer_id, v_already_rewarded
+  -- 피추천인의 추천인 및 이메일 조회
+  SELECT referred_by, referral_rewarded, email
+  INTO v_referrer_id, v_already_rewarded, v_referee_email
   FROM users
   WHERE supabase_user_id = p_referee_id;
 
@@ -94,9 +96,19 @@ BEGIN
     RETURN json_build_object('success', false, 'reason', 'already_rewarded');
   END IF;
 
-  -- 자기 자신 추천 방지
   IF v_referrer_id = p_referee_id THEN
     RETURN json_build_object('success', false, 'reason', 'self_referral');
+  END IF;
+
+  -- 이메일 기반 중복 보상 차단 (탈퇴-재가입 어뷰징 방지)
+  IF v_referee_email IS NOT NULL AND v_referee_email <> '' THEN
+    SELECT COUNT(*) INTO v_email_reward_count
+    FROM referral_rewards
+    WHERE referee_email = v_referee_email;
+
+    IF v_email_reward_count > 0 THEN
+      RETURN json_build_object('success', false, 'reason', 'email_already_rewarded');
+    END IF;
   END IF;
 
   -- 추천인의 이번 달 보상 횟수 체크 (최대 10명)
@@ -144,9 +156,9 @@ BEGIN
   INSERT INTO point_transactions (supabase_user_id, transaction_type, points, description)
   VALUES (p_referee_id, 'REFERRAL_BONUS', v_referee_points, '추천 가입 보너스 (첫 리뷰 작성)');
 
-  -- 보상 기록
-  INSERT INTO referral_rewards (referrer_id, referee_id, referrer_points, referee_points, signup_ip)
-  VALUES (v_referrer_id, p_referee_id, v_referrer_points, v_referee_points, p_signup_ip);
+  -- 보상 기록 (referee_email 포함)
+  INSERT INTO referral_rewards (referrer_id, referee_id, referrer_points, referee_points, signup_ip, referee_email)
+  VALUES (v_referrer_id, p_referee_id, v_referrer_points, v_referee_points, p_signup_ip, v_referee_email);
 
   -- 보상 완료 플래그
   UPDATE users SET referral_rewarded = TRUE WHERE supabase_user_id = p_referee_id;

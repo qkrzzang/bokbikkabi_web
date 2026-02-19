@@ -181,6 +181,10 @@
   padding: 40px 20px;
   color: #64748b;
   font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .contractList {
@@ -1133,12 +1137,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .transactionDesc {
   font-size: 14px;
   font-weight: 500;
   color: #1e293b;
+  word-break: break-all;
 }
 
 .transactionDate {
@@ -1149,6 +1156,10 @@
 .transactionPoints {
   font-size: 16px;
   font-weight: 700;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 12px;
+  text-align: right;
 }
 
 .pointsPlus {

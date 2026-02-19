@@ -149,7 +149,14 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
   const handleSuggestionClick = (item: AutocompleteItem) => {
     setQuery(item.agent_name)
     setShowDropdown(false)
-    onSearch(item.agent_name, region)
+
+    // 주소에서 지역(시/도) 추출하여 콤보박스 자동 변경
+    const address = item.road_address || item.lot_address || ''
+    const matchedRegion = REGIONS.find(r => r.value && address.includes(r.value))
+    const newRegion = matchedRegion?.value || ''
+    setRegion(newRegion)
+
+    onSearch(item.agent_name, newRegion)
     if (inputRef.current) inputRef.current.blur()
   }
 
