@@ -108,7 +108,7 @@ export default function PrivacyPolicy() {
                 <tr>
                   <td>Supabase (AWS)</td>
                   <td>데이터베이스 관리 및 사용자 인증</td>
-                  <td>해외 서버(도쿄 등), 회원 탈퇴 시까지</td>
+                  <td>ap-northeast-2(Seoul), 회원 탈퇴 시까지</td>
                 </tr>
               </tbody>
             </table>
