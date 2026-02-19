@@ -413,7 +413,7 @@ export default function ReviewModal({
 
             <div className={styles.reportBody}>
               <div className={styles.reportHint}>
-                대상: {reportingReview.author} · {reportingReview.date}
+                대상: {reportingReview.author ? reportingReview.author.slice(0, 3) + '*'.repeat(Math.max(0, reportingReview.author.length - 3)) : ''} · {reportingReview.date}
               </div>
 
               <div className={styles.field}>

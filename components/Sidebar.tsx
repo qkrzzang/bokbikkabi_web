@@ -805,6 +805,10 @@ export default function Sidebar({
               className={styles.pointsButton}
               onClick={() => {
                 loadUserPoints()
+                setIsPolicyExpanded(false)
+                setIsPointHistoryExpanded(false)
+                setIsTicketHistoryExpanded(false)
+                setIsMyEntriesExpanded(false)
                 setCurrentScreen('points')
               }}
             >
@@ -867,6 +871,8 @@ export default function Sidebar({
                   className={styles.navItem} 
                   onClick={() => {
                     loadLuckyDrawData()
+                    setIsTicketHistoryExpanded(false)
+                    setIsMyEntriesExpanded(false)
                     setCurrentScreen('luckydraw')
                   }}
                 >
@@ -1326,41 +1332,6 @@ export default function Sidebar({
                   </div>
                 </div>
 
-                {/* 포인트 사용처 CTA */}
-                <button
-                  onClick={() => {
-                    loadLuckyDrawData()
-                    setCurrentScreen('luckydraw')
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '14px 16px',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
-                    boxShadow: '0 4px 16px rgba(124, 58, 237, 0.35)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '16px',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '22px' }}>🎰</span>
-                    <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>
-                        럭키드로우 응모하기
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#e9d5ff', marginTop: '2px' }}>
-                        {ticketCost.toLocaleString()}P = 응모권 1장
-                      </div>
-                    </div>
-                  </div>
-                  <span style={{ fontSize: '18px', color: '#e9d5ff' }}>›</span>
-                </button>
-
                 {/* 친구 초대 (리퍼럴) */}
                 <div className={styles.pointsSection}>
                   <h4 className={styles.sectionTitle}>👫 친구 초대</h4>
@@ -1533,17 +1504,6 @@ export default function Sidebar({
                     display: 'flex', gap: '8px', padding: '0 0 16px',
                     flexDirection: 'column',
                   }}>
-                    <div style={{
-                      padding: '12px 16px',
-                      background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
-                      borderRadius: '10px',
-                      fontSize: '13px',
-                      textAlign: 'center',
-                      color: '#5b21b6',
-                      lineHeight: '1.6',
-                    }}>
-                      보유 포인트: <strong>{userPoints.toLocaleString()}P</strong>
-                    </div>
                     <button
                       onClick={handlePurchaseTicket}
                       disabled={isPurchasing || userPoints < ticketCost}
@@ -1589,7 +1549,7 @@ export default function Sidebar({
                             marginBottom: '12px',
                           }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                              <div style={{ fontWeight: 700, fontSize: '15px', color: '#1e293b' }}>{event.title}</div>
+                              <div style={{ fontWeight: 700, fontSize: '15px', color: '#1e293b' }}><span>🎁 </span><strong style={{ color: '#7C3AED' }}>{event.title}</strong></div>
                               <span style={{
                                 padding: '2px 8px',
                                 borderRadius: '10px',
@@ -1598,9 +1558,6 @@ export default function Sidebar({
                                 background: '#7C3AED',
                                 color: 'white',
                               }}>D-{daysLeft}</span>
-                            </div>
-                            <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '10px', lineHeight: '1.5' }}>
-                              {event.description}
                             </div>
                             <div style={{
                               display: 'flex', flexDirection: 'column', gap: '6px',
@@ -1611,10 +1568,6 @@ export default function Sidebar({
                               color: '#475569',
                               marginBottom: '12px',
                             }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span>🎁 경품</span>
-                                <strong style={{ color: '#7C3AED' }}>{event.prize_name}</strong>
-                              </div>
                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <span>🎫 필요 응모권</span>
                                 <strong>{event.tickets_required}장</strong>
@@ -1631,6 +1584,12 @@ export default function Sidebar({
                                 <span>📅 마감일</span>
                                 <strong>{endDate.toLocaleDateString('ko-KR')}</strong>
                               </div>
+                              {event.draw_date && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>🗓️ 추첨일</span>
+                                  <strong style={{ color: '#7C3AED' }}>{new Date(event.draw_date).toLocaleDateString('ko-KR')}</strong>
+                                </div>
+                              )}
                             </div>
                             {myEntryCount > 0 && (
                               <div style={{
@@ -1767,10 +1726,10 @@ export default function Sidebar({
                           marginBottom: '8px',
                         }}>
                           <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>
-                            {event.title}
+                            🎁 경품 : <strong style={{ color: '#7C3AED' }}>{event.title}</strong>
                           </div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>
-                            🎁 {event.prize_name} · 시작: {new Date(event.start_date).toLocaleDateString('ko-KR')}
+                          <div style={{ fontSize: '12px', color: '#64748b'}}>
+                            📅 시작일: {new Date(event.end_date).toLocaleDateString('ko-KR')}
                           </div>
                         </div>
                       ))}
@@ -2023,7 +1982,7 @@ export default function Sidebar({
                   정말로 탈퇴하시겠습니까?
                 </p>
                 <ul className={styles.deleteWarningList}>
-                  <li>탈퇴 후 <strong>재가입은 한 달 뒤</strong> 가능합니다.</li>
+                  <li>탈퇴 후 <strong>한 달 뒤</strong> 재가입 가능합니다.</li>
                   <li>보유한 포인트 <strong>{userPoints.toLocaleString()}P</strong>가 모두 삭제됩니다.</li>
                   <li>작성하신 리뷰가 모두 삭제됩니다.</li>
                   <li>관심 부동산, 서베이 응답 등 모든 데이터가 삭제됩니다.</li>

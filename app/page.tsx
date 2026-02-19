@@ -9,6 +9,7 @@ import CoupangBanner from '@/components/CoupangBanner'
 import styles from './page.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAlert } from '@/contexts/AlertContext'
 
 const REGION_VALUES = [
   '서울특별시', '경기도', '인천광역시', '부산광역시', '대구광역시',
@@ -39,6 +40,7 @@ function extractRegion(address: string): string {
 
 export default function Home() {
   const { user, isLoading } = useAuth()
+  const { showWarning } = useAlert()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchRegion, setSearchRegion] = useState('')
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
@@ -49,10 +51,9 @@ export default function Home() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
 
-    // 탈퇴 블랙리스트 차단 메시지
     const blocked = params.get('blocked')
     if (blocked) {
-      setTimeout(() => alert(decodeURIComponent(blocked)), 300)
+      setTimeout(() => showWarning(decodeURIComponent(blocked)), 300)
       params.delete('blocked')
       const newUrl = params.toString()
         ? `${window.location.pathname}?${params.toString()}`

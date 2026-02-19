@@ -68,6 +68,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      const formatDateStr = (d: string | null) => d
+        ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`
+        : null
+
       const events = eventsData.map(item => ({
         id: item.id,
         code_value: item.code_value,
@@ -76,14 +80,12 @@ export async function GET(request: NextRequest) {
         prize_name: item.code_name,
         tickets_required: parseInt(item.extra_value1 || '1'),
         max_winners: parseInt(item.extra_value2 || '1'),
-        end_date: item.extra_value3
-          ? `${item.extra_value3.slice(0,4)}-${item.extra_value3.slice(4,6)}-${item.extra_value3.slice(6,8)}`
-          : '9999-12-31',
-        status: item.extra_value4 || 'ACTIVE',
+        end_date: formatDateStr(item.extra_value3) || '9999-12-31',
+        draw_date: formatDateStr(item.extra_value4),
+        status: item.extra_value5 || 'ACTIVE',
         total_entries: entryCounts[item.id] || 0,
       }))
 
-      // 내 응모 내역에 이벤트 정보 매핑 (N+1 제거: eventsData를 Map으로 활용)
       const eventMap = new Map(eventsData.map(e => [e.id, e]))
       const entries = (entriesResult.data || []).map(entry => {
         const ev = eventMap.get(entry.lucky_draw_id)
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
             id: ev.id,
             title: ev.code_name,
             prize_name: ev.code_name,
-            status: ev.extra_value4 || 'ACTIVE',
+            status: ev.extra_value5 || 'ACTIVE',
           } : null,
         }
       })
@@ -120,6 +122,10 @@ export async function GET(request: NextRequest) {
 
       if (error) throw error
 
+      const fmtDate = (d: string | null) => d
+        ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`
+        : null
+
       const events = (data || []).map(item => ({
         id: item.id,
         code_value: item.code_value,
@@ -128,10 +134,9 @@ export async function GET(request: NextRequest) {
         prize_name: item.code_name,
         tickets_required: parseInt(item.extra_value1 || '1'),
         max_winners: parseInt(item.extra_value2 || '1'),
-        end_date: item.extra_value3
-          ? `${item.extra_value3.slice(0,4)}-${item.extra_value3.slice(4,6)}-${item.extra_value3.slice(6,8)}`
-          : '9999-12-31',
-        status: item.extra_value4 || 'ACTIVE',
+        end_date: fmtDate(item.extra_value3) || '9999-12-31',
+        draw_date: fmtDate(item.extra_value4),
+        status: item.extra_value5 || 'ACTIVE',
         total_entries: 0,
       }))
 
@@ -170,7 +175,7 @@ export async function GET(request: NextRequest) {
       for (const entry of (data || [])) {
         const { data: eventData } = await supabaseAdmin
           .from('common_code_detail')
-          .select('id, code_name, extra_value4')
+          .select('id, code_name, extra_value5')
           .eq('id', entry.lucky_draw_id)
           .maybeSingle()
 
@@ -180,7 +185,7 @@ export async function GET(request: NextRequest) {
             id: eventData.id,
             title: eventData.code_name,
             prize_name: eventData.code_name,
-            status: eventData.extra_value4 || 'ACTIVE',
+            status: eventData.extra_value5 || 'ACTIVE',
           } : null,
         })
       }
