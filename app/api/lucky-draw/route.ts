@@ -22,14 +22,9 @@ export async function GET(request: NextRequest) {
           .select('total_tickets')
           .eq('supabase_user_id', userId)
           .maybeSingle(),
+        // RPC로 변경: 이벤트 목록 + 총 응모 수 (DB 내부 집계)
         supabaseAdmin
-          .from('common_code_detail')
-          .select('*')
-          .eq('code_group', 'LUCKY_DRAW_PRIZE')
-          .eq('use_yn', 'Y')
-          .lte('sta_ymd', today)
-          .gte('end_ymd', today)
-          .order('sort_order', { ascending: true }),
+          .rpc('get_lucky_draw_events_v2'),
         supabaseAdmin
           .from('lucky_draw_entries')
           .select('*')
@@ -52,57 +47,27 @@ export async function GET(request: NextRequest) {
           .limit(50),
       ])
 
-      // 이벤트 목록 매핑
-      const eventsData = eventsResult.data || []
-      const eventIds = eventsData.map(e => e.id)
-
-      // 응모 수 일괄 조회 (N+1 제거)
-      let entryCounts: Record<number, number> = {}
-      if (eventIds.length > 0) {
-        const { data: allEntries } = await supabaseAdmin
-          .from('lucky_draw_entries')
-          .select('lucky_draw_id, entries_count')
-          .in('lucky_draw_id', eventIds)
-        for (const e of (allEntries || [])) {
-          entryCounts[e.lucky_draw_id] = (entryCounts[e.lucky_draw_id] || 0) + (e.entries_count || 1)
-        }
-      }
-
-      const formatDateStr = (d: string | null) => d
-        ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`
-        : null
-
-      const events = eventsData.map(item => ({
-        id: item.id,
-        code_value: item.code_value,
-        title: item.code_name,
-        description: item.description || '',
-        prize_name: item.code_name,
-        tickets_required: parseInt(item.extra_value1 || '1'),
-        max_winners: parseInt(item.extra_value2 || '1'),
-        end_date: formatDateStr(item.extra_value3) || '9999-12-31',
-        draw_date: formatDateStr(item.extra_value4),
-        status: item.extra_value5 || 'ACTIVE',
-        total_entries: entryCounts[item.id] || 0,
-      }))
-
-      const eventMap = new Map(eventsData.map(e => [e.id, e]))
+      const events = eventsResult.data || []
+      
+      // 이벤트 맵 생성 (내 응모 내역에 이벤트 정보 매핑용)
+      const eventMap = new Map(events.map((e: any) => [e.id, e]))
+      
       const entries = (entriesResult.data || []).map(entry => {
-        const ev = eventMap.get(entry.lucky_draw_id)
+        const ev: any = eventMap.get(entry.lucky_draw_id)
         return {
           ...entry,
           event: ev ? {
             id: ev.id,
-            title: ev.code_name,
-            prize_name: ev.code_name,
-            status: ev.extra_value5 || 'ACTIVE',
+            title: ev.title, // RPC 반환값은 이미 title
+            prize_name: ev.prize_name, // RPC 반환값은 이미 prize_name
+            status: ev.status,
           } : null,
         }
       })
 
       return NextResponse.json({
         tickets: ticketsResult.data?.total_tickets || 0,
-        events,
+        events, // RPC 결과 그대로 반환 (이미 포맷팅, 카운팅 완료됨)
         entries,
         cost: costResult.data ? parseInt(costResult.data.extra_value1) : 1000,
         transactions: historyResult.data || [],
@@ -110,46 +75,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (action === 'events') {
-      const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+      // RPC로 변경: 단순히 이벤트 목록만 조회할 때도 최적화된 함수 사용
       const { data, error } = await supabaseAdmin
-        .from('common_code_detail')
-        .select('*')
-        .eq('code_group', 'LUCKY_DRAW_PRIZE')
-        .eq('use_yn', 'Y')
-        .lte('sta_ymd', today)
-        .gte('end_ymd', today)
-        .order('sort_order', { ascending: true })
+        .rpc('get_lucky_draw_events_v2')
 
       if (error) throw error
-
-      const fmtDate = (d: string | null) => d
-        ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`
-        : null
-
-      const events = (data || []).map(item => ({
-        id: item.id,
-        code_value: item.code_value,
-        title: item.code_name,
-        description: item.description || '',
-        prize_name: item.code_name,
-        tickets_required: parseInt(item.extra_value1 || '1'),
-        max_winners: parseInt(item.extra_value2 || '1'),
-        end_date: fmtDate(item.extra_value3) || '9999-12-31',
-        draw_date: fmtDate(item.extra_value4),
-        status: item.extra_value5 || 'ACTIVE',
-        total_entries: 0,
-      }))
-
-      // lucky_draw_entries에서 각 이벤트별 응모 수 집계
-      for (const event of events) {
-        const { count } = await supabaseAdmin
-          .from('lucky_draw_entries')
-          .select('*', { count: 'exact', head: true })
-          .eq('lucky_draw_id', event.id)
-        event.total_entries = count || 0
-      }
-
-      return NextResponse.json({ events })
+      
+      return NextResponse.json({ events: data || [] })
     }
 
     if (action === 'my-tickets' && userId) {
