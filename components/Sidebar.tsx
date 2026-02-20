@@ -89,7 +89,6 @@ export default function Sidebar({
   const [referralCopied, setReferralCopied] = useState(false)
   const [isPointHistoryExpanded, setIsPointHistoryExpanded] = useState(false)
   const [isTicketHistoryExpanded, setIsTicketHistoryExpanded] = useState(false)
-  const [isMyEntriesExpanded, setIsMyEntriesExpanded] = useState(false)
   
   // PWA 설치 프롬프트 감지 + 모바일 판별
   useEffect(() => {
@@ -808,7 +807,6 @@ export default function Sidebar({
                 setIsPolicyExpanded(false)
                 setIsPointHistoryExpanded(false)
                 setIsTicketHistoryExpanded(false)
-                setIsMyEntriesExpanded(false)
                 setCurrentScreen('points')
               }}
             >
@@ -872,24 +870,11 @@ export default function Sidebar({
                   onClick={() => {
                     loadLuckyDrawData()
                     setIsTicketHistoryExpanded(false)
-                    setIsMyEntriesExpanded(false)
                     setCurrentScreen('luckydraw')
                   }}
                 >
                   <span className={styles.navIcon}>🎰</span>
                   <span className={styles.navLabel}>럭키드로우</span>
-                  <span className={styles.chevron}>›</span>
-                </button>
-              )}
-
-              {/* 광고보기 버튼 (설정에서 활성화된 경우에만 표시) */}
-              {isAdVisible && (
-                <button 
-                  className={styles.navItem} 
-                  onClick={() => setIsAdModalOpen(true)}
-                >
-                  <span className={styles.navIcon}>📺</span>
-                  <span className={styles.navLabel}>광고보기 (10P 적립)</span>
                   <span className={styles.chevron}>›</span>
                 </button>
               )}
@@ -1332,6 +1317,38 @@ export default function Sidebar({
                   </div>
                 </div>
 
+                {/* 광고 시청으로 포인트 적립 (콘텐츠 노출 관리에서 활성화된 경우만) */}
+                {isAdVisible && (
+                  <div className={styles.pointsSection}>
+                    <div style={{
+                      padding: '16px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
+                      border: '1px solid #fed7aa',
+                      textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: '13px', color: '#9a3412', marginBottom: '10px', fontWeight: 500 }}>
+                        광고를 시청하고 포인트를 적립하세요
+                      </div>
+                      <button
+                        onClick={() => setIsAdModalOpen(true)}
+                        style={{
+                          padding: '10px 24px',
+                          borderRadius: '8px',
+                          border: '1px solid #ea580c',
+                          background: '#ea580c',
+                          color: 'white',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        📺 광고 시청하기
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* 친구 초대 (리퍼럴) */}
                 <div className={styles.pointsSection}>
                   <h4 className={styles.sectionTitle}>👫 친구 초대</h4>
@@ -1673,46 +1690,6 @@ export default function Sidebar({
                     )}
                   </div>
 
-                  {/* 내 응모 내역 (아코디언) */}
-                  <div className={styles.pointsSection}>
-                    <button
-                      className={styles.sectionTitleButton}
-                      onClick={() => setIsMyEntriesExpanded(!isMyEntriesExpanded)}
-                    >
-                      <span>📋 내 응모 내역 {myEntries.length > 0 ? `(${myEntries.length})` : ''}</span>
-                      <span className={styles.expandIcon}>{isMyEntriesExpanded ? '▼' : '▶'}</span>
-                    </button>
-                    {isMyEntriesExpanded && (
-                      myEntries.length === 0 ? (
-                        <div className={styles.emptyState} style={{ padding: '24px 0' }}>
-                          <div style={{ fontSize: '14px', color: '#94a3b8' }}>응모 내역이 없습니다.</div>
-                        </div>
-                      ) : (
-                        myEntries.map(entry => (
-                          <div key={entry.id} className={styles.transactionItem}>
-                            <div className={styles.transactionInfo}>
-                              <span className={styles.transactionDesc}>
-                                {entry.event?.title || '이벤트'}
-                              </span>
-                              <span className={styles.transactionDate}>
-                                {new Date(entry.created_at).toLocaleDateString('ko-KR')}
-                              </span>
-                            </div>
-                            <span style={{
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: entry.is_winner ? '#dcfce7' : entry.event?.status === 'COMPLETED' ? '#fee2e2' : '#f1f5f9',
-                              color: entry.is_winner ? '#15803d' : entry.event?.status === 'COMPLETED' ? '#dc2626' : '#64748b',
-                            }}>
-                              {entry.is_winner ? '🎉 당첨' : entry.event?.status === 'COMPLETED' ? '미당첨' : '추첨 대기'}
-                            </span>
-                          </div>
-                        ))
-                      )
-                    )}
-                  </div>
 
                   {/* 예정된 이벤트 */}
                   {luckyDrawEvents.filter(e => e.status === 'UPCOMING').length > 0 && (

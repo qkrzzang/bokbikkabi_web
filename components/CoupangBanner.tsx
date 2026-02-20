@@ -38,6 +38,7 @@ export default function CoupangBanner({ position = 'bottom', device = 'all' }: C
 
   return (
     <div className={`${styles.wrapper} ${position === 'top' ? styles.top : styles.bottom} ${device === 'mobile' ? styles.mobileOnly : device === 'pc' ? styles.pcOnly : ''}`}>
+      <span className={styles.adLabel}>광고</span>
       <iframe
         ref={iframeRef}
         className={styles.bannerIframe}

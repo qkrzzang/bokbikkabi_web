@@ -45,12 +45,11 @@ BEGIN
       ELSE NULL::TEXT
     END AS draw_date,
     COALESCE(c.extra_value5, 'ACTIVE')::TEXT AS status,
-    -- 서브쿼리를 통한 빠른 카운팅 (인덱스 활용)
-    (
-      SELECT COUNT(*)
+    COALESCE((
+      SELECT SUM(e.entries_count)
       FROM lucky_draw_entries e
       WHERE e.lucky_draw_id = c.id
-    )::BIGINT AS total_entries
+    ), 0)::BIGINT AS total_entries
   FROM common_code_detail c
   WHERE c.code_group = 'LUCKY_DRAW_PRIZE'
     AND c.use_yn = 'Y'

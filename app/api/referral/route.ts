@@ -77,27 +77,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const { action, userId, ip } = await request.json()
-
-    if (!userId) {
-      return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
-    }
-
-    if (action === 'process-reward') {
-      const { data, error } = await supabaseAdmin.rpc('process_referral_reward', {
-        p_referee_id: userId,
-        p_signup_ip: ip || null,
-      })
-
-      if (error) throw error
-      return NextResponse.json(data)
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
-  } catch (error: any) {
-    console.error('[referral POST]', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+export async function POST() {
+  return NextResponse.json(
+    { error: '리퍼럴 보상은 DB 트리거를 통해 자동 처리됩니다.' },
+    { status: 403 }
+  )
 }

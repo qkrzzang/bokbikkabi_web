@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import styles from './CameraButton.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -8,147 +8,16 @@ import { useAuthCheck } from '@/components/AuthGuard'
 import { useAlert } from '@/contexts/AlertContext'
 import confetti from 'canvas-confetti'
 import { trackOcrFail, trackOcrSuccess } from '@/lib/gtag'
-// heic2any는 window를 참조하므로 동적 import 사용 (SSR 방지)
-
-// ── HEIC 파일 감지 유틸리티 ──
-function isHeicFile(file: File): boolean {
-  const type = file.type.toLowerCase()
-  const name = file.name.toLowerCase()
-  return (
-    type === 'image/heic' ||
-    type === 'image/heif' ||
-    name.endsWith('.heic') ||
-    name.endsWith('.heif')
-  )
-}
-
-// ── iOS에서 type이 비어있는 이미지 파일 감지 ──
-function isImageFileLoose(file: File): boolean {
-  if (file.type.startsWith('image/')) return true
-  // iOS Safari에서 HEIC 파일의 type이 빈 문자열일 수 있음
-  const name = file.name.toLowerCase()
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic', '.heif', '.tiff', '.tif']
-  return imageExtensions.some(ext => name.endsWith(ext))
-}
-
-// ── HEIC → JPEG 변환 ──
-async function convertHeicToJpeg(file: File): Promise<File> {
-  console.log('[HEIC] 변환 시작:', file.name, file.type, file.size)
-  try {
-    const heic2any = (await import('heic2any')).default
-    const result = await heic2any({
-      blob: file,
-      toType: 'image/jpeg',
-      quality: 0.9,
-    })
-    const jpegBlob = Array.isArray(result) ? result[0] : result
-    const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
-    const convertedFile = new File([jpegBlob], newName, { type: 'image/jpeg' })
-    console.log('[HEIC] 변환 완료:', convertedFile.name, convertedFile.type, convertedFile.size)
-    return convertedFile
-  } catch (error) {
-    console.error('[HEIC] 변환 실패:', error)
-    throw new Error('HEIC 이미지를 변환할 수 없습니다. 다른 형식의 이미지를 사용해주세요.')
-  }
-}
-
-// ── Base64 데이터 URI 검증 및 정규화 ──
-function validateAndNormalizeBase64(dataUrl: string): string {
-  // 줄바꿈/공백 제거
-  const cleaned = dataUrl.replace(/[\r\n\s]/g, '')
-  // data:image/xxx;base64,... 패턴 검증
-  const base64Regex = /^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/
-  if (!base64Regex.test(cleaned)) {
-    console.warn('[Base64] 유효하지 않은 패턴 감지, 앞 50자:', cleaned.substring(0, 50))
-    // prefix가 없으면 JPEG로 기본 설정
-    if (!cleaned.startsWith('data:')) {
-      return `data:image/jpeg;base64,${cleaned}`
-    }
-  }
-  return cleaned
-}
-
-// ── 이미지 File을 안전하게 Base64로 변환 ──
-function safeReadAsDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    try {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        try {
-          const result = reader.result as string
-          const normalized = validateAndNormalizeBase64(result)
-          resolve(normalized)
-        } catch (error) {
-          console.error('[Base64] 정규화 중 에러:', error)
-          console.error('[Base64] 원본 데이터 앞 50자:', (reader.result as string)?.substring(0, 50))
-          reject(error)
-        }
-      }
-      reader.onerror = () => {
-        console.error('[FileReader] 읽기 실패:', reader.error)
-        reject(reader.error || new Error('파일 읽기에 실패했습니다.'))
-      }
-      reader.readAsDataURL(file)
-    } catch (error) {
-      console.error('[FileReader] The string did not match the expected pattern:', error)
-      console.error('[FileReader] 파일 정보:', { name: file.name, type: file.type, size: file.size })
-      reject(error)
-    }
-  })
-}
-
-// ── 이미지 리사이즈 (큰 이미지를 OCR 전에 축소하여 안정성 확보) ──
-function resizeImageIfNeeded(file: File, maxDimension: number = 4096): Promise<File> {
-  return new Promise((resolve) => {
-    // 2MB 이하이면 리사이즈 불필요
-    if (file.size <= 2 * 1024 * 1024) {
-      resolve(file)
-      return
-    }
-
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const { width, height } = img
-
-      // 이미 충분히 작은 경우
-      if (width <= maxDimension && height <= maxDimension) {
-        resolve(file)
-        return
-      }
-
-      const scale = Math.min(maxDimension / width, maxDimension / height)
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.round(width * scale)
-      canvas.height = Math.round(height * scale)
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        resolve(file)
-        return
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            const resized = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
-            console.log('[Resize] 이미지 리사이즈 완료:', { before: file.size, after: resized.size, scale: scale.toFixed(2) })
-            resolve(resized)
-          } else {
-            resolve(file)
-          }
-        },
-        'image/jpeg',
-        0.85
-      )
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      resolve(file) // 실패 시 원본 반환
-    }
-    img.src = url
-  })
-}
+import {
+  isHeicFile, isImageFileLoose, convertHeicToJpeg,
+  safeReadAsDataURL, resizeImageIfNeeded
+} from '@/lib/imageUtils'
+import {
+  getContractAgentNumbers, getContractAgentName, getContractAgentAddress,
+  stripAgentNumber, fetchExactAgent
+} from '@/lib/agentUtils'
+import { useReviewForm } from '@/hooks/useReviewForm'
+import { useCamera } from '@/hooks/useCamera'
 
 export default function CameraButton() {
   const { user: authUser } = useAuth()
@@ -194,95 +63,36 @@ export default function CameraButton() {
     contractIndex: number
   } | null>(null)
   
-  // 리뷰 작성 상태
-  const [transactionTags, setTransactionTags] = useState<string[]>([])
-  const [praiseTags, setPraiseTags] = useState<string[]>([])
-  const [regretTags, setRegretTags] = useState<string[]>([])
-  const [reviewRatings, setReviewRatings] = useState<Record<string, number>>({})
-  const [transactionTagOptions, setTransactionTagOptions] = useState<Array<{
-    code_value: string
-    code_name: string
-  }>>([])
-  const [praiseTagOptions, setPraiseTagOptions] = useState<Array<{
-    code_value: string
-    code_name: string
-    extra_value1: string | null
-  }>>([])
-  const [regretTagOptions, setRegretTagOptions] = useState<Array<{
-    code_value: string
-    code_name: string
-    extra_value1: string | null
-  }>>([])
-  const [detailEvaluations, setDetailEvaluations] = useState<Array<{
-    code_value: string
-    code_name: string
-    extra_value1: string | null
-    extra_value2: string | null
-    extra_value3: string | null
-    extra_value4: string | null
-    extra_value5: string | null
-  }>>([])
-  const [detailEvaluationsForLeaseAndSell, setDetailEvaluationsForLeaseAndSell] = useState<Array<{
-    code_value: string
-    code_name: string
-    extra_value1: string | null
-    extra_value2: string | null
-    extra_value3: string | null
-    extra_value4: string | null
-    extra_value5: string | null
-  }>>([])
-  // 거래 태그에 따라 활성 상세평가 항목 동적 전환
-  // 임차(세입자), 매수(구매) → DETAIL_EVALUATION
-  // 임대(집주인), 매도(판매) → DETAIL_EVALUATION_FOR_LEASE_AND_SELL
-  const activeDetailEvaluations = useMemo(() => {
-    const selectedTag = transactionTags[0] || ''
-    if (selectedTag.includes('임대') || selectedTag.includes('매도')) {
-      return detailEvaluationsForLeaseAndSell
-    }
-    return detailEvaluations
-  }, [transactionTags, detailEvaluations, detailEvaluationsForLeaseAndSell])
+  // 리뷰 작성 상태 (useReviewForm 훅으로 관리)
+  const {
+    transactionTags, setTransactionTags,
+    praiseTags, setPraiseTags,
+    regretTags, setRegretTags,
+    reviewRatings, setReviewRatings,
+    reviewText, setReviewText,
+    transactionTagOptions,
+    praiseTagOptions: filteredPraiseTagOptions,
+    regretTagOptions: filteredRegretTagOptions,
+    activeDetailEvaluations,
+    isReviewValid, isReviewLengthValid,
+    hasTransactionTag, hasAtLeastOneTag, allEvaluationsSelected
+  } = useReviewForm()
 
-  // 거래 태그에 따라 칭찬/아쉬움 태그 필터링
-  // extra_value1: 'BUY_AND_RENT' = 매수/임차, 'LEASE_AND_SELL' = 매도/임대, 'ALL' = 모두
-  const filteredPraiseTagOptions = useMemo(() => {
-    const selectedTag = transactionTags[0] || ''
-    if (!selectedTag) return praiseTagOptions
-    const isBuyOrRent = selectedTag.includes('매수') || selectedTag.includes('임차')
-    const isLeaseOrSell = selectedTag.includes('매도') || selectedTag.includes('임대')
-    return praiseTagOptions.filter(tag => {
-      const v = tag.extra_value1 || 'ALL'
-      if (v === 'ALL') return true
-      if (isBuyOrRent && v === 'BUY_AND_RENT') return true
-      if (isLeaseOrSell && v === 'LEASE_AND_SELL') return true
-      return false
-    })
-  }, [transactionTags, praiseTagOptions])
-
-  const filteredRegretTagOptions = useMemo(() => {
-    const selectedTag = transactionTags[0] || ''
-    if (!selectedTag) return regretTagOptions
-    const isBuyOrRent = selectedTag.includes('매수') || selectedTag.includes('임차')
-    const isLeaseOrSell = selectedTag.includes('매도') || selectedTag.includes('임대')
-    return regretTagOptions.filter(tag => {
-      const v = tag.extra_value1 || 'ALL'
-      if (v === 'ALL') return true
-      if (isBuyOrRent && v === 'BUY_AND_RENT') return true
-      if (isLeaseOrSell && v === 'LEASE_AND_SELL') return true
-      return false
-    })
-  }, [transactionTags, regretTagOptions])
-
-  const [reviewText, setReviewText] = useState('')
   const [showThankYouModal, setShowThankYouModal] = useState(false)
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false)
   const [hoverRatings, setHoverRatings] = useState<Record<string, number>>({})
   const [isAgreementChecked, setIsAgreementChecked] = useState(false)
   const [isConfettiLocked, setIsConfettiLocked] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
+  const { videoRef, canvasRef, startCamera: startCameraHook, stopCamera, capturePhoto } = useCamera({
+    onCapture: (dataUrl, file) => {
+      setCapturedImage(dataUrl)
+      setOriginalFile(file)
+      setMode('upload')
+    },
+    onError: (msg) => showWarning(msg)
+  })
 
   // 모달이 열릴 때 body 스크롤 잠금, 닫힐 때 복구
   useEffect(() => {
@@ -378,46 +188,6 @@ export default function CameraButton() {
       isMounted = false
       subscription.unsubscribe()
       window.removeEventListener('review:start', handleReviewStart)
-    }
-  }, [])
-
-  const fetchReviewCodeDetails = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('common_code_detail')
-        .select('code_group, code_value, code_name, extra_value1, extra_value2, extra_value3, extra_value4, extra_value5, sort_order, use_yn')
-        .in('code_group', ['TRANSACTION_TYPE', 'PRAISE_TAG', 'REGRET_TAG', 'DETAIL_EVALUATION', 'DETAIL_EVALUATION_FOR_LEASE_AND_SELL'])
-        .order('code_group', { ascending: true })
-        .order('sort_order', { ascending: true })
-
-      if (error) {
-        return
-      }
-
-      const activeData = (data || []).filter((item: any) => item.use_yn !== 'N')
-      setTransactionTagOptions(activeData.filter((item: any) => item.code_group === 'TRANSACTION_TYPE'))
-      setPraiseTagOptions(activeData.filter((item: any) => item.code_group === 'PRAISE_TAG'))
-      setRegretTagOptions(activeData.filter((item: any) => item.code_group === 'REGRET_TAG'))
-      setDetailEvaluations(activeData.filter((item: any) => item.code_group === 'DETAIL_EVALUATION'))
-      setDetailEvaluationsForLeaseAndSell(activeData.filter((item: any) => item.code_group === 'DETAIL_EVALUATION_FOR_LEASE_AND_SELL'))
-    } catch (error) {
-      // 모든 오류 조용히 처리
-    }
-  }
-
-  useEffect(() => {
-    let isMounted = true
-    
-    const loadCodeDetails = async () => {
-      if (isMounted) {
-        await fetchReviewCodeDetails()
-      }
-    }
-    
-    loadCodeDetails()
-    
-    return () => {
-      isMounted = false
     }
   }, [])
 
@@ -601,125 +371,6 @@ export default function CameraButton() {
   }, [showSuccess])
 
   // agent_number 정규화 헬퍼 (공백만 제거, 원본 최대 보존)
-  const normalizeAgentNum = (raw: any): string => {
-    const result = typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
-    if (!result) return ''
-    // 등록번호는 한글+숫자+하이픈 등 다양한 형식이 있으므로 공백만 제거
-    const normalized = result.replace(/\s+/g, '').trim()
-    if (result && result !== normalized) {
-      console.log(`[normalizeAgentNum] 정규화: "${result}" → "${normalized}"`)
-    }
-    return normalized
-  }
-
-  // 단일 agent_number 반환 (기존 호환 - 배열이면 첫 번째 반환)
-  const getContractAgentNumber = (contract: any): string => {
-    const numbers = getContractAgentNumbers(contract)
-    return numbers[0] || ''
-  }
-
-  // 배열로 agent_number(들) 반환 - 공동중개 지원
-  const getContractAgentNumbers = (contract: any): string[] => {
-    if (!contract || typeof contract !== 'object') {
-      console.warn('[getContractAgentNumbers] 유효하지 않은 계약 데이터:', typeof contract)
-      return []
-    }
-    const raw =
-      contract?.agent_number ??
-      contract?.agentNumber ??
-      contract?.agent_no ??
-      contract?.agentNo ??
-      contract?.registration_number ??
-      contract?.registrationNumber ??
-      contract?.broker_number ??
-      contract?.brokerNumber ??
-      contract?.license_number ??
-      contract?.licenseNumber ??
-      ''
-
-    console.log(`[getContractAgentNumbers] raw 값:`, raw, `(타입: ${typeof raw}, 배열: ${Array.isArray(raw)})`)
-
-    // 배열인 경우: 공동중개 (AI 분석에서 배열로 전달)
-    if (Array.isArray(raw)) {
-      const normalized = raw
-        .map((item: any) => normalizeAgentNum(item))
-        .filter((n: string) => n.length > 0)
-      console.log(`[getContractAgentNumbers] 배열 입력 (공동중개): ${normalized.length}개`, normalized)
-      return normalized
-    }
-
-    // 단일 문자열인 경우
-    const single = normalizeAgentNum(raw)
-    console.log(`[getContractAgentNumbers] 단일 입력: "${single}"`)
-    return single ? [single] : []
-  }
-
-  const getContractAgentName = (contract: any) => {
-    if (!contract || typeof contract !== 'object') {
-      return ''
-    }
-    const raw =
-      contract?.agent_name ??
-      contract?.agentName ??
-      contract?.office_name ??
-      contract?.officeName ??
-      contract?.broker_name ??
-      contract?.brokerName ??
-      contract?.realtor_name ??
-      contract?.realtorName ??
-      ''
-    return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
-  }
-
-  const getContractAgentAddress = (contract: any) => {
-    if (!contract || typeof contract !== 'object') return ''
-    const raw =
-      contract?.agent_address ??
-      contract?.agentAddress ??
-      contract?.address ??
-      contract?.road_address ??
-      contract?.roadAddress ??
-      contract?.broker_address ??
-      contract?.brokerAddress ??
-      ''
-    return typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
-  }
-
-
-  // 등록번호 정규화 (공백 + 하이픈 모두 제거)
-  const stripAgentNumber = (num: string) => num.replace(/[\s\-]/g, '')
-
-  // 등록번호 조회 — DB에서 replace(replace(agent_number,'-',''),' ','') 로 비교
-  const fetchExactAgent = async (agentNumber: string) => {
-    const trimmedNumber = agentNumber.trim()
-    console.log(`[클라이언트] agent_master RPC 조회: "${trimmedNumber}"`)
-    
-    try {
-      const { data, error } = await supabase
-        .rpc('search_agent_by_number', { input_number: trimmedNumber })
-
-      if (error) {
-        console.error('[클라이언트] ❌ RPC 오류:', error.message)
-        return null
-      }
-
-      if (data && data.length > 0) {
-        console.log(`[클라이언트] ✅ 매칭 성공:`, data[0].agent_name, `(DB: "${data[0].agent_number}")`)
-        return data[0]
-      }
-
-      console.log(`[클라이언트] ⚠️ 조회 실패 (DB에 '${trimmedNumber}' 없음)`)
-      return null
-    } catch (error) {
-      // AbortError는 조용히 처리 (정상적인 취소 동작)
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        console.log('[클라이언트] ⚠️ 요청 취소됨 (AbortError)')
-        return null
-      }
-      console.error('[클라이언트] ❌ 예외 발생:', error)
-      return null
-    }
-  }
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -807,59 +458,9 @@ export default function CameraButton() {
   }
 
   const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setMode('camera')
-      }
-    } catch (error) {
-      console.error('카메라 접근 실패:', error)
-      showWarning('카메라 접근 권한이 필요합니다.')
-    }
-  }
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
-  }
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const canvas = canvasRef.current
-      const video = videoRef.current
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(video, 0, 0)
-
-        try {
-          const imageData = canvas.toDataURL('image/jpeg')
-          const normalizedImageData = validateAndNormalizeBase64(imageData)
-          setCapturedImage(normalizedImageData)
-        } catch (error) {
-          console.error('[capturePhoto] toDataURL 에러:', error)
-          console.error('[capturePhoto] canvas 크기:', { width: canvas.width, height: canvas.height })
-          setCapturedImage(null)
-        }
-        
-        // Canvas를 Blob으로 변환하여 File 객체 생성
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], 'captured-image.jpg', { type: 'image/jpeg' })
-            setOriginalFile(file)
-          }
-        }, 'image/jpeg', 0.9)
-        
-        stopCamera()
-        setMode('upload')
-      }
+    await startCameraHook()
+    if (videoRef.current?.srcObject) {
+      setMode('camera')
     }
   }
 
@@ -1776,21 +1377,6 @@ export default function CameraButton() {
         console.error('[포인트 지급] 오류:', pointErr)
       }
 
-      // 리퍼럴 보상 처리 (첫 리뷰 작성 시 추천인에게 포인트 지급)
-      try {
-        const res = await fetch('/api/referral', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'process-reward', userId: authUser.id }),
-        })
-        const refResult = await res.json()
-        if (refResult.success) {
-          console.log('[리퍼럴] 보상 지급 완료:', refResult)
-        }
-      } catch (refErr) {
-        console.error('[리퍼럴] 보상 처리 오류:', refErr)
-      }
-
       if (reviewAgentName && reviewAgentName !== '-') {
         window.dispatchEvent(new CustomEvent('review:saved', { detail: { query: reviewAgentName } }))
       }
@@ -1811,22 +1397,6 @@ export default function CameraButton() {
   }
 
   const reviewCharCount = reviewText.trim().length
-  const isReviewLengthValid = reviewCharCount >= 20
-  
-  // 거래 태그 선택 확인
-  const hasTransactionTag = transactionTags.length > 0
-  
-  // 칭찬 또는 아쉬움 태그 최소 1개 선택 확인
-  const hasAtLeastOneTag = praiseTags.length > 0 || regretTags.length > 0
-  
-  // 모든 상세 평가 항목 선택 확인
-  const allEvaluationsSelected = activeDetailEvaluations.every(evaluation => {
-    const rating = reviewRatings[evaluation.code_value]
-    return rating && rating > 0
-  })
-  
-  // 전체 리뷰 유효성 확인
-  const isReviewValid = isReviewLengthValid && hasTransactionTag && hasAtLeastOneTag && allEvaluationsSelected
   
   const primaryReviewIndex = (() => {
     const keys = Object.keys(selectedAgents)

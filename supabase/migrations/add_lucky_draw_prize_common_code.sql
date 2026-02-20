@@ -10,7 +10,8 @@
 --   extra_value1: 필요 응모권 수
 --   extra_value2: 당첨 인원
 --   extra_value3: 마감일 (YYYYMMDD)
---   extra_value4: 상태 (ACTIVE / UPCOMING / COMPLETED)
+--   extra_value4: 추첨일 (YYYYMMDD)
+--   extra_value5: 상태 (ACTIVE / UPCOMING / COMPLETED)
 --   use_yn: 사용 여부
 --   sta_ymd / end_ymd: 노출 기간
 
@@ -55,7 +56,7 @@ BEGIN
     RETURN json_build_object('success', false, 'error', '존재하지 않는 이벤트입니다.');
   END IF;
 
-  IF COALESCE(v_event.extra_value4, 'ACTIVE') <> 'ACTIVE' THEN
+  IF COALESCE(v_event.extra_value5, 'ACTIVE') <> 'ACTIVE' THEN
     RETURN json_build_object('success', false, 'error', '현재 응모할 수 없는 이벤트입니다.');
   END IF;
 
