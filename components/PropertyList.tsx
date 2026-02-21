@@ -633,8 +633,12 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
   if (loading) {
     return (
       <div className={styles.loadingState}>
-        <div className={styles.spinner}></div>
-        <p>검색 중...</p>
+        <div className="iconLoader">
+          <div className="iconLoaderIcons">
+            <span>🏠</span><span>🔍</span><span>📄</span><span>🏦</span><span>🔑</span><span>😊</span>
+          </div>
+          <p style={{ fontSize: '14px', color: '#64748b' }}>검색 중...</p>
+        </div>
       </div>
     )
   }

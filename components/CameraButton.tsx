@@ -2328,10 +2328,35 @@ export default function CameraButton() {
                   </>
                 )}
                 {pendingAgentSelection.agentNumber && (
-                  <span className={styles.agentSelectionWarning}>
-                    (OCR 등록번호: {pendingAgentSelection.agentNumber})
+                  <span
+                    className={styles.agentSelectionWarning}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}
+                  >
+                    <span
+                      onClick={() => {
+                        navigator.clipboard.writeText(pendingAgentSelection.agentNumber!).then(() => {
+                          showSuccess('등록번호가 복사되었습니다.')
+                        }).catch(() => {
+                          showWarning('복사에 실패했습니다.')
+                        })
+                      }}
+                      className={styles.copyableNumber}
+                      title="클릭하여 복사"
+                    >
+                      OCR 등록번호: {pendingAgentSelection.agentNumber} 📋
+                    </span>
                   </span>
                 )}
+                <div style={{ marginTop: '4px', fontSize: '12px' }}>
+                  <a
+                    href="https://www.vworld.kr/dtld/broker/dtld_list_s001.do"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#7C3AED', fontWeight: 600, textDecoration: 'underline' }}
+                  >
+                    부동산 중개업소 조회 (공간정보 오픈플랫폼)
+                  </a>
+                </div>
               </p>
               <div className={styles.agentList}>
                 {pendingAgentSelection.agents.map((agent) => (

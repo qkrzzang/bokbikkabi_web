@@ -16,6 +16,9 @@ DECLARE
   v_points INT;
   v_transaction_id BIGINT;
 BEGIN
+  -- 동시 호출 방지: 유저별 advisory lock (트랜잭션 종료 시 자동 해제)
+  PERFORM pg_advisory_xact_lock(hashtext('daily_login_' || p_user_id::TEXT));
+
   -- 한국 시간(KST) 기준 오늘 날짜 계산
   v_kst_today := (NOW() AT TIME ZONE 'Asia/Seoul')::DATE;
   

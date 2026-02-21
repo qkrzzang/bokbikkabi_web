@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import SearchBar from '@/components/SearchBar'
 import PropertyList from '@/components/PropertyList'
 import CopyBanner from '@/components/CopyBanner'
@@ -163,14 +163,14 @@ export default function Home() {
     return () => window.removeEventListener('visibility:changed', handleVisibilityChanged)
   }, [])
 
-  // 접속 시 5P 적립 (하루 1회) - 인증 완료 후 실행
+  // 접속 시 5P 적립 (하루 1회) - 인증 완료 후 1회만 실행
+  const dailyLoginCalledRef = useRef(false)
   useEffect(() => {
-    // 인증 로딩 중이거나 사용자가 없으면 실행하지 않음
-    if (isLoading || !user) return
+    if (isLoading || !user || dailyLoginCalledRef.current) return
+    dailyLoginCalledRef.current = true
 
     const awardDailyLoginPoints = async () => {
       try {
-        // DB 함수를 통해 안전하게 일일 로그인 포인트 지급 확인 및 처리
         const { data, error } = await supabase.rpc('check_and_award_daily_login', {
           p_user_id: user.id
         })

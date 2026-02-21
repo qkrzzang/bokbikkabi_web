@@ -976,8 +976,12 @@ export default function Sidebar({
             <div className={styles.screenContent}>
               {myContractsLoading ? (
                 <div className={styles.emptyState}>
-                  <div className={styles.loadingSpinner} />
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>리뷰를 불러오는 중...</div>
+                  <div className="iconLoader">
+                    <div className="iconLoaderIcons">
+                      <span>🏠</span><span>🔍</span><span>📄</span><span>🏦</span><span>🔑</span><span>😊</span>
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#64748b' }}>리뷰를 불러오는 중...</div>
+                  </div>
                 </div>
               ) : myContracts.length === 0 ? (
                 <div className={styles.emptyState}>
@@ -1504,8 +1508,12 @@ export default function Sidebar({
             <div className={styles.screenContent}>
               {isLuckyDrawLoading ? (
                 <div className={styles.emptyState}>
-                  <div className={styles.loadingSpinner} />
-                  <div style={{ fontSize: '14px', color: '#64748b' }}>로딩 중...</div>
+                  <div className="iconLoader">
+                    <div className="iconLoaderIcons">
+                      <span>🏠</span><span>🔍</span><span>📄</span><span>🏦</span><span>🔑</span><span>😊</span>
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#64748b' }}>로딩 중...</div>
+                  </div>
                 </div>
               ) : (
                 <div className={styles.pointsContainer}>

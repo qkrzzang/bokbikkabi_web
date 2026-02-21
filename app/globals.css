@@ -76,3 +76,35 @@ a {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* 서비스 공통 아이콘 로딩 애니메이션 */
+.iconLoader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.iconLoaderIcons {
+  display: flex;
+  gap: 6px;
+  font-size: 24px;
+}
+
+.iconLoaderIcons span {
+  opacity: 0.2;
+  animation: iconPulse 3s ease-in-out infinite;
+}
+
+.iconLoaderIcons span:nth-child(1) { animation-delay: 0s; }
+.iconLoaderIcons span:nth-child(2) { animation-delay: 0.5s; }
+.iconLoaderIcons span:nth-child(3) { animation-delay: 1.0s; }
+.iconLoaderIcons span:nth-child(4) { animation-delay: 1.5s; }
+.iconLoaderIcons span:nth-child(5) { animation-delay: 2.0s; }
+.iconLoaderIcons span:nth-child(6) { animation-delay: 2.5s; }
+
+@keyframes iconPulse {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  16.67% { opacity: 1; transform: scale(1.3); }
+  33.33% { opacity: 0.2; transform: scale(1); }
+}
