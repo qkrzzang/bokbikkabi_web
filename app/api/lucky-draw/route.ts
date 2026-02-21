@@ -13,25 +13,15 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action')
     const userId = searchParams.get('userId')
 
-    // 통합 조회: 5개 쿼리를 병렬 실행하여 한 번의 API 호출로 처리
+    // 통합 조회: 캐시(events, cost) + RPC 1회(사용자 데이터) = 최대 2회 네트워크 호출
     if (action === 'all' && userId) {
       const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
 
-      const [ticketsResult, events, entriesResult, cost, historyResult] = await Promise.all([
-        supabaseAdmin
-          .from('user_tickets')
-          .select('total_tickets')
-          .eq('supabase_user_id', userId)
-          .maybeSingle(),
+      const [events, cost, userDataResult] = await Promise.all([
         cached('ld:events', 300, async () => {
           const { data } = await supabaseAdmin.rpc('get_lucky_draw_events_v2')
           return data || []
         }),
-        supabaseAdmin
-          .from('lucky_draw_entries')
-          .select('*')
-          .eq('supabase_user_id', userId)
-          .order('created_at', { ascending: false }),
         cached('ld:cost', 3600, async () => {
           const { data } = await supabaseAdmin
             .from('common_code_detail')
@@ -44,17 +34,13 @@ export async function GET(request: NextRequest) {
             .maybeSingle()
           return data ? parseInt(data.extra_value1) : 1000
         }),
-        supabaseAdmin
-          .from('ticket_transactions')
-          .select('*')
-          .eq('supabase_user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(50),
+        supabaseAdmin.rpc('get_user_lucky_draw_data', { p_user_id: userId }),
       ])
 
+      const userData = userDataResult.data || { tickets: 0, entries: [], transactions: [] }
       const eventMap = new Map((events as any[]).map((e: any) => [e.id, e]))
-      
-      const entries = (entriesResult.data || []).map(entry => {
+
+      const entries = (userData.entries || []).map((entry: any) => {
         const ev: any = eventMap.get(entry.lucky_draw_id)
         return {
           ...entry,
@@ -68,11 +54,11 @@ export async function GET(request: NextRequest) {
       })
 
       return NextResponse.json({
-        tickets: ticketsResult.data?.total_tickets || 0,
+        tickets: userData.tickets || 0,
         events,
         entries,
         cost,
-        transactions: historyResult.data || [],
+        transactions: userData.transactions || [],
       })
     }
 
