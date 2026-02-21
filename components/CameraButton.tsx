@@ -1377,6 +1377,13 @@ export default function CameraButton() {
         console.error('[포인트 지급] 오류:', pointErr)
       }
 
+      // 검색 캐시 무효화 (리뷰 반영을 위해)
+      fetch('/api/search-agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'invalidate-cache' }),
+      }).catch(() => {})
+
       if (reviewAgentName && reviewAgentName !== '-') {
         window.dispatchEvent(new CustomEvent('review:saved', { detail: { query: reviewAgentName } }))
       }

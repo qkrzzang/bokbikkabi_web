@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { cached, hashQuery, invalidate } from '@/lib/redis'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * 중개사무소 검색 API (서버 사이드)
- *
- * 스마트 파싱: 공백으로 토큰 분리 후 AND 검색
- * 각 토큰이 상호명 또는 주소에 포함되면 결과에 포함
- *
- * GET /api/search-agents?q=강남 사랑&region=서울특별시
- * GET /api/search-agents?q=미금&region=성남&mode=autocomplete (자동완성: 경량 응답)
- */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const query = searchParams.get('q')?.trim() || ''
@@ -22,6 +14,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: [], reviews: {} })
   }
 
+  try {
+    const cacheKey = `search:${mode || 'full'}:${region || 'all'}:${hashQuery(query)}`
+    const ttl = mode === 'autocomplete' ? 3600 : 1800
+
+    const result = await cached(cacheKey, ttl, async () => {
+      return await searchAgents(query, region, mode)
+    })
+
+    return NextResponse.json(result)
+  } catch (error: any) {
+    console.error('[search-agents] 예외:', error.message)
+    return NextResponse.json(
+      { error: 'DB 조회 중 오류가 발생했습니다.', details: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+async function searchAgents(query: string, region: string, mode: string) {
   try {
     // 스마트 파싱: 공백으로 토큰 분리
     const tokens = query
@@ -48,11 +59,7 @@ export async function GET(request: NextRequest) {
     const { data: agents, error: agentsError } = await dbQuery.limit(limit)
 
     if (agentsError) {
-      console.error('[search-agents] 검색 오류:', agentsError.message)
-      return NextResponse.json(
-        { error: 'DB 조회 중 오류가 발생했습니다.', details: agentsError.message },
-        { status: 500 }
-      )
+      throw new Error(agentsError.message)
     }
 
     // AND 필터링: 모든 토큰이 상호명+주소 결합 텍스트에 포함되어야 함
@@ -90,7 +97,7 @@ export async function GET(request: NextRequest) {
     // 자동완성 모드: 리뷰 조회 생략 (경량 응답)
     if (mode === 'autocomplete') {
       const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
-      return NextResponse.json({ data: resultAgents, reviews: {} })
+      return { data: resultAgents, reviews: {} }
     }
 
     // 리뷰 평균 별점 + 건수 조회
@@ -162,12 +169,27 @@ export async function GET(request: NextRequest) {
 
     const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
 
-    return NextResponse.json({ data: resultAgents, reviews, reviewCounts })
+    return { data: resultAgents, reviews, reviewCounts }
   } catch (error: any) {
-    console.error('[search-agents] 예외:', error.message)
-    return NextResponse.json(
-      { error: 'DB 조회 중 오류가 발생했습니다.', details: error.message },
-      { status: 500 }
-    )
+    console.error('[searchAgents] DB 오류:', error.message)
+    throw error
+  }
+}
+
+/**
+ * 리뷰 등록/변경 후 검색 캐시 무효화용 엔드포인트
+ * POST /api/search-agents  { action: 'invalidate-cache' }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const { action } = await request.json()
+    if (action === 'invalidate-cache') {
+      await invalidate('search:*')
+      return NextResponse.json({ success: true })
+    }
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  } catch (error: any) {
+    console.error('[search-agents POST]', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

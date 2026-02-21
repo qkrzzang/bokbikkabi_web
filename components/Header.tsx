@@ -507,6 +507,15 @@ export default function Header() {
         setTimeout(() => setShowSaveSuccessToast(false), 3000)
       }
       
+      // 럭키드로우 이벤트 변경 시 캐시 무효화
+      if (editingDetail.code_group === 'LUCKY_DRAW_PRIZE' || editingDetail.code_group === 'LUCKY_DRAW_CONFIG') {
+        fetch('/api/lucky-draw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'invalidate-cache' }),
+        }).catch(() => {})
+      }
+
       setEditingDetail(null)
       setIsNewDetail(false)
       fetchCodeDetail()

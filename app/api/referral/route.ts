@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cached } from '@/lib/redis'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,55 +18,62 @@ export async function GET(request: NextRequest) {
     }
 
     if (action === 'my-stats') {
-      const now = new Date()
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
+      const stats = await cached(`ref:${userId}:stats`, 120, async () => {
+        const now = new Date()
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
 
-      const [totalResult, monthlyResult] = await Promise.all([
-        supabaseAdmin
-          .from('referral_rewards')
-          .select('id', { count: 'exact', head: true })
-          .eq('referrer_id', userId),
-        supabaseAdmin
-          .from('referral_rewards')
-          .select('id', { count: 'exact', head: true })
-          .eq('referrer_id', userId)
-          .gte('created_at', monthStart)
-          .lt('created_at', monthEnd),
-      ])
+        const [totalResult, monthlyResult] = await Promise.all([
+          supabaseAdmin
+            .from('referral_rewards')
+            .select('id', { count: 'exact', head: true })
+            .eq('referrer_id', userId),
+          supabaseAdmin
+            .from('referral_rewards')
+            .select('id', { count: 'exact', head: true })
+            .eq('referrer_id', userId)
+            .gte('created_at', monthStart)
+            .lt('created_at', monthEnd),
+        ])
 
-      return NextResponse.json({
-        total_referrals: totalResult.count || 0,
-        monthly_referrals: monthlyResult.count || 0,
-        monthly_limit: 10,
+        return {
+          total_referrals: totalResult.count || 0,
+          monthly_referrals: monthlyResult.count || 0,
+          monthly_limit: 10,
+        }
       })
+
+      return NextResponse.json(stats)
     }
 
     if (action === 'my-referrals') {
-      const { data, error } = await supabaseAdmin
-        .from('referral_rewards')
-        .select('id, referee_id, referrer_points, created_at')
-        .eq('referrer_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50)
+      const referrals = await cached(`ref:${userId}:list`, 300, async () => {
+        const { data, error } = await supabaseAdmin
+          .from('referral_rewards')
+          .select('id, referee_id, referrer_points, created_at')
+          .eq('referrer_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50)
 
-      if (error) throw error
+        if (error) throw error
 
-      const referrals = []
-      for (const r of (data || [])) {
-        const { data: referee } = await supabaseAdmin
-          .from('users')
-          .select('nickname')
-          .eq('supabase_user_id', r.referee_id)
-          .maybeSingle()
+        const result = []
+        for (const r of (data || [])) {
+          const { data: referee } = await supabaseAdmin
+            .from('users')
+            .select('nickname')
+            .eq('supabase_user_id', r.referee_id)
+            .maybeSingle()
 
-        referrals.push({
-          ...r,
-          referee_nickname: referee?.nickname
-            ? referee.nickname.charAt(0) + '**'
-            : '***',
-        })
-      }
+          result.push({
+            ...r,
+            referee_nickname: referee?.nickname
+              ? referee.nickname.charAt(0) + '**'
+              : '***',
+          })
+        }
+        return result
+      })
 
       return NextResponse.json({ referrals })
     }

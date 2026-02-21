@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cached, invalidate } from '@/lib/redis'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,29 +17,33 @@ export async function GET(request: NextRequest) {
     if (action === 'all' && userId) {
       const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
 
-      const [ticketsResult, eventsResult, entriesResult, costResult, historyResult] = await Promise.all([
+      const [ticketsResult, events, entriesResult, cost, historyResult] = await Promise.all([
         supabaseAdmin
           .from('user_tickets')
           .select('total_tickets')
           .eq('supabase_user_id', userId)
           .maybeSingle(),
-        // RPC로 변경: 이벤트 목록 + 총 응모 수 (DB 내부 집계)
-        supabaseAdmin
-          .rpc('get_lucky_draw_events_v2'),
+        cached('ld:events', 300, async () => {
+          const { data } = await supabaseAdmin.rpc('get_lucky_draw_events_v2')
+          return data || []
+        }),
         supabaseAdmin
           .from('lucky_draw_entries')
           .select('*')
           .eq('supabase_user_id', userId)
           .order('created_at', { ascending: false }),
-        supabaseAdmin
-          .from('common_code_detail')
-          .select('extra_value1')
-          .eq('code_group', 'LUCKY_DRAW_CONFIG')
-          .eq('code_value', 'TICKET_COST')
-          .eq('use_yn', 'Y')
-          .lte('sta_ymd', today)
-          .gte('end_ymd', today)
-          .maybeSingle(),
+        cached('ld:cost', 3600, async () => {
+          const { data } = await supabaseAdmin
+            .from('common_code_detail')
+            .select('extra_value1')
+            .eq('code_group', 'LUCKY_DRAW_CONFIG')
+            .eq('code_value', 'TICKET_COST')
+            .eq('use_yn', 'Y')
+            .lte('sta_ymd', today)
+            .gte('end_ymd', today)
+            .maybeSingle()
+          return data ? parseInt(data.extra_value1) : 1000
+        }),
         supabaseAdmin
           .from('ticket_transactions')
           .select('*')
@@ -47,10 +52,7 @@ export async function GET(request: NextRequest) {
           .limit(50),
       ])
 
-      const events = eventsResult.data || []
-      
-      // 이벤트 맵 생성 (내 응모 내역에 이벤트 정보 매핑용)
-      const eventMap = new Map(events.map((e: any) => [e.id, e]))
+      const eventMap = new Map((events as any[]).map((e: any) => [e.id, e]))
       
       const entries = (entriesResult.data || []).map(entry => {
         const ev: any = eventMap.get(entry.lucky_draw_id)
@@ -58,8 +60,8 @@ export async function GET(request: NextRequest) {
           ...entry,
           event: ev ? {
             id: ev.id,
-            title: ev.title, // RPC 반환값은 이미 title
-            prize_name: ev.prize_name, // RPC 반환값은 이미 prize_name
+            title: ev.title,
+            prize_name: ev.prize_name,
             status: ev.status,
           } : null,
         }
@@ -67,21 +69,20 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         tickets: ticketsResult.data?.total_tickets || 0,
-        events, // RPC 결과 그대로 반환 (이미 포맷팅, 카운팅 완료됨)
+        events,
         entries,
-        cost: costResult.data ? parseInt(costResult.data.extra_value1) : 1000,
+        cost,
         transactions: historyResult.data || [],
       })
     }
 
     if (action === 'events') {
-      // RPC로 변경: 단순히 이벤트 목록만 조회할 때도 최적화된 함수 사용
-      const { data, error } = await supabaseAdmin
-        .rpc('get_lucky_draw_events_v2')
-
-      if (error) throw error
-      
-      return NextResponse.json({ events: data || [] })
+      const events = await cached('ld:events', 300, async () => {
+        const { data, error } = await supabaseAdmin.rpc('get_lucky_draw_events_v2')
+        if (error) throw error
+        return data || []
+      })
+      return NextResponse.json({ events })
     }
 
     if (action === 'my-tickets' && userId) {
@@ -157,17 +158,19 @@ export async function GET(request: NextRequest) {
 
     if (action === 'ticket-cost') {
       const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
-      const { data } = await supabaseAdmin
-        .from('common_code_detail')
-        .select('extra_value1')
-        .eq('code_group', 'LUCKY_DRAW_CONFIG')
-        .eq('code_value', 'TICKET_COST')
-        .eq('use_yn', 'Y')
-        .lte('sta_ymd', today)
-        .gte('end_ymd', today)
-        .maybeSingle()
-
-      return NextResponse.json({ cost: data ? parseInt(data.extra_value1) : 1000 })
+      const cost = await cached('ld:cost', 3600, async () => {
+        const { data } = await supabaseAdmin
+          .from('common_code_detail')
+          .select('extra_value1')
+          .eq('code_group', 'LUCKY_DRAW_CONFIG')
+          .eq('code_value', 'TICKET_COST')
+          .eq('use_yn', 'Y')
+          .lte('sta_ymd', today)
+          .gte('end_ymd', today)
+          .maybeSingle()
+        return data ? parseInt(data.extra_value1) : 1000
+      })
+      return NextResponse.json({ cost })
     }
 
     if (action === 'ticket-history' && userId) {
@@ -197,6 +200,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 })
     }
 
+    if (action === 'invalidate-cache') {
+      await invalidate('ld:events', 'ld:cost')
+      return NextResponse.json({ success: true })
+    }
+
     if (action === 'purchase-ticket') {
       const qty = quantity || 1
       if (qty < 1 || qty > 10) {
@@ -209,6 +217,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (error) throw error
+      await invalidate('ld:events')
       return NextResponse.json(data)
     }
 
@@ -223,6 +232,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (error) throw error
+      await invalidate('ld:events')
       return NextResponse.json(data)
     }
 
