@@ -73,6 +73,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         last_login_at: new Date().toISOString(),
       }
 
+      // 기존 사용자 확인 (신규 가입자 여부 체크)
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('supabase_user_id, referred_by')
+        .eq('supabase_user_id', authUser.id)
+        .maybeSingle()
+
+      // 신규 가입자인 경우 기본값 설정
+      if (!existingUser) {
+        upsertData.user_type = 'USER'
+        upsertData.user_grade = 'IMJANG'
+      }
+
       // 리퍼럴 코드가 localStorage에 있으면 referred_by에 저장 (최초 가입 시)
       if (typeof window !== 'undefined') {
         try {
@@ -80,13 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (refData) {
             const { id, expires } = JSON.parse(refData)
             if (Date.now() < expires && id !== authUser.id) {
-              // 이미 referred_by가 설정되어 있는지 확인
-              const { data: existingUser } = await supabase
-                .from('users')
-                .select('referred_by')
-                .eq('supabase_user_id', authUser.id)
-                .maybeSingle()
-
               if (!existingUser?.referred_by) {
                 upsertData.referred_by = id
                 console.log('[Auth] 리퍼럴 코드 적용:', id)

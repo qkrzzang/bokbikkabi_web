@@ -1319,6 +1319,8 @@ export default function CameraButton() {
           supabase_user_id: authUser.id,
           email: authUser.email || '',
           provider: authUser.app_metadata?.provider || 'email',
+          user_type: 'USER',
+          user_grade: 'IMJANG',
         }, { onConflict: 'supabase_user_id' })
       }
 
