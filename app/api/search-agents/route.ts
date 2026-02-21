@@ -22,7 +22,12 @@ export async function GET(request: NextRequest) {
       return await searchAgents(query, region, mode)
     })
 
-    return NextResponse.json(result)
+    const response = NextResponse.json(result)
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=60, stale-while-revalidate=59'
+    )
+    return response
   } catch (error: any) {
     console.error('[search-agents] 예외:', error.message)
     return NextResponse.json(

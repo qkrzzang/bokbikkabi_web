@@ -4,5 +4,37 @@
       "path": "/api/cron",
       "schedule": "0 17 * * 0"
     }
-  ]
+  ],
+  "headers": [
+    {
+      "source": "/(.*)\\.(png|jpg|jpeg|webp|gif|svg|ico)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, s-maxage=31536000, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(woff|woff2|ttf|otf|eot)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, s-maxage=31536000, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/api/search-agents",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, s-maxage=60, stale-while-revalidate=59"
+        }
+      ]
+    }
+  ],
+  "images": {
+    "formats": ["image/avif", "image/webp"]
+  }
 }
