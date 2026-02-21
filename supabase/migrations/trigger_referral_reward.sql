@@ -24,8 +24,8 @@ BEGIN
   FROM users
   WHERE supabase_user_id = NEW.supabase_user_id;
 
-  -- 2. 보상을 받지 않은 경우에만 시도
-  IF v_referral_rewarded IS FALSE THEN
+  -- 2. 보상을 받지 않은 경우에만 시도 (NULL도 미보상으로 간주)
+  IF v_referral_rewarded IS NOT TRUE THEN
     -- process_referral_reward 함수 호출 (권한은 Security Definer로 처리됨)
     -- p_signup_ip는 리뷰 작성 시점의 IP를 알 수 없으므로 NULL로 처리하거나, 
     -- users 테이블에 가입 IP가 있다면 그것을 사용해야 함. 

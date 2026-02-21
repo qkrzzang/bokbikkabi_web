@@ -1989,8 +1989,10 @@ export default function Sidebar({
                           throw new Error(result.error || '서버 오류')
                         }
                         await supabase.auth.signOut()
-                        showSuccess('회원탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.')
-                        window.location.href = '/'
+                        showSuccess('회원탈퇴가 완료되었습니다.\n이용해 주셔서 감사합니다.', {
+                          title: '탈퇴 완료',
+                          onClose: () => { window.location.href = '/' }
+                        })
                       } catch (error) {
                         console.error('[회원탈퇴] 오류:', error)
                         showError('회원탈퇴 처리 중 오류가 발생했습니다.')

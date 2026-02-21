@@ -1387,7 +1387,13 @@ export default function CameraButton() {
       }).catch(() => {})
 
       if (reviewAgentName && reviewAgentName !== '-') {
-        window.dispatchEvent(new CustomEvent('review:saved', { detail: { query: reviewAgentName } }))
+        const selectedAgent = selectedAgents[String(primaryReviewIndex)]
+        window.dispatchEvent(new CustomEvent('review:saved', {
+          detail: {
+            query: reviewAgentName,
+            roadAddress: selectedAgent?.road_address || contractData?.agent_address || '',
+          }
+        }))
       }
 
       // 폭죽 효과 + 화면 잠금 (1.5초)

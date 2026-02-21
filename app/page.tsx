@@ -80,6 +80,10 @@ export default function Home() {
       const detail = (event as CustomEvent).detail
       if (detail?.query) {
         setSearchQuery(detail.query)
+        if (detail.roadAddress) {
+          const region = extractRegion(detail.roadAddress)
+          if (region) setSearchRegion(region)
+        }
       }
     }
 
