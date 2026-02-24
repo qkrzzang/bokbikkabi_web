@@ -1807,14 +1807,13 @@ export default function Header() {
             복비까비
           </div>
           <div className={styles.rightSection}>
-            {user ? (
+            {isLoading ? null : user ? (
               <div className={styles.userMenu}>
                 <button
                   className={styles.iconButton}
                   onClick={() => setIsSidebarOpen(true)}
                   aria-label="메뉴"
                 >
-                  {/* 햄버거 아이콘 */}
                   <svg
                     width="24"
                     height="24"

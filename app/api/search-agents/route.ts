@@ -82,13 +82,15 @@ async function searchAgents(query: string, region: string, mode: string) {
     const scoredAgents = filteredAgents.map((agent: any) => {
       let score = 0
       const name = (agent.agent_name || '').toLowerCase()
-      const addr = (agent.road_address || agent.lot_address || '').toLowerCase()
+      const roadAddr = (agent.road_address || '').toLowerCase()
+      const lotAddr = (agent.lot_address || '').toLowerCase()
 
       for (const token of tokens) {
         const t = token.toLowerCase()
         if (name.includes(t)) score += 10
         if (name.startsWith(t)) score += 5
-        if (addr.includes(t)) score += 3
+        if (roadAddr.includes(t)) score += 3
+        if (lotAddr.includes(t)) score += 3
       }
 
       // 정확히 일치하는 이름에 높은 가중치

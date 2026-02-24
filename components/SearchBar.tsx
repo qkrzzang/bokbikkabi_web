@@ -254,7 +254,9 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
         <div ref={dropdownRef} className={styles.autocompleteDropdown} role="listbox">
           {suggestions.map((item, index) => {
             const district = extractDistrict(item.road_address || item.lot_address)
-            const address = item.road_address || item.lot_address || ''
+            const roadAddr = item.road_address || ''
+            const lotAddr = item.lot_address || ''
+            const showBoth = roadAddr && lotAddr && roadAddr !== lotAddr
             return (
               <div
                 key={item.id}
@@ -271,12 +273,24 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
                     dangerouslySetInnerHTML={{ __html: highlightMatch(item.agent_name) }}
                   />
                 </div>
-                {address && (
+                {showBoth ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span
+                      className={styles.autocompleteAddress}
+                      dangerouslySetInnerHTML={{ __html: highlightMatch(roadAddr) }}
+                    />
+                    <span
+                      className={styles.autocompleteAddress}
+                      style={{ color: '#9ca3af' }}
+                      dangerouslySetInnerHTML={{ __html: `(지번) ${highlightMatch(lotAddr)}` }}
+                    />
+                  </div>
+                ) : (roadAddr || lotAddr) ? (
                   <span
                     className={styles.autocompleteAddress}
-                    dangerouslySetInnerHTML={{ __html: highlightMatch(address) }}
+                    dangerouslySetInnerHTML={{ __html: highlightMatch(roadAddr || lotAddr) }}
                   />
-                )}
+                ) : null}
               </div>
             )
           })}

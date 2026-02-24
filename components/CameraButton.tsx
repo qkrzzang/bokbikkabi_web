@@ -1210,6 +1210,18 @@ export default function CameraButton() {
         return
       }
 
+      // 동일 중개사무소 중복 리뷰 체크 (1인 1회)
+      const { count: dupCount, error: dupError } = await supabase
+        .from('agent_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('supabase_user_id', authUser.id)
+        .eq('agent_id', selectedAgent.agent_id)
+
+      if (!dupError && (dupCount || 0) >= 1) {
+        showWarning('이미 해당 중개사무소에 리뷰를 작성하셨습니다.\n동일한 중개사무소에는 1건만 등록할 수 있습니다.', { title: '등록 불가' })
+        return
+      }
+
       const contractData = primaryContract
 
       // DB 컬럼명 → 키워드 매핑 (code_value 또는 code_name에서 매칭)
@@ -1895,16 +1907,19 @@ export default function CameraButton() {
                                     const nums = getContractAgentNumbers(contract)
                                     return nums.length > 0 ? (
                                       <>
-                                        <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                        <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
                                           <span className={styles.fieldLabel}>등록번호:</span>
-                                          <span
-                                            className={styles.copyableNumber}
-                                            onClick={() => copyToClipboard(nums.join(', '))}
-                                            title="클릭하여 복사"
-                                          >
-                                            <strong>{nums.join(', ')}</strong>
-                                            <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                          </span>
+                                          {nums.map((num, ni) => (
+                                            <span
+                                              key={ni}
+                                              className={styles.copyableNumber}
+                                              onClick={() => copyToClipboard(num)}
+                                              title="클릭하여 복사"
+                                            >
+                                              <strong>{num}</strong>
+                                              <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                            </span>
+                                          ))}
                                           <span style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>(으)로 인식되었습니다.</span>
                                         </div>
                                         <div style={{ marginTop: '4px', fontSize: '12px' }}>
@@ -2006,16 +2021,19 @@ export default function CameraButton() {
                                   const nums = getContractAgentNumbers(aiResult)
                                   return nums.length > 0 ? (
                                     <>
-                                      <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                      <div className={styles.contractField} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
                                         <span className={styles.fieldLabel}>등록번호:</span>
-                                        <span
-                                          className={styles.copyableNumber}
-                                          onClick={() => copyToClipboard(nums.join(', '))}
-                                          title="클릭하여 복사"
-                                        >
-                                          <strong>{nums.join(', ')}</strong>
-                                          <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                        </span>
+                                        {nums.map((num, ni) => (
+                                          <span
+                                            key={ni}
+                                            className={styles.copyableNumber}
+                                            onClick={() => copyToClipboard(num)}
+                                            title="클릭하여 복사"
+                                          >
+                                            <strong>{num}</strong>
+                                            <svg className={styles.copyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                          </span>
+                                        ))}
                                         <span style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>(으)로 인식되었습니다.</span>
                                       </div>
                                       <div style={{ marginTop: '4px', fontSize: '12px' }}>

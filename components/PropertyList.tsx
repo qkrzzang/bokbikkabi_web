@@ -12,6 +12,7 @@ interface Property {
   id: string
   name: string
   address: string
+  lotAddress?: string
   rating: number
   reviewCount: number
   latitude?: number
@@ -565,6 +566,7 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
           id: agent.id.toString(),
           name: agent.agent_name || '',
           address: agent.road_address || agent.lot_address || '',
+          lotAddress: agent.lot_address && agent.road_address && agent.lot_address !== agent.road_address ? agent.lot_address : undefined,
           rating: ratingsMap[agent.id] || 0,
           reviewCount: countsMap[agent.id] || 0,
           latitude: agent.latitude,
@@ -721,6 +723,11 @@ export default function PropertyList({ searchQuery, searchRegion, autoOpenAgentI
               <p className={styles.propertyAddress}>
                 {highlightText(property.address, searchQuery)}
               </p>
+              {property.lotAddress && (
+                <p className={styles.propertyAddress} style={{ color: '#9ca3af', fontSize: '12px', marginTop: '2px' }}>
+                  (지번) {highlightText(property.lotAddress, searchQuery)}
+                </p>
+              )}
               {(property.rating > 0 || property.reviewCount > 0) && (
                 <div className={styles.propertyRating}>
                   {property.rating > 0 ? (
