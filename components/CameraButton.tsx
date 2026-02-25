@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import styles from './CameraButton.module.css'
@@ -1581,11 +1581,12 @@ export default function CameraButton() {
                     marginBottom: '20px'
                   }}>
                     <div style={{ fontSize: '14px', color: '#78350f', lineHeight: '1.6' }}>
-                      💡 <b>개인정보 등 민감한 정보는 가리고 업로드해 주세요.</b>
+                      💡 <b>공인중개사 정보는 반드시 노출되어야 합니다.<br></br></b>
                     </div>
-                    <div style={{ fontSize: '12px', color: '#92400e', marginTop: '8px', lineHeight: '1.5' }}>
+                    <div style={{ fontSize: '14px', color: '#78350f',marginTop: '8px', lineHeight: '1.6' }}>
                       🔒 공인중개사 정보 확인 후 계약서 원본 이미지는 즉시 삭제되며, 서버에 저장되지 않습니다.
                     </div>
+                    
                   </div>
 
                   {isMobile ? (
