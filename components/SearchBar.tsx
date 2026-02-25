@@ -43,6 +43,8 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  const [isShaking, setIsShaking] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -123,10 +125,11 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
       onSearch(trimmedQuery, region)
       if (inputRef.current) inputRef.current.blur()
     } else {
-      setQuery('')
-      onSearch('', region)
-      window.dispatchEvent(new Event('logo:click'))
-      if (inputRef.current) inputRef.current.blur()
+      setIsShaking(true)
+      setToastMessage('지역이나 부동산명을 입력해 주세요')
+      setTimeout(() => setIsShaking(false), 500)
+      setTimeout(() => setToastMessage(''), 2500)
+      inputRef.current?.focus()
     }
   }
 
@@ -222,7 +225,7 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
             if (suggestions.length > 0) setShowDropdown(true)
           }}
           placeholder="부동산명 또는 주소를 검색해보세요"
-          className={styles.searchInput}
+          className={`${styles.searchInput} ${isShaking ? styles.shake : ''}`}
           autoComplete="off"
           role="combobox"
           aria-expanded={showDropdown}
@@ -248,6 +251,11 @@ export default function SearchBar({ onSearch, value, regionValue }: SearchBarPro
           </svg>
         </button>
       </form>
+
+      {/* 빈 검색 토스트 */}
+      {toastMessage && (
+        <div className={styles.toast}>{toastMessage}</div>
+      )}
 
       {/* 자동완성 드롭다운 */}
       {showDropdown && suggestions.length > 0 && (

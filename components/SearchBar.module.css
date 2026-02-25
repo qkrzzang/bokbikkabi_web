@@ -316,3 +316,43 @@
     font-size: 11px;
   }
 }
+
+/* 빈 검색 시 shake 애니메이션 */
+.shake {
+  animation: shakeInput 0.4s ease;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+}
+
+@keyframes shakeInput {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* 토스트 메시지 */
+.toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(100% + 8px);
+  background: rgba(30, 41, 59, 0.9);
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 100;
+  animation: toastFadeInOut 2.5s ease forwards;
+  pointer-events: none;
+}
+
+@keyframes toastFadeInOut {
+  0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  10% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
