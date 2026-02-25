@@ -113,6 +113,53 @@ export default function PrivacyPolicy() {
               </tbody>
             </table>
           </div>
+
+          <div className={styles.cardList}>
+            <div className={styles.card}>
+              <div className={styles.cardTitle}>Amazon Web Services (AWS)</div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>업무:</span>
+                <span className={styles.cardValue}>서비스 호스팅 및 인프라 운영</span>
+              </div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>보관:</span>
+                <span className={styles.cardValue}>대한민국 (서울 리전), 회원 탈퇴 시까지</span>
+              </div>
+            </div>
+            <div className={styles.card}>
+              <div className={styles.cardTitle}>Gemini API, OpenAI API</div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>업무:</span>
+                <span className={styles.cardValue}>계약서 텍스트 데이터 분석 및 검증</span>
+              </div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>보관:</span>
+                <span className={styles.cardValue}>비학습(Zero-Retention), 처리 후 즉시 파기</span>
+              </div>
+            </div>
+            <div className={styles.card}>
+              <div className={styles.cardTitle}>Upstage</div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>업무:</span>
+                <span className={styles.cardValue}>OCR 분석 (계약서 텍스트 추출)</span>
+              </div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>보관:</span>
+                <span className={styles.cardValue}>비학습(Zero-Retention), 처리 후 즉시 파기</span>
+              </div>
+            </div>
+            <div className={styles.card}>
+              <div className={styles.cardTitle}>Supabase (AWS)</div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>업무:</span>
+                <span className={styles.cardValue}>데이터베이스 관리 및 사용자 인증</span>
+              </div>
+              <div className={styles.cardRow}>
+                <span className={styles.cardLabel}>보관:</span>
+                <span className={styles.cardValue}>ap-northeast-2(Seoul), 회원 탈퇴 시까지</span>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section className={styles.section}>

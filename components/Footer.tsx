@@ -11,6 +11,10 @@ export default function Footer() {
       <div className={styles.container}>
         <div className={styles.content}>
           <div className={styles.links}>
+            <Link href="/terms/about" className={styles.link}>
+              서비스 소개
+            </Link>
+            <span className={styles.separator}>|</span>
             <Link href="/terms/service" className={styles.link}>
               이용약관
             </Link>
