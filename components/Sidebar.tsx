@@ -77,6 +77,8 @@ export default function Sidebar({
   const [editNickname, setEditNickname] = useState('') // 닉네임 수정용
   const [isNicknameEditing, setIsNicknameEditing] = useState(false) // 닉네임 수정 모드
   const [inquiryType, setInquiryType] = useState('광고')
+  const [sidebarInquiryImagePreview, setSidebarInquiryImagePreview] = useState<string | null>(null)
+  const [sidebarInquiryImageBase64, setSidebarInquiryImageBase64] = useState<string | null>(null)
   const [isNicknameSaving, setIsNicknameSaving] = useState(false) // 닉네임 저장 중
   const [nicknameChangedAt, setNicknameChangedAt] = useState<string | null>(null) // 닉네임 마지막 변경일
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false) // 회원탈퇴 확인
@@ -89,6 +91,28 @@ export default function Sidebar({
   const [referralCopied, setReferralCopied] = useState(false)
   const [isPointHistoryExpanded, setIsPointHistoryExpanded] = useState(false)
   const [isTicketHistoryExpanded, setIsTicketHistoryExpanded] = useState(false)
+
+  const handleSidebarInquiryImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      showWarning('이미지 크기는 10MB 이하만 가능합니다.')
+      e.target.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      setSidebarInquiryImagePreview(result)
+      setSidebarInquiryImageBase64(result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removeSidebarInquiryImage = () => {
+    setSidebarInquiryImagePreview(null)
+    setSidebarInquiryImageBase64(null)
+  }
   
   // PWA 설치 프롬프트 감지 + 모바일 판별
   useEffect(() => {
@@ -1751,6 +1775,7 @@ export default function Sidebar({
                       inquiry_type: formData.get('type'),
                       title: formData.get('title'),
                       content: formData.get('content'),
+                      imageBase64: sidebarInquiryImageBase64 || undefined,
                     }),
                   })
                   const result = await res.json()
@@ -1758,6 +1783,7 @@ export default function Sidebar({
                   if (res.ok && result.success) {
                     showSuccess('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
                     form.reset()
+                    removeSidebarInquiryImage()
                     setCurrentScreen('menu')
                   } else {
                     console.error('[광고/제휴문의] 오류:', result.error)
@@ -1801,8 +1827,18 @@ export default function Sidebar({
                 </div>
                 
                 <div className={styles.formGroup}>
-                  <label>연락처 *</label>
-                  <input type="tel" name="phone" required className={styles.formInput} placeholder="010-0000-0000" />
+                  <label>연락처</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    className={styles.formInput}
+                    placeholder="010-0000-0000"
+                    pattern="[0-9\-]*"
+                    onInput={(e) => {
+                      const input = e.target as HTMLInputElement
+                      input.value = input.value.replace(/[^0-9\-]/g, '')
+                    }}
+                  />
                   <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     🔒 연락처는 암호화되어 안전하게 저장됩니다.
                   </span>
@@ -1817,7 +1853,56 @@ export default function Sidebar({
                   <label>문의 내용 *</label>
                   <textarea name="content" required className={styles.formTextarea} rows={6} placeholder="문의하실 내용을 상세히 작성해주세요." />
                 </div>
-                
+
+                <div className={styles.formGroup}>
+                  <label>이미지 첨부</label>
+                  {!sidebarInquiryImagePreview ? (
+                    <label style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      padding: '16px', border: '2px dashed #d1d5db', borderRadius: '10px',
+                      cursor: 'pointer', color: '#6b7280', fontSize: '14px',
+                    }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                      이미지 선택 (최대 10MB)
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSidebarInquiryImage}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  ) : (
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <img
+                        src={sidebarInquiryImagePreview}
+                        alt="첨부 이미지"
+                        style={{
+                          maxWidth: '100%', maxHeight: '200px', borderRadius: '10px',
+                          border: '1px solid #e5e7eb', objectFit: 'contain',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={removeSidebarInquiryImage}
+                        style={{
+                          position: 'absolute', top: '-8px', right: '-8px',
+                          width: '24px', height: '24px', borderRadius: '50%',
+                          background: '#ef4444', color: 'white', border: 'none',
+                          cursor: 'pointer', fontSize: '14px', fontWeight: 700,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >✕</button>
+                    </div>
+                  )}
+                  <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    🔒 이미지는 암호화되어 안전하게 저장됩니다.
+                  </span>
+                </div>
+
                 <button type="submit" className={styles.submitButton}>문의하기</button>
               </form>
             </div>

@@ -259,12 +259,56 @@ export default function Header() {
     created_at: string
     updated_at: string
     replied_at: string | null
+    image_encrypted: string | null
+    image_iv: string | null
   }>>([])
   const [isPartnershipLoading, setIsPartnershipLoading] = useState(false)
   const [partnershipStatusFilter, setPartnershipStatusFilter] = useState('')
   const [selectedInquiry, setSelectedInquiry] = useState<any>(null)
   const [replyText, setReplyText] = useState('')
   const [decryptedPhones, setDecryptedPhones] = useState<Record<number, string>>({})
+  const [inquiryImagePreview, setInquiryImagePreview] = useState<string | null>(null)
+  const [inquiryImageBase64, setInquiryImageBase64] = useState<string | null>(null)
+  const [decryptedInquiryImages, setDecryptedInquiryImages] = useState<Record<number, string>>({})
+
+  const handleInquiryImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      showWarning('이미지 크기는 10MB 이하만 가능합니다.')
+      e.target.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      setInquiryImagePreview(result)
+      setInquiryImageBase64(result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removeInquiryImage = () => {
+    setInquiryImagePreview(null)
+    setInquiryImageBase64(null)
+  }
+
+  const decryptInquiryImage = async (inquiryId: number, encrypted: string, iv: string) => {
+    if (decryptedInquiryImages[inquiryId]) return
+    try {
+      const res = await fetch('/api/decrypt-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted, iv, returnType: 'binary' }),
+      })
+      if (!res.ok) throw new Error('복호화 실패')
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      setDecryptedInquiryImages(prev => ({ ...prev, [inquiryId]: blobUrl }))
+    } catch {
+      showError('이미지 복호화에 실패했습니다.')
+    }
+  }
 
   const decryptPhone = async (inquiryId: number, encryptedPhone: string) => {
     if (decryptedPhones[inquiryId]) return
@@ -2175,6 +2219,7 @@ export default function Header() {
                         inquiry_type: formData.get('type'),
                         title: formData.get('title'),
                         content: formData.get('content'),
+                        imageBase64: inquiryImageBase64 || undefined,
                       }),
                     })
                     const result = await res.json()
@@ -2182,6 +2227,7 @@ export default function Header() {
                     if (result.success) {
                       showSuccess('문의가 접수되었습니다.\n빠른 시일 내에 답변드리겠습니다.')
                       e.currentTarget.reset()
+                      removeInquiryImage()
                       closePartnershipModal()
                     } else {
                       showError(`문의 접수 중 오류가 발생했습니다.\n(${result.error || '알 수 없는 오류'})`)
@@ -2223,8 +2269,18 @@ export default function Header() {
                   </div>
                   
                   <div className={styles.formGroup}>
-                    <label className={styles.formLabel}>연락처 *</label>
-                    <input type="tel" name="phone" required className={styles.formInput} placeholder="010-0000-0000" />
+                    <label className={styles.formLabel}>연락처</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      className={styles.formInput}
+                      placeholder="010-0000-0000"
+                      pattern="[0-9\-]*"
+                      onInput={(e) => {
+                        const input = e.target as HTMLInputElement
+                        input.value = input.value.replace(/[^0-9\-]/g, '')
+                      }}
+                    />
                     <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       🔒 연락처는 암호화되어 안전하게 저장됩니다.
                     </span>
@@ -2239,7 +2295,57 @@ export default function Header() {
                     <label className={styles.formLabel}>문의 내용 *</label>
                     <textarea name="content" required className={styles.formTextarea} rows={6} placeholder="문의하실 내용을 상세히 작성해주세요." />
                   </div>
-                  
+
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>이미지 첨부</label>
+                    {!inquiryImagePreview ? (
+                      <label style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        padding: '16px', border: '2px dashed #d1d5db', borderRadius: '10px',
+                        cursor: 'pointer', color: '#6b7280', fontSize: '14px',
+                        transition: 'all 0.2s',
+                      }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        이미지 선택 (최대 10MB)
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleInquiryImageChange}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    ) : (
+                      <div style={{ position: 'relative', display: 'inline-block' }}>
+                        <img
+                          src={inquiryImagePreview}
+                          alt="첨부 이미지"
+                          style={{
+                            maxWidth: '100%', maxHeight: '200px', borderRadius: '10px',
+                            border: '1px solid #e5e7eb', objectFit: 'contain',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={removeInquiryImage}
+                          style={{
+                            position: 'absolute', top: '-8px', right: '-8px',
+                            width: '24px', height: '24px', borderRadius: '50%',
+                            background: '#ef4444', color: 'white', border: 'none',
+                            cursor: 'pointer', fontSize: '14px', fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >✕</button>
+                      </div>
+                    )}
+                    <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      🔒 이미지는 암호화되어 안전하게 저장됩니다.
+                    </span>
+                  </div>
+
                   <button type="submit" className={styles.submitButton}>문의하기</button>
                 </form>
               </div>
@@ -4048,12 +4154,22 @@ export default function Header() {
                               </p>
                             )}
 
-                            {inquiry.admin_reply && (
-                              <div className={styles.partnerCardReply}>
-                                <span className={styles.partnerCardReplyIcon}>💬</span>
-                                <span>답변 완료</span>
-                              </div>
-                            )}
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {inquiry.image_encrypted && (
+                                <span style={{
+                                  fontSize: '11px', color: '#7C3AED', background: '#f5f3ff',
+                                  border: '1px solid #e9d5ff', borderRadius: '4px', padding: '2px 8px',
+                                  display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                }}>📎 이미지 첨부</span>
+                              )}
+                              {inquiry.admin_reply && (
+                                <span style={{
+                                  fontSize: '11px', color: '#059669', background: '#ecfdf5',
+                                  border: '1px solid #a7f3d0', borderRadius: '4px', padding: '2px 8px',
+                                  display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                }}>💬 답변 완료</span>
+                              )}
+                            </div>
                           </div>
                         ))}
 
@@ -4147,6 +4263,47 @@ export default function Header() {
                             <div className={styles.partnerInfoCardTitle}>문의 내용</div>
                             <p className={styles.partnerContentText}>{selectedInquiry.content}</p>
                           </div>
+
+                          {/* 첨부 이미지 */}
+                          {selectedInquiry.image_encrypted && selectedInquiry.image_iv && (
+                            <div className={styles.partnerInfoCard}>
+                              <div className={styles.partnerInfoCardTitle}>첨부 이미지</div>
+                              {decryptedInquiryImages[selectedInquiry.id] ? (
+                                <div style={{ textAlign: 'center' }}>
+                                  <img
+                                    src={decryptedInquiryImages[selectedInquiry.id]}
+                                    alt="첨부 이미지"
+                                    style={{
+                                      maxWidth: '100%', maxHeight: '400px', borderRadius: '8px',
+                                      border: '1px solid #e5e7eb', objectFit: 'contain',
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => decryptInquiryImage(
+                                      selectedInquiry.id,
+                                      selectedInquiry.image_encrypted,
+                                      selectedInquiry.image_iv
+                                    )}
+                                    style={{
+                                      fontSize: '14px', color: '#7C3AED', background: '#f5f3ff',
+                                      border: '1px solid #ddd6fe', borderRadius: '8px',
+                                      padding: '10px 20px', cursor: 'pointer', fontWeight: 600,
+                                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    }}
+                                  >
+                                    🔓 이미지 복호화
+                                  </button>
+                                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+                                    암호화된 이미지를 복호화하여 확인합니다.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {/* 처리 영역 */}
                           <div className={styles.partnerInfoCard}>

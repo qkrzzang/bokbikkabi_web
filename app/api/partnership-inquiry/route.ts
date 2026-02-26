@@ -26,16 +26,38 @@ function decryptText(encryptedText: string): string {
   }
 }
 
+function encryptBuffer(buffer: Buffer): { encrypted: string; iv: string } {
+  const iv = crypto.randomBytes(16)
+  const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32), 'utf-8')
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
+  const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()])
+  return {
+    encrypted: encrypted.toString('base64'),
+    iv: iv.toString('hex'),
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { supabase_user_id, user_email, user_name, company_name, contact_phone, inquiry_type, title, content } = body
+    const { supabase_user_id, user_email, user_name, company_name, contact_phone, inquiry_type, title, content, imageBase64 } = body
 
     if (!supabase_user_id || !inquiry_type || !title || !content) {
       return NextResponse.json({ error: '필수 항목을 모두 입력해주세요.' }, { status: 400 })
     }
 
     const encryptedPhone = contact_phone ? encryptText(contact_phone) : null
+
+    let image_encrypted: string | null = null
+    let image_iv: string | null = null
+
+    if (imageBase64) {
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
+      const imageBuffer = Buffer.from(base64Data, 'base64')
+      const result = encryptBuffer(imageBuffer)
+      image_encrypted = result.encrypted
+      image_iv = result.iv
+    }
 
     const { error } = await supabaseAdmin
       .from('partnership_inquiries')
@@ -48,6 +70,8 @@ export async function POST(request: NextRequest) {
         inquiry_type,
         title,
         content,
+        image_encrypted,
+        image_iv,
       })
 
     if (error) {
