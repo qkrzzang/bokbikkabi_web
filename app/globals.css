@@ -69,6 +69,21 @@ a {
   text-decoration: none;
 }
 
+/* iOS Safari 모바일 input 포커스 시 자동 확대 방지 (16px 미만이면 확대됨) */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  input[type="search"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 .dark {
   color-scheme: dark;
 }
