@@ -325,9 +325,6 @@ export default function Header() {
   const [adVisibility, setAdVisibility] = useState('Y')
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
   const [luckyDrawVisibility, setLuckyDrawVisibility] = useState('Y')
-  const [mainAdVisibility, setMainAdVisibility] = useState('Y')
-  const [mainAdPosition, setMainAdPosition] = useState<'TOP' | 'BOTTOM'>('BOTTOM')
-  const [mainAdDevice, setMainAdDevice] = useState<'MOBILE' | 'PC' | 'ALL'>('ALL')
   const [adViewDailyLimit, setAdViewDailyLimit] = useState('3')
   
   // useAuth Hook으로 중앙화된 인증 상태 관리
@@ -1638,7 +1635,7 @@ export default function Header() {
         .from('common_code_detail')
         .select('code_value, description')
         .eq('code_group', 'SYSTEM_CONFIG')
-        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'LUCKY_DRAW_VISIBLE', 'MAIN_AD_VISIBLE', 'AD_VIEW_DAILY_LIMIT'])
+        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'LUCKY_DRAW_VISIBLE', 'AD_VIEW_DAILY_LIMIT'])
 
       if (!error && data) {
         data.forEach((item: any) => {
@@ -1648,14 +1645,6 @@ export default function Header() {
             setSurveyVisibility(item.description?.startsWith('Y:') ? 'Y' : 'N')
           } else if (item.code_value === 'LUCKY_DRAW_VISIBLE') {
             setLuckyDrawVisibility(item.description?.startsWith('Y') ? 'Y' : 'N')
-          } else if (item.code_value === 'MAIN_AD_VISIBLE') {
-            const desc = (item.description || '') as string
-            setMainAdVisibility(desc.startsWith('Y') ? 'Y' : 'N')
-            setMainAdPosition(desc.toUpperCase().includes('TOP') ? 'TOP' : 'BOTTOM')
-            const upper = desc.toUpperCase()
-            if (upper.includes('MOBILE')) setMainAdDevice('MOBILE')
-            else if (upper.includes(',PC') || upper.endsWith('PC')) setMainAdDevice('PC')
-            else setMainAdDevice('ALL')
           } else if (item.code_value === 'AD_VIEW_DAILY_LIMIT') {
             setAdViewDailyLimit(item.code_name || '3')
           }
@@ -5376,158 +5365,6 @@ export default function Header() {
                       </div>
                     </div>
 
-                    {/* 메인 광고(쿠팡) 노출 */}
-                    <div className={styles.visibilityCard}>
-                      <div className={styles.visibilityCardHeader}>
-                        <div className={styles.visibilityCardIcon}>🛒</div>
-                        <div className={styles.visibilityCardInfo}>
-                          <h3 className={styles.visibilityCardTitle}>메인 광고 (쿠팡 파트너스)</h3>
-                          <p className={styles.visibilityCardDesc}>
-                            메인 화면에 쿠팡 파트너스 배너(320x50) 표시 여부 및 위치
-                          </p>
-                        </div>
-                      </div>
-                      <div className={styles.visibilityCardBody}>
-                        <div className={styles.visibilityToggleGroup}>
-                          <label className={styles.visibilityToggleLabel}>
-                            <input
-                              type="radio"
-                              name="mainAd"
-                              value="Y"
-                              checked={mainAdVisibility === 'Y'}
-                              onChange={(e) => setMainAdVisibility(e.target.value)}
-                              className={styles.visibilityRadio}
-                            />
-                            <span className={styles.visibilityToggleText}>노출</span>
-                          </label>
-                          <label className={styles.visibilityToggleLabel}>
-                            <input
-                              type="radio"
-                              name="mainAd"
-                              value="N"
-                              checked={mainAdVisibility === 'N'}
-                              onChange={(e) => setMainAdVisibility(e.target.value)}
-                              className={styles.visibilityRadio}
-                            />
-                            <span className={styles.visibilityToggleText}>숨김</span>
-                          </label>
-                        </div>
-                        {mainAdVisibility === 'Y' && (
-                          <>
-                            <div style={{ marginTop: '12px' }}>
-                              <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>배너 위치</p>
-                              <div className={styles.visibilityToggleGroup}>
-                                <label className={styles.visibilityToggleLabel}>
-                                  <input
-                                    type="radio"
-                                    name="mainAdPosition"
-                                    value="TOP"
-                                    checked={mainAdPosition === 'TOP'}
-                                    onChange={() => setMainAdPosition('TOP')}
-                                    className={styles.visibilityRadio}
-                                  />
-                                  <span className={styles.visibilityToggleText}>상단 (검색바 위)</span>
-                                </label>
-                                <label className={styles.visibilityToggleLabel}>
-                                  <input
-                                    type="radio"
-                                    name="mainAdPosition"
-                                    value="BOTTOM"
-                                    checked={mainAdPosition === 'BOTTOM'}
-                                    onChange={() => setMainAdPosition('BOTTOM')}
-                                    className={styles.visibilityRadio}
-                                  />
-                                  <span className={styles.visibilityToggleText}>하단 (풋터 위)</span>
-                                </label>
-                              </div>
-                            </div>
-                            <div style={{ marginTop: '12px' }}>
-                              <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>노출 디바이스</p>
-                              <div className={styles.visibilityToggleGroup}>
-                                <label className={styles.visibilityToggleLabel}>
-                                  <input
-                                    type="radio"
-                                    name="mainAdDevice"
-                                    value="MOBILE"
-                                    checked={mainAdDevice === 'MOBILE'}
-                                    onChange={() => setMainAdDevice('MOBILE')}
-                                    className={styles.visibilityRadio}
-                                  />
-                                  <span className={styles.visibilityToggleText}>웹 (모바일)</span>
-                                </label>
-                                <label className={styles.visibilityToggleLabel}>
-                                  <input
-                                    type="radio"
-                                    name="mainAdDevice"
-                                    value="PC"
-                                    checked={mainAdDevice === 'PC'}
-                                    onChange={() => setMainAdDevice('PC')}
-                                    className={styles.visibilityRadio}
-                                  />
-                                  <span className={styles.visibilityToggleText}>PC</span>
-                                </label>
-                                <label className={styles.visibilityToggleLabel}>
-                                  <input
-                                    type="radio"
-                                    name="mainAdDevice"
-                                    value="ALL"
-                                    checked={mainAdDevice === 'ALL'}
-                                    onChange={() => setMainAdDevice('ALL')}
-                                    className={styles.visibilityRadio}
-                                  />
-                                  <span className={styles.visibilityToggleText}>웹 + PC</span>
-                                </label>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                        <div className={styles.visibilityCardMeta}>
-                          <span className={styles.visibilityMetaItem}>
-                            📍 위치: 메인 화면 {mainAdPosition === 'TOP' ? '상단 (검색바 위)' : '하단 (풋터 위)'}
-                          </span>
-                          <span className={styles.visibilityMetaItem}>
-                            📱 디바이스: {mainAdDevice === 'MOBILE' ? '웹 (모바일)' : mainAdDevice === 'PC' ? 'PC' : '웹 + PC'}
-                          </span>
-                          <span className={styles.visibilityMetaItem}>
-                            📐 배너 사이즈: 320 x 50
-                          </span>
-                          <span className={styles.visibilityMetaItem}>
-                            🔑 설정 키: MAIN_AD_VISIBLE
-                          </span>
-                        </div>
-                      </div>
-                      <div className={styles.visibilityCardFooter}>
-                        <button 
-                          className={styles.visibilitySaveBtn}
-                          onClick={async () => {
-                            try {
-                              const desc = mainAdVisibility === 'Y' ? `Y:노출,${mainAdPosition},${mainAdDevice}` : 'N:숨김'
-                              const { error } = await supabase
-                                .from('common_code_detail')
-                                .update({
-                                  description: desc,
-                                  updated_at: new Date().toISOString()
-                                })
-                                .eq('code_group', 'SYSTEM_CONFIG')
-                                .eq('code_value', 'MAIN_AD_VISIBLE')
-
-                              if (error) {
-                                showError('설정 저장에 실패했습니다: ' + error.message)
-                              } else {
-                                setSaveSuccessMessage('메인 광고 설정이 저장되었습니다.')
-                                setShowSaveSuccessToast(true)
-                                setTimeout(() => setShowSaveSuccessToast(false), 2000)
-                                window.dispatchEvent(new Event('visibility:changed'))
-                              }
-                            } catch (error) {
-                              showError('설정 저장 중 오류가 발생했습니다.')
-                            }
-                          }}
-                        >
-                          저장
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
                   {/* 안내 메시지 */}

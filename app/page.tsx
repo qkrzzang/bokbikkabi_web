@@ -5,7 +5,6 @@ import SearchBar from '@/components/SearchBar'
 import PropertyList from '@/components/PropertyList'
 import CopyBanner from '@/components/CopyBanner'
 import CameraButton from '@/components/CameraButton'
-import CoupangBanner from '@/components/CoupangBanner'
 import styles from './page.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -44,7 +43,6 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchRegion, setSearchRegion] = useState('')
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
-  const [mainAdConfig, setMainAdConfig] = useState<{ visible: boolean; position: 'top' | 'bottom'; device: 'mobile' | 'pc' | 'all' }>({ visible: true, position: 'bottom', device: 'all' })
 
   // 리퍼럴 파라미터 감지 및 저장 (7일간 유지) + 블랙리스트 차단 메시지 처리
   useEffect(() => {
@@ -129,39 +127,6 @@ export default function Home() {
     }
   }, [])
 
-  // 메인 광고 설정 로드
-  useEffect(() => {
-    const loadMainAdConfig = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('common_code_detail')
-          .select('description')
-          .eq('code_group', 'SYSTEM_CONFIG')
-          .eq('code_value', 'MAIN_AD_VISIBLE')
-          .eq('use_yn', 'Y')
-          .single()
-
-        if (!error && data?.description) {
-          const desc = data.description as string
-          const upper = desc.toUpperCase()
-          const visible = desc.startsWith('Y')
-          const position = upper.includes('TOP') ? 'top' as const : 'bottom' as const
-          let device: 'mobile' | 'pc' | 'all' = 'all'
-          if (upper.includes('MOBILE')) device = 'mobile'
-          else if (upper.includes(',PC') || upper.endsWith('PC')) device = 'pc'
-          setMainAdConfig({ visible, position, device })
-        }
-      } catch {
-        // 설정 로드 실패 시 기본값 유지 (하단 노출)
-      }
-    }
-
-    loadMainAdConfig()
-
-    const handleVisibilityChanged = () => loadMainAdConfig()
-    window.addEventListener('visibility:changed', handleVisibilityChanged)
-    return () => window.removeEventListener('visibility:changed', handleVisibilityChanged)
-  }, [])
 
   // 접속 시 5P 적립 (하루 1회) - 인증 완료 후 1회만 실행
   const dailyLoginCalledRef = useRef(false)
@@ -239,27 +204,19 @@ export default function Home() {
   }
 
   return (
-    <>
-      {mainAdConfig.visible && mainAdConfig.position === 'top' && (
-        <CoupangBanner position="top" device={mainAdConfig.device} />
-      )}
-      <main className={styles.main}>
-        <div className={styles.container}>
-          <SearchBar onSearch={handleSearch} value={searchQuery} regionValue={searchRegion} />
-          {!searchQuery.trim() && <CopyBanner />}
-          <PropertyList 
-            searchQuery={searchQuery}
-            searchRegion={searchRegion}
-            autoOpenAgentId={autoOpenAgentId}
-            onAutoOpenComplete={() => setAutoOpenAgentId(null)}
-          />
-        </div>
-        <CameraButton />
-      </main>
-      {mainAdConfig.visible && mainAdConfig.position === 'bottom' && (
-        <CoupangBanner position="bottom" device={mainAdConfig.device} />
-      )}
-    </>
+    <main className={styles.main}>
+      <div className={styles.container}>
+        <SearchBar onSearch={handleSearch} value={searchQuery} regionValue={searchRegion} />
+        {!searchQuery.trim() && <CopyBanner />}
+        <PropertyList 
+          searchQuery={searchQuery}
+          searchRegion={searchRegion}
+          autoOpenAgentId={autoOpenAgentId}
+          onAutoOpenComplete={() => setAutoOpenAgentId(null)}
+        />
+      </div>
+      <CameraButton />
+    </main>
   )
 }
 
