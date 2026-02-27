@@ -1584,7 +1584,7 @@ export default function CameraButton() {
                       💡 <b>공인중개사 정보는 반드시 노출되어야 합니다.<br></br></b>
                     </div>
                     <div style={{ fontSize: '14px', color: '#78350f',marginTop: '8px', lineHeight: '1.6' }}>
-                      🔒 공인중개사 정보 확인 후 계약서 원본 이미지는 즉시 삭제되며, 서버에 저장되지 않습니다.
+                      🔒 <b>확인이 끝난 계약서 원본 이미지는 즉시 파기됩니다. AI 모델 학습에 사용되거나 서버에 남지 않으니 안심하고 업로드해 주세요.</b>
                     </div>
                     
                   </div>
