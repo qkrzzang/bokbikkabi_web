@@ -9,9 +9,13 @@ export default function EventBanner() {
   const fetchConfig = useCallback(async () => {
     try {
       const res = await fetch(`/api/event-banner?t=${Date.now()}`, { cache: 'no-store' })
-      const { config: data } = await res.json()
-      if (data?.code_name) {
-        setConfig(data)
+      if (!res.ok) {
+        setConfig(null)
+        return
+      }
+      const json = await res.json()
+      if (json?.config?.code_name) {
+        setConfig(json.config)
       } else {
         setConfig(null)
       }

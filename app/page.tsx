@@ -40,7 +40,7 @@ function extractRegion(address: string): string {
 
 export default function Home() {
   const { user, isLoading } = useAuth()
-  const { showWarning } = useAlert()
+  const { showAlert, showWarning } = useAlert()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchRegion, setSearchRegion] = useState('')
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
@@ -129,7 +129,7 @@ export default function Home() {
   }, [])
 
 
-  // 접속 시 5P 적립 (하루 1회) - 인증 완료 후 1회만 실행
+  // 접속 시 5P 적립 (하루 1회) + 신규가입 응모권 지급 - 인증 완료 후 1회만 실행
   const dailyLoginCalledRef = useRef(false)
   useEffect(() => {
     if (isLoading || !user || dailyLoginCalledRef.current) return
@@ -157,7 +157,27 @@ export default function Home() {
       }
     }
 
+    const awardSignupTicket = async () => {
+      try {
+        const { data, error } = await supabase.rpc('award_signup_ticket', {
+          p_user_id: user.id
+        })
+        if (!error && data?.success) {
+          console.log('[신규가입 응모권]', data.message)
+          setTimeout(() => {
+            showAlert('🎉 신규가입 축하! 응모권 1장이 지급되었습니다.\n사이드바 > 럭키드로우에서 확인하세요!', {
+              title: '응모권 지급 완료',
+              icon: '🎫'
+            })
+          }, 500)
+        }
+      } catch {
+        // 함수 미존재 등 무시
+      }
+    }
+
     awardDailyLoginPoints()
+    awardSignupTicket()
   }, [user, isLoading])
 
   // Chrome 확장 프로그램 오류 무시

@@ -80,8 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('supabase_user_id', authUser.id)
         .maybeSingle()
 
+      const isNewUser = !existingUser
+
       // 신규 가입자인 경우 기본값 설정
-      if (!existingUser) {
+      if (isNewUser) {
         upsertData.user_type = 'USER'
         upsertData.user_grade = 'IMJANG'
       }
