@@ -79,11 +79,21 @@ async function searchAgents(query: string, region: string, mode: string) {
     })
 
     // 검색어 관련성 가중치 정렬
+    const queryLower = query.toLowerCase()
     const scoredAgents = filteredAgents.map((agent: any) => {
       let score = 0
       const name = (agent.agent_name || '').toLowerCase()
       const roadAddr = (agent.road_address || '').toLowerCase()
       const lotAddr = (agent.lot_address || '').toLowerCase()
+
+      // 전체 검색어가 도로명에 포함 (가장 강한 신호)
+      if (roadAddr.includes(queryLower)) score += 100
+      // 전체 검색어가 지번에 포함
+      if (lotAddr.includes(queryLower)) score += 80
+
+      // 정확히 일치하는 이름
+      if (name === queryLower) score += 50
+      if (name.includes(queryLower)) score += 30
 
       for (const token of tokens) {
         const t = token.toLowerCase()
@@ -91,10 +101,15 @@ async function searchAgents(query: string, region: string, mode: string) {
         if (name.startsWith(t)) score += 5
         if (roadAddr.includes(t)) score += 3
         if (lotAddr.includes(t)) score += 3
-      }
 
-      // 정확히 일치하는 이름에 높은 가중치
-      if (name === query.toLowerCase()) score += 50
+        // 주소 내 번호 정확 매칭 (단어 경계) — "55"가 "555"에 부분 매칭되는 것을 방지
+        if (/^\d/.test(t)) {
+          const roadWords = roadAddr.split(/[\s,\-]+/)
+          if (roadWords.some((w: string) => w === t)) score += 30
+          const lotWords = lotAddr.split(/[\s,\-]+/)
+          if (lotWords.some((w: string) => w === t)) score += 20
+        }
+      }
 
       return { ...agent, _score: score }
     })
@@ -163,15 +178,20 @@ async function searchAgents(query: string, region: string, mode: string) {
       }
     }
 
-    // 리뷰/별점 있는 부동산을 상위로 정렬
+    // 관련성 + 리뷰 복합 정렬: 관련성이 월등히 높으면 리뷰 유무보다 우선
     scoredAgents.sort((a: any, b: any) => {
+      const scoreDiff = b._score - a._score
+      // 관련성 점수 차이가 크면 (전체 주소 매칭 vs 부분 매칭) 관련성 우선
+      if (Math.abs(scoreDiff) >= 50) return scoreDiff
+
+      // 관련성 비슷할 때 리뷰 있는 업체 우선
       const aHasReview = reviewCounts[a.id] ? 1 : 0
       const bHasReview = reviewCounts[b.id] ? 1 : 0
       if (aHasReview !== bHasReview) return bHasReview - aHasReview
       const aRating = reviews[a.id] || 0
       const bRating = reviews[b.id] || 0
       if (aRating !== bRating) return bRating - aRating
-      return b._score - a._score
+      return scoreDiff
     })
 
     const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)

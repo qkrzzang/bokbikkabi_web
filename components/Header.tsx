@@ -368,6 +368,8 @@ export default function Header() {
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
   const [luckyDrawVisibility, setLuckyDrawVisibility] = useState('Y')
   const [adViewDailyLimit, setAdViewDailyLimit] = useState('3')
+  const [eventBannerVisibility, setEventBannerVisibility] = useState('Y')
+  const [eventBannerContent, setEventBannerContent] = useState('')
   
   // useAuth Hook으로 중앙화된 인증 상태 관리
   const { user, session, userType, isLoading, signOut } = useAuth()
@@ -607,6 +609,46 @@ export default function Header() {
       console.error('상세 코드 저장 오류:', error)
       showError('저장 중 오류가 발생했습니다.')
     }
+  }
+
+  // 상세 코드 삭제
+  const deleteDetail = (id: number, codeName: string, codeGroup: string) => {
+    showConfirm(`"${codeName}" 코드를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, async () => {
+      try {
+        const { error } = await supabase
+          .from('common_code_detail')
+          .delete()
+          .eq('id', id)
+
+        if (error) {
+          showError('삭제 실패: ' + error.message)
+          return
+        }
+
+        if (codeGroup === 'LUCKY_DRAW_PRIZE' || codeGroup === 'LUCKY_DRAW_CONFIG') {
+          fetch('/api/lucky-draw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'invalidate-cache' }),
+          }).catch(() => {})
+        }
+
+        setSaveSuccessMessage('상세 코드가 삭제되었습니다.')
+        setShowSaveSuccessToast(true)
+        setTimeout(() => setShowSaveSuccessToast(false), 3000)
+
+        if (editingDetail?.id === id) {
+          setEditingDetail(null)
+          setIsNewDetail(false)
+        }
+
+        fetchCodeDetail()
+        fetchCodeMaster()
+      } catch (error) {
+        console.error('상세 코드 삭제 오류:', error)
+        showError('삭제 중 오류가 발생했습니다.')
+      }
+    }, { title: '코드 삭제', confirmText: '삭제', cancelText: '취소' })
   }
 
   // 사용자 목록 조회
@@ -1682,9 +1724,9 @@ export default function Header() {
     try {
       const { data, error } = await supabase
         .from('common_code_detail')
-        .select('code_value, description')
+        .select('code_value, description, code_name, extra_value1')
         .eq('code_group', 'SYSTEM_CONFIG')
-        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'LUCKY_DRAW_VISIBLE', 'AD_VIEW_DAILY_LIMIT'])
+        .in('code_value', ['ADVERTISEMENT_VISIBLE', 'SURVEY_VISIBLE', 'LUCKY_DRAW_VISIBLE', 'AD_VIEW_DAILY_LIMIT', 'LUCKY_DRAW_SIGNUP_EVENT'])
 
       if (!error && data) {
         data.forEach((item: any) => {
@@ -1696,6 +1738,9 @@ export default function Header() {
             setLuckyDrawVisibility(item.description?.startsWith('Y') ? 'Y' : 'N')
           } else if (item.code_value === 'AD_VIEW_DAILY_LIMIT') {
             setAdViewDailyLimit(item.code_name || '3')
+          } else if (item.code_value === 'LUCKY_DRAW_SIGNUP_EVENT') {
+            setEventBannerVisibility(item.description?.startsWith('Y') ? 'Y' : 'N')
+            setEventBannerContent(item.extra_value1 || '')
           }
         })
         console.log('[콘텐츠 노출] 설정 로드 완료:', data)
@@ -3479,31 +3524,40 @@ export default function Header() {
                                     <td className={styles.dateCell}>{item.sta_ymd} ~ {item.end_ymd || '9999-12-31'}</td>
                                     <td><span className={item.use_yn === 'Y' ? styles.statusActive : styles.statusInactive}>{item.use_yn}</span></td>
                                     <td className={styles.stickyColRight}>
-                                      <button
-                                        className={styles.adminTableBtn}
-                                        type="button"
-                                        onClick={() => {
-                                          setIsNewDetail(false)
-                                          setEditingDetail({
-                                            id: item.id,
-                                            code_group: item.code_group,
-                                            code_value: item.code_value,
-                                            code_name: item.code_name,
-                                            description: item.description || '',
-                                            sta_ymd: item.sta_ymd,
-                                            end_ymd: item.end_ymd || '9999-12-31',
-                                            use_yn: item.use_yn,
-                                            sort_order: item.sort_order || 0,
-                                            extra_value1: item.extra_value1 || '',
-                                            extra_value2: item.extra_value2 || '',
-                                            extra_value3: item.extra_value3 || '',
-                                            extra_value4: item.extra_value4 || '',
-                                            extra_value5: item.extra_value5 || '',
-                                          })
-                                        }}
-                                      >
-                                        수정
-                                      </button>
+                                      <div style={{ display: 'flex', gap: '4px' }}>
+                                        <button
+                                          className={styles.adminTableBtn}
+                                          type="button"
+                                          onClick={() => {
+                                            setIsNewDetail(false)
+                                            setEditingDetail({
+                                              id: item.id,
+                                              code_group: item.code_group,
+                                              code_value: item.code_value,
+                                              code_name: item.code_name,
+                                              description: item.description || '',
+                                              sta_ymd: item.sta_ymd,
+                                              end_ymd: item.end_ymd || '9999-12-31',
+                                              use_yn: item.use_yn,
+                                              sort_order: item.sort_order || 0,
+                                              extra_value1: item.extra_value1 || '',
+                                              extra_value2: item.extra_value2 || '',
+                                              extra_value3: item.extra_value3 || '',
+                                              extra_value4: item.extra_value4 || '',
+                                              extra_value5: item.extra_value5 || '',
+                                            })
+                                          }}
+                                        >
+                                          수정
+                                        </button>
+                                        <button
+                                          className={styles.adminDeleteBtn}
+                                          type="button"
+                                          onClick={() => deleteDetail(item.id, item.code_name, item.code_group)}
+                                        >
+                                          삭제
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))
@@ -5546,6 +5600,101 @@ export default function Header() {
                                 showError('설정 저장에 실패했습니다: ' + error.message)
                               } else {
                                 setSaveSuccessMessage('럭키드로우 노출 설정이 저장되었습니다.')
+                                setShowSaveSuccessToast(true)
+                                setTimeout(() => setShowSaveSuccessToast(false), 2000)
+                                window.dispatchEvent(new Event('visibility:changed'))
+                              }
+                            } catch (error) {
+                              showError('설정 저장 중 오류가 발생했습니다.')
+                            }
+                          }}
+                        >
+                          저장
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 메인 이벤트 배너 */}
+                    <div className={styles.visibilityCard}>
+                      <div className={styles.visibilityCardHeader}>
+                        <div className={styles.visibilityCardIcon}>🎁</div>
+                        <div className={styles.visibilityCardInfo}>
+                          <h3 className={styles.visibilityCardTitle}>메인 이벤트 배너</h3>
+                          <p className={styles.visibilityCardDesc}>
+                            메인 화면 검색창 아래에 표시되는 이벤트 배너 (extra_value1 = 표시 내용)
+                          </p>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardBody}>
+                        <div className={styles.visibilityToggleGroup}>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="eventBanner"
+                              value="Y"
+                              checked={eventBannerVisibility === 'Y'}
+                              onChange={(e) => setEventBannerVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>노출</span>
+                          </label>
+                          <label className={styles.visibilityToggleLabel}>
+                            <input
+                              type="radio"
+                              name="eventBanner"
+                              value="N"
+                              checked={eventBannerVisibility === 'N'}
+                              onChange={(e) => setEventBannerVisibility(e.target.value)}
+                              className={styles.visibilityRadio}
+                            />
+                            <span className={styles.visibilityToggleText}>숨김</span>
+                          </label>
+                        </div>
+                        {eventBannerVisibility === 'Y' && (
+                          <div style={{ marginTop: '12px' }}>
+                            <p style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>배너 내용 (extra_value1)</p>
+                            <input
+                              type="text"
+                              value={eventBannerContent}
+                              onChange={(e) => setEventBannerContent(e.target.value)}
+                              placeholder="예: 3월 31일까지 가입자에게 럭키드로우 1장 무료 지급"
+                              style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px' }}
+                            />
+                          </div>
+                        )}
+                        <div className={styles.visibilityCardMeta}>
+                          <span className={styles.visibilityMetaItem}>
+                            📍 위치: 메인 화면 &gt; 검색창 아래
+                          </span>
+                          <span className={styles.visibilityMetaItem}>
+                            🔑 설정 키: LUCKY_DRAW_SIGNUP_EVENT
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.visibilityCardFooter}>
+                        <button 
+                          className={styles.visibilitySaveBtn}
+                          onClick={async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('common_code_detail')
+                                .upsert({
+                                  code_group: 'SYSTEM_CONFIG',
+                                  code_value: 'LUCKY_DRAW_SIGNUP_EVENT',
+                                  code_name: '메인 이벤트 배너',
+                                  description: eventBannerVisibility === 'Y' ? 'Y' : 'N',
+                                  extra_value1: eventBannerContent || null,
+                                  sort_order: 10,
+                                  use_yn: 'Y',
+                                  sta_ymd: '2025-01-01',
+                                  end_ymd: '9999-12-31',
+                                  updated_at: new Date().toISOString()
+                                }, { onConflict: 'code_group,code_value' })
+
+                              if (error) {
+                                showError('설정 저장에 실패했습니다: ' + error.message)
+                              } else {
+                                setSaveSuccessMessage('메인 이벤트 배너 설정이 저장되었습니다.')
                                 setShowSaveSuccessToast(true)
                                 setTimeout(() => setShowSaveSuccessToast(false), 2000)
                                 window.dispatchEvent(new Event('visibility:changed'))

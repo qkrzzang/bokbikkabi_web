@@ -2650,6 +2650,24 @@
   color: #1e293b;
 }
 
+.adminDeleteBtn {
+  padding: 6px 12px;
+  background-color: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.adminDeleteBtn:hover {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
 /* 페이지네이션 */
 .adminPagination {
   display: flex;

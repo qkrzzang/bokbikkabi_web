@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import SearchBar from '@/components/SearchBar'
 import PropertyList from '@/components/PropertyList'
 import CopyBanner from '@/components/CopyBanner'
+import EventBanner from '@/components/EventBanner'
 import CameraButton from '@/components/CameraButton'
 import styles from './page.module.css'
 import { supabase } from '@/lib/supabase/client'
@@ -206,6 +207,7 @@ export default function Home() {
   return (
     <main className={styles.main}>
       <div className={styles.container}>
+        <EventBanner />
         <SearchBar onSearch={handleSearch} value={searchQuery} regionValue={searchRegion} />
         {!searchQuery.trim() && <CopyBanner />}
         <PropertyList 
