@@ -14,6 +14,11 @@ import { NextResponse, type NextRequest } from 'next/server'
  *   다른 코드를 넣으면 세션이 랜덤하게 끊길 수 있습니다.
  */
 export async function middleware(request: NextRequest) {
+  // ── Chrome DevTools 자동 요청 → 200 응답 (404 로그/Network 탭 노이즈 제거) ──
+  if (request.nextUrl.pathname === '/.well-known/appspecific/com.chrome.devtools.json') {
+    return NextResponse.json({}, { status: 200 })
+  }
+
   // ── OAuth code가 루트(/)에 도착한 경우 → /auth/callback으로 전달 ──
   //
   // Supabase Auth가 redirectTo를 무시하고 Site URL(루트)로 리다이렉트하는 경우,
