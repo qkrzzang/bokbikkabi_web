@@ -18,6 +18,11 @@ export default function Header() {
   const [isGradeInfoModalOpen, setIsGradeInfoModalOpen] = useState(false)
   const [isPartnershipModalOpen, setIsPartnershipModalOpen] = useState(false)
   const [headerInquiryType, setHeaderInquiryType] = useState('광고')
+  const [partnershipModalTab, setPartnershipModalTab] = useState<'form' | 'history'>('form')
+  const [headerMyInquiries, setHeaderMyInquiries] = useState<any[]>([])
+  const [isHeaderMyInquiriesLoading, setIsHeaderMyInquiriesLoading] = useState(false)
+  const [headerSelectedMyInquiry, setHeaderSelectedMyInquiry] = useState<any>(null)
+  const [headerMyInquiryDecryptedImages, setHeaderMyInquiryDecryptedImages] = useState<Record<number, string>>({})
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false)
   const [isMyContractsModalOpen, setIsMyContractsModalOpen] = useState(false)
   const [myContracts, setMyContracts] = useState<any[]>([])
@@ -322,6 +327,43 @@ export default function Header() {
       setDecryptedPhones(prev => ({ ...prev, [inquiryId]: encryptedPhone }))
     }
   }
+
+  const fetchHeaderMyInquiries = async () => {
+    if (!user) return
+    setIsHeaderMyInquiriesLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('partnership_inquiries')
+        .select('*')
+        .eq('supabase_user_id', user.id)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      setHeaderMyInquiries(data || [])
+    } catch (err) {
+      console.error('[내 문의] 조회 오류:', err)
+      showError('문의 내역을 불러오는데 실패했습니다.')
+    } finally {
+      setIsHeaderMyInquiriesLoading(false)
+    }
+  }
+
+  const decryptHeaderMyInquiryImage = async (inquiryId: number, encrypted: string, iv: string) => {
+    if (headerMyInquiryDecryptedImages[inquiryId]) return
+    try {
+      const res = await fetch('/api/decrypt-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted, iv, returnType: 'binary' }),
+      })
+      if (!res.ok) throw new Error('복호화 실패')
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      setHeaderMyInquiryDecryptedImages(prev => ({ ...prev, [inquiryId]: blobUrl }))
+    } catch {
+      showError('이미지 불러오기에 실패했습니다.')
+    }
+  }
+
   const [adVisibility, setAdVisibility] = useState('Y')
   const [surveyVisibility, setSurveyVisibility] = useState('Y')
   const [luckyDrawVisibility, setLuckyDrawVisibility] = useState('Y')
@@ -1215,16 +1257,16 @@ export default function Header() {
           .range(from, to)
         setReviewMgmtList(fallback || [])
       } else {
-        // 작성자 닉네임 조회
+        // 작성자 이메일 조회
         const userIds = Array.from(new Set((data || []).map((r: any) => r.supabase_user_id).filter(Boolean))) as string[]
         let userMap: Record<string, string> = {}
         if (userIds.length > 0) {
           const { data: usersData } = await supabase
             .from('users')
-            .select('supabase_user_id, nickname')
+            .select('supabase_user_id, email')
             .in('supabase_user_id', userIds)
           if (usersData) {
-            usersData.forEach((u: any) => { userMap[u.supabase_user_id] = u.nickname || '(미설정)' })
+            usersData.forEach((u: any) => { userMap[u.supabase_user_id] = u.email || '(미설정)' })
           }
         }
         const enriched = (data || []).map((r: any) => ({
@@ -1561,6 +1603,13 @@ export default function Header() {
     }
   }, [anyModalOpen])
 
+  // 광고/제휴 문의 모달 - 내 문의 내역 탭 선택 시 조회
+  useEffect(() => {
+    if (isPartnershipModalOpen && partnershipModalTab === 'history' && user) {
+      fetchHeaderMyInquiries()
+    }
+  }, [isPartnershipModalOpen, partnershipModalTab, user?.id])
+
   // ── 관리자 데이터 로드 함수 (재사용 가능) ──
   const loadAdminData = useCallback(async (menu: string) => {
     if (!isAdminScreenOpen) return
@@ -1741,6 +1790,7 @@ export default function Header() {
 
   const closePartnershipModal = () => {
     setIsPartnershipModalOpen(false)
+    setHeaderSelectedMyInquiry(null)
   }
 
   const openPolicyModal = () => {
@@ -2186,6 +2236,25 @@ export default function Header() {
                 </button>
               </div>
               <div className={styles.infoModalBody}>
+                {/* 탭: 문의하기 | 내 문의 내역 */}
+                <div className={styles.chipGroup} style={{ marginBottom: '16px' }}>
+                  <button
+                    type="button"
+                    className={`${styles.chip} ${partnershipModalTab === 'form' ? styles.chipActive : ''}`}
+                    onClick={() => setPartnershipModalTab('form')}
+                  >
+                    문의하기
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.chip} ${partnershipModalTab === 'history' ? styles.chipActive : ''}`}
+                    onClick={() => setPartnershipModalTab('history')}
+                  >
+                    내 문의 내역
+                  </button>
+                </div>
+
+                {partnershipModalTab === 'form' && (
                 <form className={styles.partnershipForm} onSubmit={async (e) => {
                   e.preventDefault()
                   const formData = new FormData(e.currentTarget)
@@ -2217,7 +2286,8 @@ export default function Header() {
                       showSuccess('문의가 접수되었습니다.\n빠른 시일 내에 답변드리겠습니다.')
                       e.currentTarget.reset()
                       removeInquiryImage()
-                      closePartnershipModal()
+                      setPartnershipModalTab('history')
+                      fetchHeaderMyInquiries()
                     } else {
                       showError(`문의 접수 중 오류가 발생했습니다.\n(${result.error || '알 수 없는 오류'})`)
                     }
@@ -2337,6 +2407,131 @@ export default function Header() {
 
                   <button type="submit" className={styles.submitButton}>문의하기</button>
                 </form>
+                )}
+
+                {partnershipModalTab === 'history' && (
+                  <div style={{ paddingBottom: '24px', maxHeight: '60vh', overflowY: 'auto' }}>
+                    {isHeaderMyInquiriesLoading ? (
+                      <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>불러오는 중...</div>
+                    ) : headerMyInquiries.length === 0 ? (
+                      <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                        <div style={{ marginBottom: '8px' }}>📭</div>
+                        <div>등록한 문의가 없습니다.</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {headerMyInquiries.map((inq) => (
+                          <button
+                            key={inq.id}
+                            type="button"
+                            onClick={() => setHeaderSelectedMyInquiry(inq)}
+                            style={{
+                              textAlign: 'left',
+                              padding: '14px 16px',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              background: '#fff',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                              <span style={{ fontSize: '11px', color: '#7C3AED', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px' }}>{inq.inquiry_type}</span>
+                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>{new Date(inq.created_at).toLocaleDateString('ko-KR')}</span>
+                            </div>
+                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{inq.title}</div>
+                            <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                              {inq.content?.length > 60 ? inq.content.slice(0, 60) + '...' : inq.content}
+                            </div>
+                            {inq.admin_reply && (
+                              <span style={{ fontSize: '11px', color: '#059669', marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>💬 답변 완료</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 내 문의 상세 모달 (헤더) */}
+      {headerSelectedMyInquiry && isPartnershipModalOpen && (
+        <div
+          className={styles.overlay}
+          style={{ zIndex: 2000 }}
+          onClick={() => setHeaderSelectedMyInquiry(null)}
+        >
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '480px',
+              maxHeight: '85vh',
+              background: '#fff',
+              borderRadius: '16px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 2001,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ fontSize: '11px', color: '#7C3AED', background: '#f5f3ff', padding: '4px 10px', borderRadius: '8px' }}>{headerSelectedMyInquiry.inquiry_type}</span>
+                <button onClick={() => setHeaderSelectedMyInquiry(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+              </div>
+              <h4 style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', margin: '0 0 12px' }}>{headerSelectedMyInquiry.title}</h4>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>{new Date(headerSelectedMyInquiry.created_at).toLocaleString('ko-KR')}</div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>내 문의</div>
+                <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: 1.6, whiteSpace: 'pre-wrap', padding: '14px', background: '#f8fafc', borderRadius: '10px' }}>
+                  {headerSelectedMyInquiry.content}
+                </div>
+              </div>
+
+              {headerSelectedMyInquiry.image_encrypted && headerSelectedMyInquiry.image_iv && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>첨부 이미지</div>
+                  {headerMyInquiryDecryptedImages[headerSelectedMyInquiry.id] ? (
+                    <img src={headerMyInquiryDecryptedImages[headerSelectedMyInquiry.id]} alt="첨부" style={{ maxWidth: '100%', borderRadius: '10px', border: '1px solid #e2e8f0' }} />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => decryptHeaderMyInquiryImage(headerSelectedMyInquiry.id, headerSelectedMyInquiry.image_encrypted, headerSelectedMyInquiry.image_iv)}
+                      style={{ padding: '10px 16px', background: '#f5f3ff', color: '#7C3AED', border: '1px solid #e9d5ff', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}
+                    >
+                      이미지 보기
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>관리자 답변</div>
+                {headerSelectedMyInquiry.admin_reply ? (
+                  <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: 1.6, whiteSpace: 'pre-wrap', padding: '14px', background: '#ecfdf5', borderRadius: '10px', borderLeft: '4px solid #10b981' }}>
+                    {headerSelectedMyInquiry.admin_reply}
+                    {headerSelectedMyInquiry.replied_at && (
+                      <div style={{ fontSize: '11px', color: '#059669', marginTop: '8px' }}>
+                        {new Date(headerSelectedMyInquiry.replied_at).toLocaleString('ko-KR')} 답변
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '14px', color: '#94a3b8', padding: '14px', background: '#f8fafc', borderRadius: '10px' }}>
+                    아직 답변이 없습니다. 빠른 시일 내에 답변드리겠습니다.
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -79,6 +79,11 @@ export default function Sidebar({
   const [inquiryType, setInquiryType] = useState('광고')
   const [sidebarInquiryImagePreview, setSidebarInquiryImagePreview] = useState<string | null>(null)
   const [sidebarInquiryImageBase64, setSidebarInquiryImageBase64] = useState<string | null>(null)
+  const [partnershipTab, setPartnershipTab] = useState<'form' | 'history'>('form')
+  const [myInquiries, setMyInquiries] = useState<any[]>([])
+  const [isMyInquiriesLoading, setIsMyInquiriesLoading] = useState(false)
+  const [selectedMyInquiry, setSelectedMyInquiry] = useState<any>(null)
+  const [sidebarDecryptedInquiryImages, setSidebarDecryptedInquiryImages] = useState<Record<number, string>>({})
   const [isNicknameSaving, setIsNicknameSaving] = useState(false) // 닉네임 저장 중
   const [nicknameChangedAt, setNicknameChangedAt] = useState<string | null>(null) // 닉네임 마지막 변경일
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false) // 회원탈퇴 확인
@@ -112,6 +117,42 @@ export default function Sidebar({
   const removeSidebarInquiryImage = () => {
     setSidebarInquiryImagePreview(null)
     setSidebarInquiryImageBase64(null)
+  }
+
+  const fetchMyInquiries = async () => {
+    if (!authUser) return
+    setIsMyInquiriesLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('partnership_inquiries')
+        .select('*')
+        .eq('supabase_user_id', authUser.id)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      setMyInquiries(data || [])
+    } catch (err) {
+      console.error('[내 문의] 조회 오류:', err)
+      showError('문의 내역을 불러오는데 실패했습니다.')
+    } finally {
+      setIsMyInquiriesLoading(false)
+    }
+  }
+
+  const decryptSidebarInquiryImage = async (inquiryId: number, encrypted: string, iv: string) => {
+    if (sidebarDecryptedInquiryImages[inquiryId]) return
+    try {
+      const res = await fetch('/api/decrypt-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted, iv, returnType: 'binary' }),
+      })
+      if (!res.ok) throw new Error('복호화 실패')
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      setSidebarDecryptedInquiryImages(prev => ({ ...prev, [inquiryId]: blobUrl }))
+    } catch {
+      showError('이미지 불러오기에 실패했습니다.')
+    }
   }
   
   // PWA 설치 프롬프트 감지 + 모바일 판별
@@ -148,8 +189,16 @@ export default function Sidebar({
       setDecryptedImageUrl(null)
       setShowIOSGuide(false)
       setIsGradeTooltipVisible(false)
+      setSelectedMyInquiry(null)
     }
   }, [isOpen])
+
+  // 내 문의 내역 탭 선택 시 조회
+  useEffect(() => {
+    if (currentScreen === 'partnership' && partnershipTab === 'history' && authUser) {
+      fetchMyInquiries()
+    }
+  }, [currentScreen, partnershipTab, authUser?.id])
 
   // Load transaction tag options from common_code_detail
   // ※ 이 데이터는 Auth 인증 불필요 (공개 테이블). isOpen 시에만 fetch.
@@ -1752,6 +1801,25 @@ export default function Sidebar({
           {/* 광고/제휴/오류 문의 화면 */}
           {currentScreen === 'partnership' && (
             <div className={styles.screenContent}>
+              {/* 탭: 문의하기 | 내 문의 내역 */}
+              <div className={styles.chipGroup} style={{ marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  className={`${styles.chip} ${partnershipTab === 'form' ? styles.chipActive : ''}`}
+                  onClick={() => setPartnershipTab('form')}
+                >
+                  문의하기
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.chip} ${partnershipTab === 'history' ? styles.chipActive : ''}`}
+                  onClick={() => setPartnershipTab('history')}
+                >
+                  내 문의 내역
+                </button>
+              </div>
+
+              {partnershipTab === 'form' && (
               <form className={styles.partnershipForm} onSubmit={async (e) => {
                 e.preventDefault()
                 const form = e.currentTarget
@@ -1784,7 +1852,8 @@ export default function Sidebar({
                     showSuccess('문의가 접수되었습니다. 빠른 시일 내에 답변드리겠습니다.')
                     form.reset()
                     removeSidebarInquiryImage()
-                    setCurrentScreen('menu')
+                    setPartnershipTab('history')
+                    fetchMyInquiries()
                   } else {
                     console.error('[광고/제휴문의] 오류:', result.error)
                     showError(`문의 접수 중 오류가 발생했습니다.\n(${result.error || '알 수 없는 오류'})`)
@@ -1905,6 +1974,131 @@ export default function Sidebar({
 
                 <button type="submit" className={styles.submitButton}>문의하기</button>
               </form>
+              )}
+
+              {partnershipTab === 'history' && (
+                <div style={{ paddingBottom: '24px' }}>
+                  {isMyInquiriesLoading ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>불러오는 중...</div>
+                  ) : myInquiries.length === 0 ? (
+                    <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                      <div style={{ marginBottom: '8px' }}>📭</div>
+                      <div>등록한 문의가 없습니다.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {myInquiries.map((inq) => (
+                        <button
+                          key={inq.id}
+                          type="button"
+                          onClick={() => setSelectedMyInquiry(inq)}
+                          style={{
+                            textAlign: 'left',
+                            padding: '14px 16px',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            background: '#fff',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '11px', color: '#7C3AED', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px' }}>{inq.inquiry_type}</span>
+                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>{new Date(inq.created_at).toLocaleDateString('ko-KR')}</span>
+                          </div>
+                          <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>{inq.title}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                            {inq.content?.length > 60 ? inq.content.slice(0, 60) + '...' : inq.content}
+                          </div>
+                          {inq.admin_reply && (
+                            <span style={{ fontSize: '11px', color: '#059669', marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>💬 답변 완료</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 내 문의 상세 팝업 (사이드바) */}
+          {selectedMyInquiry && (
+            <div
+              className={styles.overlay}
+              style={{ zIndex: 1000 }}
+              onClick={() => setSelectedMyInquiry(null)}
+            >
+              <div
+                style={{
+                  position: 'fixed',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '90%',
+                  maxWidth: '480px',
+                  maxHeight: '85vh',
+                  background: '#fff',
+                  borderRadius: '16px',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  zIndex: 1001,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ padding: '20px 20px 24px', overflowY: 'auto', flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <span style={{ fontSize: '11px', color: '#7C3AED', background: '#f5f3ff', padding: '4px 10px', borderRadius: '8px' }}>{selectedMyInquiry.inquiry_type}</span>
+                    <button onClick={() => setSelectedMyInquiry(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+                  </div>
+                  <h4 style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', margin: '0 0 12px' }}>{selectedMyInquiry.title}</h4>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>{new Date(selectedMyInquiry.created_at).toLocaleString('ko-KR')}</div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>내 문의</div>
+                    <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: 1.6, whiteSpace: 'pre-wrap', padding: '14px', background: '#f8fafc', borderRadius: '10px' }}>
+                      {selectedMyInquiry.content}
+                    </div>
+                  </div>
+
+                  {selectedMyInquiry.image_encrypted && selectedMyInquiry.image_iv && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>첨부 이미지</div>
+                      {sidebarDecryptedInquiryImages[selectedMyInquiry.id] ? (
+                        <img src={sidebarDecryptedInquiryImages[selectedMyInquiry.id]} alt="첨부" style={{ maxWidth: '100%', borderRadius: '10px', border: '1px solid #e2e8f0' }} />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => decryptSidebarInquiryImage(selectedMyInquiry.id, selectedMyInquiry.image_encrypted, selectedMyInquiry.image_iv)}
+                          style={{ padding: '10px 16px', background: '#f5f3ff', color: '#7C3AED', border: '1px solid #e9d5ff', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}
+                        >
+                          이미지 보기
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>관리자 답변</div>
+                    {selectedMyInquiry.admin_reply ? (
+                      <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: 1.6, whiteSpace: 'pre-wrap', padding: '14px', background: '#ecfdf5', borderRadius: '10px', borderLeft: '4px solid #10b981' }}>
+                        {selectedMyInquiry.admin_reply}
+                        {selectedMyInquiry.replied_at && (
+                          <div style={{ fontSize: '11px', color: '#059669', marginTop: '8px' }}>
+                            {new Date(selectedMyInquiry.replied_at).toLocaleString('ko-KR')} 답변
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '14px', color: '#94a3b8', padding: '14px', background: '#f8fafc', borderRadius: '10px' }}>
+                        아직 답변이 없습니다. 빠른 시일 내에 답변드리겠습니다.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
