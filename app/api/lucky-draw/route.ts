@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
             .lte('sta_ymd', today)
             .gte('end_ymd', today)
             .maybeSingle()
-          return data ? parseInt(data.extra_value1) : 1000
+          return data ? parseInt(data.extra_value1) : 500
         }),
         supabaseAdmin.rpc('get_user_lucky_draw_data', { p_user_id: userId }),
       ])
@@ -154,7 +154,7 @@ export async function GET(request: NextRequest) {
           .lte('sta_ymd', today)
           .gte('end_ymd', today)
           .maybeSingle()
-        return data ? parseInt(data.extra_value1) : 1000
+        return data ? parseInt(data.extra_value1) : 500
       })
       return NextResponse.json({ cost })
     }

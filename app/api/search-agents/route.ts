@@ -60,8 +60,8 @@ async function searchAgents(query: string, region: string, mode: string) {
       dbQuery = dbQuery.or(`road_address.ilike.%${region}%,lot_address.ilike.%${region}%`)
     }
 
-    const limit = mode === 'autocomplete' ? 8 : 50
-    const { data: agents, error: agentsError } = await dbQuery.limit(limit)
+    const dbLimit = mode === 'autocomplete' ? 50 : 50
+    const { data: agents, error: agentsError } = await dbQuery.limit(dbLimit)
 
     if (agentsError) {
       throw new Error(agentsError.message)
@@ -116,9 +116,9 @@ async function searchAgents(query: string, region: string, mode: string) {
 
     scoredAgents.sort((a: any, b: any) => b._score - a._score)
 
-    // 자동완성 모드: 리뷰 조회 생략 (경량 응답)
+    // 자동완성 모드: 관련성 상위 8건만 반환, 리뷰 조회 생략 (경량 응답)
     if (mode === 'autocomplete') {
-      const resultAgents = scoredAgents.map(({ _score, ...rest }: any) => rest)
+      const resultAgents = scoredAgents.slice(0, 8).map(({ _score, ...rest }: any) => rest)
       return { data: resultAgents, reviews: {} }
     }
 

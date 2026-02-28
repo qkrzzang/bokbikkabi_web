@@ -176,7 +176,7 @@ BEGIN
     AND CURRENT_DATE BETWEEN sta_ymd AND end_ymd;
 
   IF v_cost_per_ticket IS NULL THEN
-    v_cost_per_ticket := 1000; -- 기본값
+    v_cost_per_ticket := 500; -- 기본값
   END IF;
 
   v_total_cost := v_cost_per_ticket * p_quantity;
@@ -369,7 +369,7 @@ ON CONFLICT (code_group, code_value) DO UPDATE SET
 INSERT INTO common_code_detail
   (code_group, code_value, code_name, description, extra_value1, extra_value2, sta_ymd, end_ymd, sort_order, use_yn)
 VALUES
-  ('LUCKY_DRAW_CONFIG', 'TICKET_COST', '응모권 단가', '응모권 1장당 필요한 포인트', '1000', 'P', '2026-01-01', '9999-12-31', 1, 'Y')
+  ('LUCKY_DRAW_CONFIG', 'TICKET_COST', '응모권 단가', '응모권 1장당 필요한 포인트', '500', 'P', '2026-01-01', '9999-12-31', 1, 'Y')
 ON CONFLICT (code_group, code_value) DO UPDATE SET
   code_name = EXCLUDED.code_name,
   description = EXCLUDED.description,

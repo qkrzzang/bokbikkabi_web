@@ -59,7 +59,7 @@ export default function Sidebar({
   const [isAdModalOpen, setIsAdModalOpen] = useState(false) // 광고 모달 열림 여부
   const [isPolicyExpanded, setIsPolicyExpanded] = useState(false) // 포인트 받는 방법 펼침 여부
   const [userTickets, setUserTickets] = useState(0)
-  const [ticketCost, setTicketCost] = useState(1000)
+  const [ticketCost, setTicketCost] = useState(500)
   const [ticketHistory, setTicketHistory] = useState<any[]>([])
   const [luckyDrawEvents, setLuckyDrawEvents] = useState<any[]>([])
   const [myEntries, setMyEntries] = useState<any[]>([])
@@ -233,7 +233,7 @@ export default function Sidebar({
       // 응모권 단가 로드
       fetch('/api/lucky-draw?action=ticket-cost')
         .then(r => r.json())
-        .then(d => setTicketCost(d.cost || 1000))
+        .then(d => setTicketCost(d.cost || 500))
         .catch(() => {})
       // 사용자 등급 로드
       supabase
@@ -424,7 +424,7 @@ export default function Sidebar({
       setUserTickets(data.tickets || 0)
       setLuckyDrawEvents(data.events || [])
       setMyEntries(data.entries || [])
-      setTicketCost(data.cost || 1000)
+      setTicketCost(data.cost || 500)
       setTicketHistory(data.transactions || [])
     } catch (err) {
       console.error('[럭키드로우] 데이터 로드 실패:', err)
