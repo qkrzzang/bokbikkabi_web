@@ -22,7 +22,7 @@ function createRetryFetch(maxRetries = 2, baseDelay = 500) {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await fetch(input, init)
+        const response = await fetch(input, { ...init, cache: 'no-store' })
 
         if (response.status >= 500 || response.status === 429) {
           if (attempt < maxRetries) {
