@@ -45,7 +45,7 @@ function parseJsonResponse(content: string): any {
   try {
     return JSON.parse(content)
   } catch {
-    const jsonMatch = content.match(/\{[\s\S]*?\}/)
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       throw new Error('JSON 형식을 찾을 수 없습니다.')
     }

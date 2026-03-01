@@ -1556,12 +1556,11 @@
   color: #1e293b;
 }
 
-/* 공통코드 관리 그리드 */
+/* 공통코드 관리 그리드 (상단: 마스터 / 하단: 상세) */
 .codeManagementGrid {
-  display: grid;
-  grid-template-columns: 340px 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
-  min-height: 600px;
 }
 
 /* 마스터 패널 */
@@ -1572,6 +1571,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  max-height: 420px;
 }
 
 .panelHeader {
@@ -1970,6 +1970,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 400px;
 }
 
 .detailTableWrapper {
@@ -3228,12 +3229,8 @@
   }
 
   /* 공통코드 관리 그리드 모바일 */
-  .codeManagementGrid {
-    grid-template-columns: 1fr;
-  }
-
   .codeMasterPanel {
-    max-height: 300px;
+    max-height: 280px;
   }
 
   /* 데이터 분석 카드 모바일 */

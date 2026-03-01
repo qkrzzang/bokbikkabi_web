@@ -106,7 +106,7 @@ async function analyzeWithGemini(text: string): Promise<any> {
     throw new Error('GEMINI_API_KEY 환경변수가 설정되지 않았습니다.')
   }
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`
 
   const response = await fetch(geminiUrl, {
     method: 'POST',
@@ -122,7 +122,7 @@ async function analyzeWithGemini(text: string): Promise<any> {
         },
       ],
       generationConfig: {
-        temperature: 0,
+        temperature: 0.1,
         maxOutputTokens: 2000,
         responseMimeType: 'application/json',
       },

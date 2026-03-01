@@ -217,6 +217,7 @@ export default function Header() {
     nickname: string | null
     user_type: string | null
     user_grade: string | null
+    provider: string | null
     created_at: string
     last_login_at: string | null
     review_count: number
@@ -244,8 +245,12 @@ export default function Header() {
       avg_rating: string
       review_text: string
       created_at: string
+      contract_image_encrypted: string | null
+      contract_image_iv: string | null
     }>
   } | null>(null)
+  const [userReviewDecryptedImages, setUserReviewDecryptedImages] = useState<Record<string, string>>({})
+  const [userReviewImageLoading, setUserReviewImageLoading] = useState<Record<string, boolean>>({})
   const [isUserReviewLoading, setIsUserReviewLoading] = useState(false)
   
   // 광고/제휴/오류 문의 관리 상태
@@ -657,7 +662,7 @@ export default function Header() {
       setIsUserLoading(true)
       const { data, error } = await supabase
         .from('users')
-        .select('supabase_user_id, email, nickname, user_type, user_grade, created_at, last_login_at')
+        .select('supabase_user_id, email, nickname, user_type, user_grade, provider, created_at, last_login_at')
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -695,29 +700,30 @@ export default function Header() {
   // 사용자별 리뷰 조회
   const loadUserReviews = async (userId: string, nickname: string) => {
     setIsUserReviewLoading(true)
+    setUserReviewDecryptedImages({})
     try {
       const { data, error } = await supabase
         .from('agent_reviews')
         .select(`
           id, agent_name, contract_date, transaction_tag, review_text, created_at,
           fee_satisfaction, expertise, kindness, property_reliability, response_speed,
+          contract_image_encrypted, contract_image_iv,
           agent:agent_master(agent_name, road_address)
         `)
         .eq('supabase_user_id', userId)
         .order('created_at', { ascending: false })
 
       if (error) {
-        // fallback: agent join 없이 재시도
         const { data: fallback } = await supabase
           .from('agent_reviews')
-          .select('id, agent_name, contract_date, transaction_tag, review_text, created_at, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
+          .select('id, agent_name, contract_date, transaction_tag, review_text, created_at, fee_satisfaction, expertise, kindness, property_reliability, response_speed, contract_image_encrypted, contract_image_iv')
           .eq('supabase_user_id', userId)
           .order('created_at', { ascending: false })
 
         const reviews = (fallback || []).map((r: any) => {
           const fields = [r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed].filter(Boolean)
           const avg = fields.length > 0 ? (fields.reduce((a: number, b: number) => a + b, 0) / fields.length).toFixed(1) : '-'
-          return { ...r, agent_road_address: '', avg_rating: avg }
+          return { ...r, agent_road_address: '', avg_rating: avg, contract_image_encrypted: r.contract_image_encrypted || null, contract_image_iv: r.contract_image_iv || null }
         })
         setUserReviewPopup({ userId, nickname, reviews })
       } else {
@@ -734,6 +740,8 @@ export default function Header() {
             avg_rating: avg,
             review_text: r.review_text || '',
             created_at: r.created_at,
+            contract_image_encrypted: r.contract_image_encrypted || null,
+            contract_image_iv: r.contract_image_iv || null,
           }
         })
         setUserReviewPopup({ userId, nickname, reviews })
@@ -742,6 +750,28 @@ export default function Header() {
       console.error('[계정관리] 리뷰 조회 오류:', err)
     } finally {
       setIsUserReviewLoading(false)
+    }
+  }
+
+  // 사용자 리뷰 팝업용 이미지 복호화
+  const decryptUserReviewImage = async (reviewId: string, encrypted: string, iv: string) => {
+    if (userReviewDecryptedImages[reviewId]) return
+    setUserReviewImageLoading(prev => ({ ...prev, [reviewId]: true }))
+    try {
+      const res = await fetch('/api/decrypt-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ encrypted, iv, returnType: 'binary' }),
+      })
+      if (res.ok) {
+        const blob = await res.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        setUserReviewDecryptedImages(prev => ({ ...prev, [reviewId]: blobUrl }))
+      }
+    } catch (err) {
+      console.error('[계정관리] 리뷰 이미지 복호화 실패:', err)
+    } finally {
+      setUserReviewImageLoading(prev => ({ ...prev, [reviewId]: false }))
     }
   }
 
@@ -3119,7 +3149,7 @@ export default function Header() {
                   </div>
 
                   <div className={styles.codeManagementGrid}>
-                    {/* 좌측: Master 테이블 */}
+                    {/* 상단: Master 테이블 */}
                     <div className={styles.codeMasterPanel}>
                       <div className={styles.panelHeader}>
                         <h3 className={styles.panelTitle}>📋 코드 마스터</h3>
@@ -3251,7 +3281,7 @@ export default function Header() {
                       </div>
                     </div>
 
-                    {/* 우측: Detail 테이블 */}
+                    {/* 하단: Detail 테이블 */}
                     <div className={styles.codeDetailPanel}>
                       <div className={styles.panelHeader}>
                         <h3 className={styles.panelTitle}>
@@ -3586,13 +3616,13 @@ export default function Header() {
                         <div className={styles.adminStatItem}>
                           <span className={styles.statTagKakao}>Kakao</span>
                           <span className={styles.statCount}>
-                            {userList.filter(u => u.email?.includes('kakao')).length}
+                            {userList.filter(u => (u.provider || '').toLowerCase().includes('kakao')).length}
                           </span>
                         </div>
                         <div className={styles.adminStatItem}>
-                          <span className={styles.statTagGmail}>Gmail</span>
+                          <span className={styles.statTagGmail}>Google</span>
                           <span className={styles.statCount}>
-                            {userList.filter(u => u.email?.includes('gmail')).length}
+                            {userList.filter(u => (u.provider || '').toLowerCase().includes('google')).length}
                           </span>
                         </div>
                       </div>
@@ -3656,26 +3686,31 @@ export default function Header() {
                         <tr>
                           <th>이메일</th>
                           <th>닉네임</th>
-                          <th>유형</th>
+                          <th>가입채널</th>
                           <th>등급</th>
                           <th>리뷰</th>
                           <th>가입일</th>
-                          <th>최근 로그인</th>
                           <th>관리</th>
                         </tr>
                       </thead>
                       <tbody>
                         {isUserLoading ? (
                           <tr>
-                            <td colSpan={8} className={styles.loadingCell}>계정 정보를 불러오는 중...</td>
+                            <td colSpan={7} className={styles.loadingCell}>계정 정보를 불러오는 중...</td>
                           </tr>
                         ) : filteredUsers.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className={styles.emptyCell}>조회된 계정이 없습니다.</td>
+                            <td colSpan={7} className={styles.emptyCell}>조회된 계정이 없습니다.</td>
                           </tr>
                         ) : (
                           filteredUsers.map((account) => {
                             const isEditing = editingUser?.supabase_user_id === account.supabase_user_id
+                            const providerLabel = (() => {
+                              const p = (account.provider || '').toLowerCase()
+                              if (p.includes('kakao')) return 'Kakao'
+                              if (p.includes('google')) return 'Google'
+                              return account.provider || '-'
+                            })()
                             return (
                               <tr key={account.supabase_user_id}>
                                 <td>{account.email || '-'}</td>
@@ -3691,21 +3726,12 @@ export default function Header() {
                                   )}
                                 </td>
                                 <td>
-                                  {isEditing ? (
-                                    <select
-                                      className={styles.adminInlineSelect}
-                                      value={editingUser?.user_type || ''}
-                                      onChange={(e) => setEditingUser((prev) => prev ? { ...prev, user_type: e.target.value } : prev)}
-                                    >
-                                      <option value="">미지정</option>
-                                      <option value="ADMIN">ADMIN</option>
-                                      <option value="USER">USER</option>
-                                    </select>
-                                  ) : (
-                                    account.user_type === 'ADMIN'
-                                      ? <span className={styles.adminBadge}>ADMIN</span>
-                                      : <span className={styles.userBadge}>USER</span>
-                                  )}
+                                  {providerLabel === 'Kakao'
+                                    ? <span className={styles.statTagKakao}>{providerLabel}</span>
+                                    : providerLabel === 'Google'
+                                      ? <span className={styles.statTagGmail}>{providerLabel}</span>
+                                      : providerLabel
+                                  }
                                 </td>
                                 <td>
                                   {isEditing ? (
@@ -3748,13 +3774,29 @@ export default function Header() {
                                   )}
                                 </td>
                                 <td>{formatDate(account.created_at)}</td>
-                                <td>{formatDate(account.last_login_at)}</td>
                                 <td>
                                   {isEditing ? (
-                                    <>
-                                      <button className={styles.adminTableBtn} type="button" onClick={saveUser}>저장</button>
-                                      <button className={styles.adminTableBtn} type="button" onClick={() => setEditingUser(null)}>취소</button>
-                                    </>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      <div style={{ display: 'flex', gap: '4px' }}>
+                                        <button className={styles.adminTableBtn} type="button" onClick={saveUser}>저장</button>
+                                        <button className={styles.adminTableBtn} type="button" onClick={() => setEditingUser(null)}>취소</button>
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
+                                        <div>
+                                          유형: <select
+                                            className={styles.adminInlineSelect}
+                                            value={editingUser?.user_type || ''}
+                                            onChange={(e) => setEditingUser((prev) => prev ? { ...prev, user_type: e.target.value } : prev)}
+                                            style={{ fontSize: '12px', padding: '2px 4px' }}
+                                          >
+                                            <option value="">미지정</option>
+                                            <option value="ADMIN">ADMIN</option>
+                                            <option value="USER">USER</option>
+                                          </select>
+                                        </div>
+                                        <div style={{ marginTop: '4px' }}>최근 로그인: {formatDate(account.last_login_at)}</div>
+                                      </div>
+                                    </div>
                                   ) : (
                                     <button
                                       className={styles.adminTableBtn}
@@ -3870,6 +3912,35 @@ export default function Header() {
                                     }}>
                                       {rv.review_text}
                                     </p>
+                                  )}
+                                  {rv.contract_image_encrypted && rv.contract_image_iv && (
+                                    <div style={{ marginTop: '10px' }}>
+                                      {userReviewDecryptedImages[rv.id] ? (
+                                        <img
+                                          src={userReviewDecryptedImages[rv.id]}
+                                          alt="계약서 이미지"
+                                          style={{
+                                            maxWidth: '100%', maxHeight: '300px',
+                                            borderRadius: '8px', border: '1px solid #e2e8f0',
+                                            objectFit: 'contain', cursor: 'pointer',
+                                          }}
+                                          onClick={() => window.open(userReviewDecryptedImages[rv.id], '_blank')}
+                                        />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => decryptUserReviewImage(rv.id, rv.contract_image_encrypted!, rv.contract_image_iv!)}
+                                          disabled={userReviewImageLoading[rv.id]}
+                                          style={{
+                                            padding: '6px 14px', fontSize: '12px', fontWeight: 600,
+                                            border: '1px solid #e2e8f0', borderRadius: '6px',
+                                            background: '#f8fafc', color: '#475569', cursor: 'pointer',
+                                          }}
+                                        >
+                                          {userReviewImageLoading[rv.id] ? '복호화 중...' : '📎 계약서 이미지 보기'}
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               ))}
