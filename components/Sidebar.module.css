@@ -1602,6 +1602,57 @@
   background: #b91c1c;
 }
 
+/* 회원탈퇴 진행 중 오버레이 */
+.deletingOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: deletingFadeIn 0.3s ease;
+}
+
+@keyframes deletingFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.deletingContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 40px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.deletingSpinner {
+  width: 40px;
+  height: 40px;
+  border: 3.5px solid #fee2e2;
+  border-top-color: #dc2626;
+  border-radius: 50%;
+  animation: sidebarSpin 0.8s linear infinite;
+}
+
+.deletingText {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.deletingSubText {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
 /* 로딩 스피너 */
 @keyframes sidebarSpin {
   to {

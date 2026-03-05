@@ -2296,6 +2296,17 @@ export default function Sidebar({
           </div>
         )}
 
+        {/* 회원탈퇴 진행 중 오버레이 */}
+        {isDeleting && (
+          <div className={styles.deletingOverlay}>
+            <div className={styles.deletingContent}>
+              <div className={styles.deletingSpinner} />
+              <p className={styles.deletingText}>탈퇴 처리 중입니다</p>
+              <p className={styles.deletingSubText}>잠시만 기다려주세요...</p>
+            </div>
+          </div>
+        )}
+
         {/* 하단 여백 (풋터 높이의 절반) */}
         <div className={styles.sidebarBottomSpacer} />
       </div>
