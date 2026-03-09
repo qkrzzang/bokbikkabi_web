@@ -533,7 +533,7 @@ if (pointsAwarded) {
 
 - 버그 리포트: GitHub Issues
 - 기능 제안: GitHub Discussions
-- 긴급 문의: admin@bokbikkabi.com
+- 긴급 문의: wow_lab@naver.com
 
 ---
 

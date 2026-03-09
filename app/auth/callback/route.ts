@@ -48,7 +48,47 @@ export async function GET(request: Request) {
     const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error && sessionData?.session) {
-      const userEmail = sessionData.session.user.email
+      const authUser = sessionData.session.user
+      const userEmail = authUser.email
+
+      // public.users 레코드 보장 (트리거 실패 대비)
+      try {
+        const { data: existingUser } = await supabaseAdmin
+          .from('users')
+          .select('supabase_user_id')
+          .eq('supabase_user_id', authUser.id)
+          .maybeSingle()
+
+        if (!existingUser) {
+          const provider = authUser.app_metadata?.provider || 'unknown'
+          const nickname =
+            authUser.user_metadata?.properties?.nickname ||
+            authUser.user_metadata?.name ||
+            authUser.user_metadata?.full_name ||
+            '익명'
+          const avatarUrl =
+            authUser.user_metadata?.properties?.profile_image ||
+            authUser.user_metadata?.avatar_url ||
+            null
+
+          await supabaseAdmin.from('users').upsert(
+            {
+              supabase_user_id: authUser.id,
+              email: userEmail || '',
+              nickname,
+              profile_image_url: avatarUrl,
+              provider,
+              provider_user_id: authUser.user_metadata?.sub || '',
+              user_type: 'USER',
+              user_grade: 'IMJANG',
+            },
+            { onConflict: 'supabase_user_id' }
+          )
+          console.log('[콜백] public.users 레코드 생성 완료:', authUser.id)
+        }
+      } catch (err: any) {
+        console.error('[콜백] public.users 보장 실패:', err.message)
+      }
 
       // 탈퇴 블랙리스트 체크
       if (userEmail) {
