@@ -1625,6 +1625,28 @@ export default function Header() {
     }
   }
 
+  // 문의 삭제
+  const deleteInquiry = async (id: number) => {
+    if (!window.confirm('이 문의를 삭제하시겠습니까?')) return
+    try {
+      const { error } = await supabase
+        .from('partnership_inquiries')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      await fetchPartnershipInquiries()
+      setSelectedInquiry(null)
+
+      setSaveSuccessMessage('삭제되었습니다')
+      setShowSaveSuccessToast(true)
+      setTimeout(() => setShowSaveSuccessToast(false), 2000)
+    } catch (error) {
+      showError('삭제 중 오류가 발생했습니다.')
+    }
+  }
+
   // 문의 상태 업데이트
   const updateInquiryStatus = async (id: number, status: string, reply?: string) => {
     try {
@@ -2963,16 +2985,6 @@ export default function Header() {
                   </div>
                   <nav className={styles.mobileAdminMenuNav}>
                     <button
-                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'common-code' ? styles.mobileAdminMenuItemActive : ''}`}
-                      onClick={() => {
-                        setAdminMenu('common-code')
-                        setIsMobileAdminMenuOpen(false)
-                      }}
-                    >
-                      <span className={styles.mobileAdminMenuIcon}>📋</span>
-                      <span className={styles.mobileAdminMenuLabel}>공통코드 관리</span>
-                    </button>
-                    <button
                       className={`${styles.mobileAdminMenuItem} ${adminMenu === 'account' ? styles.mobileAdminMenuItemActive : ''}`}
                       onClick={() => {
                         setAdminMenu('account')
@@ -2981,6 +2993,16 @@ export default function Header() {
                     >
                       <span className={styles.mobileAdminMenuIcon}>👥</span>
                       <span className={styles.mobileAdminMenuLabel}>계정 관리</span>
+                    </button>
+                    <button
+                      className={`${styles.mobileAdminMenuItem} ${adminMenu === 'common-code' ? styles.mobileAdminMenuItemActive : ''}`}
+                      onClick={() => {
+                        setAdminMenu('common-code')
+                        setIsMobileAdminMenuOpen(false)
+                      }}
+                    >
+                      <span className={styles.mobileAdminMenuIcon}>📋</span>
+                      <span className={styles.mobileAdminMenuLabel}>공통코드 관리</span>
                     </button>
                     <button
                       className={`${styles.mobileAdminMenuItem} ${adminMenu === 'batch' ? styles.mobileAdminMenuItemActive : ''}`}
@@ -3061,18 +3083,18 @@ export default function Header() {
             <aside className={styles.adminSidebar}>
               <nav className={styles.adminSidebarNav}>
                 <button
-                  className={`${styles.adminSidebarItem} ${adminMenu === 'common-code' ? styles.adminSidebarItemActive : ''}`}
-                  onClick={() => setAdminMenu('common-code')}
-                >
-                  <span className={styles.adminSidebarIcon}>📋</span>
-                  <span className={styles.adminSidebarLabel}>공통코드 관리</span>
-                </button>
-                <button
                   className={`${styles.adminSidebarItem} ${adminMenu === 'account' ? styles.adminSidebarItemActive : ''}`}
                   onClick={() => setAdminMenu('account')}
                 >
                   <span className={styles.adminSidebarIcon}>👥</span>
                   <span className={styles.adminSidebarLabel}>계정 관리</span>
+                </button>
+                <button
+                  className={`${styles.adminSidebarItem} ${adminMenu === 'common-code' ? styles.adminSidebarItemActive : ''}`}
+                  onClick={() => setAdminMenu('common-code')}
+                >
+                  <span className={styles.adminSidebarIcon}>📋</span>
+                  <span className={styles.adminSidebarLabel}>공통코드 관리</span>
                 </button>
                 <button
                   className={`${styles.adminSidebarItem} ${adminMenu === 'batch' ? styles.adminSidebarItemActive : ''}`}
@@ -3630,24 +3652,28 @@ export default function Header() {
                     <div className={styles.adminStatCard}>
                       <div className={styles.adminStatLabel}>사용자 등급별</div>
                       <div className={styles.adminStatValues}>
-                        <div className={styles.adminStatItem}>
-                          <span className={styles.statTagGrade}>동네주민</span>
-                          <span className={styles.statCount}>
-                            {userList.filter(u => u.user_grade === '동네주민').length}
-                          </span>
-                        </div>
-                        <div className={styles.adminStatItem}>
-                          <span className={styles.statTagGrade}>동네보안관</span>
-                          <span className={styles.statCount}>
-                            {userList.filter(u => u.user_grade === '동네보안관').length}
-                          </span>
-                        </div>
-                        <div className={styles.adminStatItem}>
-                          <span className={styles.statTagGrade}>동네시장</span>
-                          <span className={styles.statCount}>
-                            {userList.filter(u => u.user_grade === '동네시장').length}
-                          </span>
-                        </div>
+                        {(() => {
+                          const gradeCounts: Record<string, number> = {}
+                          userList.forEach(u => {
+                            const grade = u.user_grade || '미지정'
+                            gradeCounts[grade] = (gradeCounts[grade] || 0) + 1
+                          })
+                          const gradeOrder = ['IMJANG', 'INJU', 'MYUNGDANG', 'GOD']
+                          const sorted = Object.entries(gradeCounts).sort(([a], [b]) => {
+                            const ai = gradeOrder.indexOf(a)
+                            const bi = gradeOrder.indexOf(b)
+                            if (ai !== -1 && bi !== -1) return ai - bi
+                            if (ai !== -1) return -1
+                            if (bi !== -1) return 1
+                            return a.localeCompare(b)
+                          })
+                          return sorted.map(([grade, count]) => (
+                            <div key={grade} className={styles.adminStatItem}>
+                              <span className={styles.statTagGrade}>{grade}</span>
+                              <span className={styles.statCount}>{count}</span>
+                            </div>
+                          ))
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -4646,6 +4672,12 @@ export default function Header() {
 
                         {/* 하단 버튼 */}
                         <div className={styles.partnerDetailFooter}>
+                          <button
+                            className={styles.partnerBtnDelete}
+                            onClick={() => deleteInquiry(selectedInquiry.id)}
+                          >
+                            삭제
+                          </button>
                           <button
                             className={styles.partnerBtnCancel}
                             onClick={() => setSelectedInquiry(null)}
