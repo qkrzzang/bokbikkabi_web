@@ -6,6 +6,7 @@ import PropertyList from '@/components/PropertyList'
 import CopyBanner from '@/components/CopyBanner'
 import EventBanner from '@/components/EventBanner'
 import CameraButton from '@/components/CameraButton'
+import MapView from '@/components/MapView'
 import styles from './page.module.css'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -44,6 +45,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchRegion, setSearchRegion] = useState('')
   const [autoOpenAgentId, setAutoOpenAgentId] = useState<number | null>(null)
+  const [viewMode, setViewMode] = useState<'search' | 'map'>('search')
 
   // 리퍼럴 파라미터 감지 및 저장 (7일간 유지) + 블랙리스트 차단 메시지 처리
   useEffect(() => {
@@ -228,14 +230,42 @@ export default function Home() {
     <main className={styles.main}>
       <div className={styles.container}>
         <EventBanner />
-        <SearchBar onSearch={handleSearch} value={searchQuery} regionValue={searchRegion} />
-        {!searchQuery.trim() && <CopyBanner />}
-        <PropertyList 
-          searchQuery={searchQuery}
-          searchRegion={searchRegion}
-          autoOpenAgentId={autoOpenAgentId}
-          onAutoOpenComplete={() => setAutoOpenAgentId(null)}
-        />
+
+        <div className={styles.modeToggle}>
+          <button
+            className={`${styles.modeBtn} ${viewMode === 'search' ? styles.modeBtnActive : ''}`}
+            onClick={() => setViewMode('search')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+            </svg>
+            검색
+          </button>
+          <button
+            className={`${styles.modeBtn} ${viewMode === 'map' ? styles.modeBtnActive : ''}`}
+            onClick={() => setViewMode('map')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" /><circle cx="12" cy="10" r="3" />
+            </svg>
+            주변 지도
+          </button>
+        </div>
+
+        {viewMode === 'search' ? (
+          <>
+            <SearchBar onSearch={handleSearch} value={searchQuery} regionValue={searchRegion} />
+            {!searchQuery.trim() && <CopyBanner />}
+            <PropertyList 
+              searchQuery={searchQuery}
+              searchRegion={searchRegion}
+              autoOpenAgentId={autoOpenAgentId}
+              onAutoOpenComplete={() => setAutoOpenAgentId(null)}
+            />
+          </>
+        ) : (
+          <MapView />
+        )}
       </div>
       <CameraButton />
     </main>

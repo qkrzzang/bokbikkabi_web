@@ -28,6 +28,52 @@
   flex-direction: column;
 }
 
+/* 검색/지도 모드 토글 */
+.modeToggle {
+  display: flex;
+  gap: 0;
+  padding: 4px;
+  background: #e8e0f7;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  border: 2px solid #d4c5f0;
+}
+
+.modeBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #8b7aab;
+  background: transparent;
+  border: none;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modeBtn svg {
+  flex-shrink: 0;
+}
+
+.modeBtn:active {
+  transform: scale(0.97);
+}
+
+.modeBtnActive {
+  background: #7c3aed;
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35);
+}
+
+.modeBtnActive svg {
+  stroke: #fff;
+}
+
 @media (max-width: 768px) {
   .container {
     padding: 8px 16px 8px;

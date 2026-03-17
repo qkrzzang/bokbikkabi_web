@@ -202,7 +202,7 @@ export default function PropertyDetailModal({
         // 지도 옵션 설정
         const mapOptions = {
           center: center,
-          zoom: 17, // 매우 확대 (건물 단위까지 보임)
+          zoom: 18, // 매우 확대 (건물 단위까지 보임)
           zoomControl: true, // 줌 컨트롤 표시
           zoomControlOptions: {
             position: window.naver.maps.Position.TOP_RIGHT,

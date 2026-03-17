@@ -10,6 +10,10 @@ export async function GET(request: NextRequest) {
   const region = searchParams.get('region')?.trim() || ''
   const mode = searchParams.get('mode')?.trim() || ''
 
+  if (mode === 'nearby') {
+    return handleNearbySearch(searchParams)
+  }
+
   if (!query) {
     return NextResponse.json({ data: [], reviews: {} })
   }
@@ -34,6 +38,254 @@ export async function GET(request: NextRequest) {
       { error: 'DB 조회 중 오류가 발생했습니다.', details: error.message },
       { status: 500 }
     )
+  }
+}
+
+async function handleNearbySearch(params: URLSearchParams) {
+  const lat = parseFloat(params.get('lat') || '')
+  const lng = parseFloat(params.get('lng') || '')
+  const radius = Math.min(parseFloat(params.get('radius') || '2'), 10)
+
+  if (isNaN(lat) || isNaN(lng)) {
+    return NextResponse.json({ error: 'lat, lng 파라미터가 필요합니다.' }, { status: 400 })
+  }
+
+  try {
+    // 1) 좌표가 있는 중개사: bounding box 검색
+    const { data: geoAgents } = await supabaseAdmin
+      .from('agent_master')
+      .select('id, agent_name, road_address, lot_address, latitude, longitude')
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .gte('latitude', lat - radius * 0.009)
+      .lte('latitude', lat + radius * 0.009)
+      .gte('longitude', lng - radius * 0.011)
+      .lte('longitude', lng + radius * 0.011)
+      .limit(200)
+
+    // 2) 좌표가 없는 중개사: 역지오코딩으로 지역명 추출 후 주소 기반 검색
+    const areaName = await reverseGeocode(lat, lng)
+    let addressAgents: any[] = []
+
+    if (areaName) {
+      console.log(`[nearby] 역지오코딩 결과: ${areaName}`)
+      const { data } = await supabaseAdmin
+        .from('agent_master')
+        .select('id, agent_name, road_address, lot_address, latitude, longitude')
+        .or(`road_address.ilike.%${areaName}%,lot_address.ilike.%${areaName}%`)
+        .limit(200)
+      addressAgents = data || []
+    }
+
+    // 3) 결과 병합 (중복 제거)
+    const seenIds = new Set<number>()
+    const allAgents: any[] = []
+    for (const a of [...(geoAgents || []), ...addressAgents]) {
+      if (!seenIds.has(a.id)) {
+        seenIds.add(a.id)
+        allAgents.push(a)
+      }
+    }
+
+    // 4) 좌표 없는 중개사는 Geocoding 후 DB에 저장 (최대 30건 병렬)
+    const needGeocode = allAgents.filter(a => !a.latitude || !a.longitude)
+    if (needGeocode.length > 0) {
+      const batch = needGeocode.slice(0, 30)
+      const results = await Promise.allSettled(
+        batch.map(a => geocodeAndSave(a))
+      )
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value) {
+          const target = allAgents.find(a => a.id === batch[i].id)
+          if (target) {
+            target.latitude = r.value.lat
+            target.longitude = r.value.lng
+          }
+        }
+      })
+    }
+
+    // 5) 거리 계산 및 필터링
+    const kmPerDegreeLat = 111.32
+    const kmPerDegreeLng = 111.32 * Math.cos(lat * Math.PI / 180)
+    const nearby = allAgents
+      .filter(a => a.latitude && a.longitude)
+      .map(a => {
+        const dLat = (a.latitude - lat) * kmPerDegreeLat
+        const dLng = (a.longitude - lng) * kmPerDegreeLng
+        const dist = Math.sqrt(dLat * dLat + dLng * dLng)
+        return { ...a, distance: Math.round(dist * 1000) }
+      })
+      .filter(a => a.distance <= radius * 1000)
+      .sort((a, b) => a.distance - b.distance)
+
+    // 6) 리뷰 조회
+    const agentIds = nearby.map(a => a.id)
+    const reviews: Record<number, number> = {}
+    const reviewCounts: Record<number, number> = {}
+
+    if (agentIds.length > 0) {
+      const { data: reviewsData } = await supabaseAdmin
+        .from('agent_reviews')
+        .select('agent_id, fee_satisfaction, expertise, kindness, property_reliability, response_speed')
+        .in('agent_id', agentIds)
+        .or('is_hidden.is.null,is_hidden.eq.false')
+
+      if (reviewsData) {
+        const ratingMap = new Map<number, number[]>()
+        const countMap = new Map<number, number>()
+        reviewsData.forEach((r: any) => {
+          countMap.set(r.agent_id, (countMap.get(r.agent_id) || 0) + 1)
+          const vals = [r.fee_satisfaction, r.expertise, r.kindness, r.property_reliability, r.response_speed].filter(Boolean) as number[]
+          if (vals.length > 0) {
+            if (!ratingMap.has(r.agent_id)) ratingMap.set(r.agent_id, [])
+            ratingMap.get(r.agent_id)!.push(vals.reduce((s, v) => s + v, 0) / vals.length)
+          }
+        })
+        ratingMap.forEach((ratings, id) => { reviews[id] = Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10 })
+        countMap.forEach((cnt, id) => { reviewCounts[id] = cnt })
+      }
+    }
+
+    console.log(`[nearby] 결과: ${nearby.length}곳 (좌표 보유 ${(geoAgents || []).length}건 + 주소 검색 ${addressAgents.length}건, 지오코딩 ${needGeocode.length}건)`)
+    return NextResponse.json({ data: nearby, reviews, reviewCounts })
+  } catch (error: any) {
+    console.error('[search-agents nearby] 오류:', error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  const clientId = process.env.NAVER_GEOCODING_CLIENT_ID || process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
+  const clientSecret = process.env.NAVER_GEOCODING_CLIENT_SECRET || process.env.NAVER_MAP_CLIENT_SECRET
+
+  if (clientId && clientSecret) {
+    try {
+      const url = `https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc?coords=${lng},${lat}&output=json&orders=legalcode`
+      const res = await fetch(url, {
+        headers: {
+          'x-ncp-apigw-api-key-id': clientId,
+          'x-ncp-apigw-api-key': clientSecret,
+        },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const result = data?.results?.[0]
+        if (result?.region) {
+          const r = result.region
+          const parts = [r.area1?.name, r.area2?.name].filter(Boolean)
+          const area = parts.join(' ')
+          if (area) {
+            console.log(`[nearby] Naver 역지오코딩 성공: ${area}`)
+            return area
+          }
+        }
+      } else {
+        console.warn(`[nearby] Naver 역지오코딩 실패 (HTTP ${res.status}) — fallback 사용`)
+      }
+    } catch (e: any) {
+      console.warn(`[nearby] Naver 역지오코딩 예외: ${e.message} — fallback 사용`)
+    }
+  }
+
+  const area = estimateAreaFromCoords(lat, lng)
+  if (area) console.log(`[nearby] 좌표 기반 지역 추정: ${area}`)
+  return area
+}
+
+const KOREA_AREAS: { name: string; lat: [number, number]; lng: [number, number] }[] = [
+  { name: '서울특별시 강남구', lat: [37.47, 37.53], lng: [127.01, 127.09] },
+  { name: '서울특별시 서초구', lat: [37.46, 37.51], lng: [126.97, 127.04] },
+  { name: '서울특별시 송파구', lat: [37.49, 37.53], lng: [127.08, 127.15] },
+  { name: '서울특별시 강동구', lat: [37.52, 37.56], lng: [127.11, 127.18] },
+  { name: '서울특별시 마포구', lat: [37.54, 37.57], lng: [126.89, 126.96] },
+  { name: '서울특별시 용산구', lat: [37.52, 37.55], lng: [126.96, 127.01] },
+  { name: '서울특별시 종로구', lat: [37.57, 37.60], lng: [126.96, 127.02] },
+  { name: '서울특별시 중구', lat: [37.55, 37.57], lng: [126.97, 127.01] },
+  { name: '서울특별시 성동구', lat: [37.54, 37.57], lng: [127.02, 127.07] },
+  { name: '서울특별시 광진구', lat: [37.53, 37.56], lng: [127.07, 127.11] },
+  { name: '서울특별시 동대문구', lat: [37.57, 37.60], lng: [127.03, 127.07] },
+  { name: '서울특별시 중랑구', lat: [37.58, 37.62], lng: [127.07, 127.10] },
+  { name: '서울특별시 성북구', lat: [37.58, 37.61], lng: [126.99, 127.03] },
+  { name: '서울특별시 강북구', lat: [37.61, 37.65], lng: [126.99, 127.03] },
+  { name: '서울특별시 도봉구', lat: [37.65, 37.69], lng: [127.01, 127.06] },
+  { name: '서울특별시 노원구', lat: [37.62, 37.66], lng: [127.05, 127.10] },
+  { name: '서울특별시 은평구', lat: [37.59, 37.64], lng: [126.90, 126.95] },
+  { name: '서울특별시 서대문구', lat: [37.56, 37.59], lng: [126.93, 126.97] },
+  { name: '서울특별시 영등포구', lat: [37.51, 37.54], lng: [126.89, 126.93] },
+  { name: '서울특별시 동작구', lat: [37.49, 37.52], lng: [126.93, 126.99] },
+  { name: '서울특별시 관악구', lat: [37.46, 37.49], lng: [126.93, 126.98] },
+  { name: '서울특별시 금천구', lat: [37.44, 37.47], lng: [126.89, 126.92] },
+  { name: '서울특별시 구로구', lat: [37.48, 37.51], lng: [126.85, 126.90] },
+  { name: '서울특별시 양천구', lat: [37.51, 37.54], lng: [126.85, 126.89] },
+  { name: '서울특별시 강서구', lat: [37.54, 37.58], lng: [126.81, 126.86] },
+  { name: '경기도 성남시', lat: [37.37, 37.47], lng: [127.06, 127.18] },
+  { name: '경기도 수원시', lat: [37.24, 37.32], lng: [126.94, 127.05] },
+  { name: '경기도 용인시', lat: [37.15, 37.33], lng: [127.05, 127.25] },
+  { name: '경기도 고양시', lat: [37.63, 37.71], lng: [126.82, 126.95] },
+  { name: '경기도 안양시', lat: [37.38, 37.42], lng: [126.90, 126.97] },
+  { name: '경기도 부천시', lat: [37.48, 37.52], lng: [126.76, 126.84] },
+  { name: '경기도 화성시', lat: [37.15, 37.28], lng: [126.72, 127.03] },
+  { name: '경기도 안산시', lat: [37.28, 37.35], lng: [126.77, 126.87] },
+  { name: '경기도 남양주시', lat: [37.56, 37.70], lng: [127.10, 127.25] },
+  { name: '경기도 의정부시', lat: [37.72, 37.78], lng: [127.02, 127.08] },
+  { name: '경기도 시흥시', lat: [37.34, 37.41], lng: [126.73, 126.82] },
+  { name: '경기도 파주시', lat: [37.71, 37.88], lng: [126.70, 126.82] },
+  { name: '경기도 광명시', lat: [37.45, 37.49], lng: [126.85, 126.89] },
+  { name: '경기도 광주시', lat: [37.36, 37.45], lng: [127.20, 127.33] },
+  { name: '경기도 하남시', lat: [37.51, 37.56], lng: [127.17, 127.24] },
+  { name: '인천광역시', lat: [37.35, 37.60], lng: [126.55, 126.80] },
+  { name: '부산광역시', lat: [35.05, 35.25], lng: [128.90, 129.20] },
+  { name: '대구광역시', lat: [35.80, 35.95], lng: [128.50, 128.75] },
+  { name: '대전광역시', lat: [36.30, 36.42], lng: [127.30, 127.48] },
+  { name: '광주광역시', lat: [35.10, 35.22], lng: [126.80, 126.95] },
+  { name: '울산광역시', lat: [35.48, 35.62], lng: [129.20, 129.45] },
+  { name: '세종특별자치시', lat: [36.47, 36.62], lng: [126.90, 127.10] },
+  { name: '제주특별자치도', lat: [33.20, 33.55], lng: [126.15, 126.95] },
+]
+
+function estimateAreaFromCoords(lat: number, lng: number): string | null {
+  for (const area of KOREA_AREAS) {
+    if (lat >= area.lat[0] && lat <= area.lat[1] && lng >= area.lng[0] && lng <= area.lng[1]) {
+      return area.name
+    }
+  }
+  if (lat >= 37.43 && lat <= 37.70 && lng >= 126.80 && lng <= 127.20) return '서울특별시'
+  if (lat >= 37.10 && lat <= 37.90 && lng >= 126.60 && lng <= 127.40) return '경기도'
+  return null
+}
+
+async function geocodeAndSave(agent: any): Promise<{ lat: number; lng: number } | null> {
+  const address = agent.road_address || agent.lot_address
+  if (!address) return null
+
+  const clientId = process.env.NAVER_GEOCODING_CLIENT_ID || process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
+  const clientSecret = process.env.NAVER_GEOCODING_CLIENT_SECRET || process.env.NAVER_MAP_CLIENT_SECRET
+  if (!clientId || !clientSecret) return null
+
+  try {
+    const url = `https://maps.apigw.ntruss.com/map-geocode/v2/geocode?query=${encodeURIComponent(address)}`
+    const res = await fetch(url, {
+      headers: {
+        'x-ncp-apigw-api-key-id': clientId,
+        'x-ncp-apigw-api-key': clientSecret,
+      },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data.addresses?.[0]) return null
+
+    const coords = { lat: parseFloat(data.addresses[0].y), lng: parseFloat(data.addresses[0].x) }
+    if (isNaN(coords.lat) || isNaN(coords.lng)) return null
+
+    await supabaseAdmin
+      .from('agent_master')
+      .update({ latitude: coords.lat, longitude: coords.lng })
+      .eq('id', agent.id)
+
+    return coords
+  } catch {
+    return null
   }
 }
 
