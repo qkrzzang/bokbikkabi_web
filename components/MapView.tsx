@@ -23,11 +23,7 @@ interface Agent {
   reviewCount?: number
 }
 
-const RADIUS_OPTIONS = [
-  { value: 0.1, label: '100m', zoom: 19 },
-  { value: 0.5, label: '500m', zoom: 18 },
-  { value: 1, label: '1km', zoom: 16 },
-]
+const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }
 
 export default function MapView() {
   const mapRef = useRef<HTMLDivElement>(null)
@@ -36,11 +32,11 @@ export default function MapView() {
   const myMarkerRef = useRef<any>(null)
 
   const [agents, setAgents] = useState<Agent[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [locError, setLocError] = useState<string | null>(null)
   const [myPos, setMyPos] = useState<{ lat: number; lng: number } | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
-  const [radius, setRadius] = useState(0.5)
+  const [showSearchBtn, setShowSearchBtn] = useState(false)
 
   const [detailProperty, setDetailProperty] = useState<any>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -48,6 +44,7 @@ export default function MapView() {
 
   const fetchNearby = useCallback(async (lat: number, lng: number, r: number) => {
     setLoading(true)
+    setShowSearchBtn(false)
     try {
       const res = await fetch(`/api/search-agents?mode=nearby&lat=${lat}&lng=${lng}&radius=${r}`)
       const json = await res.json()
@@ -66,51 +63,84 @@ export default function MapView() {
     }
   }, [])
 
+  const handleSearchHere = useCallback(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+    const center = map.getCenter()
+    fetchNearby(center.lat(), center.lng(), 1)
+  }, [fetchNearby])
+
+  const initMap = useCallback((center: { lat: number; lng: number }, retries = 0) => {
+    if (!mapRef.current || mapInstanceRef.current) return
+    if (!window.naver?.maps) {
+      if (retries < 20) {
+        setTimeout(() => initMap(center, retries + 1), 300)
+      }
+      return
+    }
+
+    const map = new window.naver.maps.Map(mapRef.current, {
+      center: new window.naver.maps.LatLng(center.lat, center.lng),
+      zoom: 17,
+      zoomControl: true,
+      zoomControlOptions: { position: window.naver.maps.Position.TOP_RIGHT },
+    })
+    mapInstanceRef.current = map
+
+    window.naver.maps.Event.addListener(map, 'click', () => {
+      setSelectedAgent(null)
+    })
+
+    window.naver.maps.Event.addListener(map, 'dragend', () => {
+      setShowSearchBtn(true)
+    })
+
+    window.naver.maps.Event.addListener(map, 'zoom_changed', () => {
+      setShowSearchBtn(true)
+    })
+
+    fetchNearby(center.lat, center.lng, 1)
+  }, [fetchNearby])
+
   useEffect(() => {
     if (!navigator.geolocation) {
-      setLocError('이 브라우저에서 위치 서비스를 지원하지 않습니다.')
-      setLoading(false)
+      setLocError('위치 서비스를 지원하지 않는 브라우저입니다.\n지도를 이동하여 검색해주세요.')
+      initMap(DEFAULT_CENTER)
       return
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }
         setMyPos(loc)
-        fetchNearby(loc.lat, loc.lng, radius)
+        initMap(loc)
       },
       (err) => {
         console.error('[MapView] 위치 오류:', err)
-        setLocError('위치 정보를 가져올 수 없습니다.\n위치 권한을 허용해주세요.')
-        setLoading(false)
+        let msg = '위치 정보를 가져올 수 없습니다.\n지도를 이동 후 검색해주세요.'
+        if (err.code === 1) {
+          msg = '위치 권한이 거부되었습니다.\n브라우저 설정에서 위치 권한을 허용하거나,\n지도를 이동 후 검색해주세요.'
+        } else if (err.code === 3) {
+          msg = '위치 요청 시간이 초과되었습니다.\n지도를 이동 후 검색해주세요.'
+        }
+        setLocError(msg)
+        initMap(DEFAULT_CENTER)
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
     )
-  }, [fetchNearby, radius])
+  }, [initMap])
 
   useEffect(() => {
-    if (!myPos || !mapRef.current || !window.naver?.maps) return
+    if (!myPos || !mapInstanceRef.current) return
 
-    if (!mapInstanceRef.current) {
-      const map = new window.naver.maps.Map(mapRef.current, {
-        center: new window.naver.maps.LatLng(myPos.lat, myPos.lng),
-        zoom: RADIUS_OPTIONS.find(o => o.value === radius)?.zoom ?? 18,
-        zoomControl: true,
-        zoomControlOptions: { position: window.naver.maps.Position.TOP_RIGHT },
-      })
-      mapInstanceRef.current = map
-
+    if (!myMarkerRef.current) {
       myMarkerRef.current = new window.naver.maps.Marker({
         position: new window.naver.maps.LatLng(myPos.lat, myPos.lng),
-        map,
+        map: mapInstanceRef.current,
         icon: {
           content: '<div style="width:16px;height:16px;background:#3b82f6;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
           anchor: new window.naver.maps.Point(8, 8),
         },
         zIndex: 200,
-      })
-
-      window.naver.maps.Event.addListener(map, 'click', () => {
-        setSelectedAgent(null)
       })
     }
   }, [myPos])
@@ -150,21 +180,24 @@ export default function MapView() {
   }, [agents])
 
   const handleMyLocation = useCallback(() => {
-    if (!myPos || !mapInstanceRef.current) return
-    mapInstanceRef.current.setCenter(new window.naver.maps.LatLng(myPos.lat, myPos.lng))
-    const opt = RADIUS_OPTIONS.find(o => o.value === radius)
-    mapInstanceRef.current.setZoom(opt?.zoom ?? 18)
-  }, [myPos, radius])
-
-  const handleRadiusChange = useCallback((r: number) => {
-    setRadius(r)
-    setSelectedAgent(null)
-    const opt = RADIUS_OPTIONS.find(o => o.value === r)
-    if (mapInstanceRef.current && opt) {
-      mapInstanceRef.current.setZoom(opt.zoom)
+    if (!mapInstanceRef.current) return
+    if (myPos) {
+      mapInstanceRef.current.setCenter(new window.naver.maps.LatLng(myPos.lat, myPos.lng))
+      mapInstanceRef.current.setZoom(17)
+      return
     }
-    if (myPos) fetchNearby(myPos.lat, myPos.lng, r)
-  }, [myPos, fetchNearby])
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        setMyPos(loc)
+        mapInstanceRef.current?.setCenter(new window.naver.maps.LatLng(loc.lat, loc.lng))
+        mapInstanceRef.current?.setZoom(17)
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    )
+  }, [myPos])
 
   const formatDist = (m?: number) => {
     if (m == null) return ''
@@ -275,49 +308,37 @@ export default function MapView() {
     }
   }, [])
 
-  if (locError) {
-    return (
-      <div className={styles.errorWrap}>
-        <div className={styles.errorIcon}>📍</div>
-        <p className={styles.errorText}>{locError}</p>
-        <button className={styles.retryBtn} onClick={() => window.location.reload()}>다시 시도</button>
-      </div>
-    )
-  }
-
   return (
     <div className={styles.mapContainer}>
-      <div className={styles.controls}>
-        <div className={styles.radiusGroup}>
-          {RADIUS_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              className={`${styles.radiusBtn} ${radius === opt.value ? styles.radiusBtnActive : ''}`}
-              onClick={() => handleRadiusChange(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
+      {locError && (
+        <div className={styles.locNotice}>
+          <span>📍 {locError.split('\n')[0]}</span>
         </div>
-        <div className={styles.agentCount}>
-          {loading ? '검색 중...' : `주변 중개사 ${agents.length}곳`}
-        </div>
-      </div>
-
+      )}
       <div className={styles.mapWrap}>
         <div ref={mapRef} className={styles.map} />
         {loading && (
           <div className={styles.mapLoading}>
             <div className={styles.mapSpinner} />
-            <span>주변 중개사를 찾는 중...</span>
+            <span>중개사를 찾는 중...</span>
           </div>
         )}
-        <button className={styles.myLocBtn} onClick={handleMyLocation}>
-          현재위치
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
-          </svg>
-        </button>
+        {showSearchBtn && !loading && (
+          <button className={styles.searchHereBtn} onClick={handleSearchHere}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+            </svg>
+            현 지도에서 검색
+          </button>
+        )}
+        {myPos && (
+          <button className={styles.myLocBtn} onClick={handleMyLocation}>
+            현재위치
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+            </svg>
+          </button>
+        )}
 
         {selectedAgent && (
           <div className={styles.popup}>

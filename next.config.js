@@ -5,10 +5,8 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   
-  // 환경변수 명시적 검증 (개발 환경에서만)
   async headers() {
     if (process.env.NODE_ENV === 'development') {
-      // .env.local에서 필수 환경변수 확인
       const requiredEnvVars = [
         'NEXT_PUBLIC_SUPABASE_URL',
         'NEXT_PUBLIC_SUPABASE_ANON_KEY'
@@ -36,7 +34,17 @@ const nextConfig = {
         console.log('   (없으면 NAVER_MAP 키를 대신 사용합니다)\n')
       }
     }
-    return []
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Permissions-Policy',
+            value: 'geolocation=(self)',
+          },
+        ],
+      },
+    ]
   }
 }
 
